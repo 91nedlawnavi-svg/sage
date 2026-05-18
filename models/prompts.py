@@ -148,7 +148,7 @@ Rules:
 - name: short human-readable label (e.g. "Pet", "Warung Pojok", "Systems Thinking")
 - If nothing is worth extracting, return []
 
-Output ONLY valid JSON. No preamble, no markdown fences.\"""
+Output ONLY valid JSON. No preamble, no markdown fences."""
 
 LIBRARY_MERGE_SYSTEM = """\
 You are updating a library entry about a person, place, or topic.
@@ -161,7 +161,7 @@ Rules:
 - Third person throughout
 - Do not add headers or labels
 
-Output ONLY the updated paragraph. No preamble.\"""
+Output ONLY the updated paragraph. No preamble."""
 
 def library_extract_prompt(conversation_digest: str) -> str:
     return (
