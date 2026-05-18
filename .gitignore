@@ -1,0 +1,5 @@
+.venv/
+__pycache__/
+*.gguf
+sage_data/
+logs/
