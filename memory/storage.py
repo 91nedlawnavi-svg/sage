@@ -83,6 +83,40 @@ async def append_history(history_file: Path, role: str, content: str) -> None:
     await append_text(history_file, entry + "\n")
 
 
+async def strip_last_assistant(history_file: Path) -> bool:
+    """
+    Remove the last assistant entry from the JSONL history file.
+    Called by retry to prevent duplicate consecutive assistant turns.
+    Returns True if an entry was removed, False otherwise.
+    """
+    async with _file_lock:
+        try:
+            if not history_file.exists():
+                return False
+            lines = history_file.read_text(encoding="utf-8").splitlines(keepends=True)
+            # Walk backwards to find the last non-empty assistant line
+            for i in range(len(lines) - 1, -1, -1):
+                line = lines[i].strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except Exception:
+                    continue
+                if entry.get("role") == "assistant":
+                    # Remove this line and rewrite
+                    del lines[i]
+                    tmp = history_file.with_suffix(".tmp")
+                    tmp.write_text("".join(lines), encoding="utf-8")
+                    tmp.replace(history_file)
+                    return True
+                # If we hit a user turn first, there's nothing to strip
+                break
+            return False
+        except Exception:
+            return False
+
+
 def history_for_prompt(history: list[dict], n: int) -> list[dict]:
     """Slice the last n*2 messages for prompt injection."""
     recent = history[-(n * 2):]

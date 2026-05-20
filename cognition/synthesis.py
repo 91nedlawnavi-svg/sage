@@ -36,7 +36,9 @@ _REFLECTION_SYSTEM = (
     "You synthesize recent experiences and emotional patterns into a single, "
     "concise internal reflection. Write 2–4 sentences. Be psychologically "
     "meaningful and emotionally intelligent. Abstract over specifics. "
-    "No roleplay, no persona, no direct address. Plain prose only."
+    "No roleplay, no persona, no direct address. Plain prose only. "
+    "Reflect on the USER's (Elliot's) patterns and experiences only — "
+    "never assert inner desires, feelings, or goals for the assistant itself."
 )
 
 

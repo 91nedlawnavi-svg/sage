@@ -82,7 +82,12 @@ async def extract_and_persist_emotions(
                 client=client,
                 max_tokens=300,
             )
-            final_text = merged if merged else interpretation
+            if not merged:
+                # Merge generation failed — preserve existing data, skip write.
+                log("cognition", "emotional_merge_failed_preserved",
+                    theme=theme_name, reason="merge_returned_empty")
+                continue
+            final_text = merged
         else:
             final_text = interpretation
 

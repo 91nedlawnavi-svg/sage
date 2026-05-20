@@ -613,6 +613,16 @@ async function pollJob(jid, aiGroupId, typingId, onText) {
     const tick = async () => {
       try {
         const r = await fetch(`/api/poll/${jid}?from=${cursor}`);
+
+        // 404 means the job is gone (stale ID from before a server restart).
+        // Treat it as terminal: stop polling and release the UI.
+        if (r.status === 404) {
+          if (typingId && document.getElementById(typingId)) removeTyping(typingId);
+          sessionStorage.removeItem('active_job');
+          resolve(full);
+          return;
+        }
+
         const d = await r.json();
 
         if (d.status === 'thinking') {

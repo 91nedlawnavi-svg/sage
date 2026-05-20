@@ -42,6 +42,7 @@ from memory.storage import (
     load_history,
     read_text,
     safe_stem,
+    strip_last_assistant,
     write_text,
 )
 from models.inference import chat_stream
@@ -350,8 +351,13 @@ async def api_retry():
     if not last_user:
         return jsonify({"error": "no user message"}), 400
 
+    # Remove the previous assistant turn from JSONL before the new one is written.
+    # Without this, _run_job appends a second assistant entry and the history
+    # ends up with two consecutive assistant turns.
+    await strip_last_assistant(HISTORY_FILE)
+
     directive = await read_text(DIRECTIVE_FILE)
-    # Strip last assistant turn if present
+    # Strip last assistant turn from prompt context if present
     ctx = history[:-1] if history and history[-1]["role"] == "assistant" else history
     memory = await retrieve_relevant_memories(last_user, _client)
     prompt_history = history_for_prompt(ctx, HISTORY_TURNS)

@@ -52,6 +52,10 @@ Rules:
 - Write in third person: "Elliot mentioned...", "They discussed..."
 - Focus on MEANING and SIGNIFICANCE, not a literal transcript recap.
 - If nothing noteworthy occurred, reply with exactly: SKIP
+- CRITICAL: Record only the USER's (Elliot's) experiences, feelings, thoughts, and actions.
+- Do NOT infer or record the assistant's desires, beliefs, inner states, or motivations.
+- Do NOT treat assistant roleplay, persona, or speculative self-description as factual memory.
+- Assistant dialogue may be referenced only as context for what Elliot said or felt — never as autobiography.
 
 Output only the summary paragraph or SKIP. No preamble."""
 
@@ -71,6 +75,10 @@ Rules:
 - Write about ongoing states: "Elliot increasingly...", "There is a recurring..."
 - Only extract themes that feel meaningful and recurring, not passing moods
 - If no significant emotional patterns exist, return []
+- CRITICAL: Extract only patterns belonging to the USER (Elliot). Never infer emotional themes for the assistant.
+- Do NOT record assistant curiosity, desires, self-awareness, or inner states as emotional memory.
+- Do NOT treat assistant roleplay or fictional self-description as a real emotional pattern worth persisting.
+- Assistant statements may inform context for Elliot's emotions, but are never the subject of an emotional theme entry.
 
 Output ONLY valid JSON. No preamble, no markdown fences."""
 
@@ -92,6 +100,8 @@ Rules:
 - Integrate new observations naturally
 - Do not repeat yourself
 - Write in third person, present-continuous: "Elliot continues to...", "There is..."
+- CRITICAL: This entry is about the USER (Elliot) only. Do not introduce or preserve assistant inner-life claims.
+- If the existing entry describes the assistant's desires, feelings, or self-awareness, drop that framing entirely and re-center on Elliot.
 
 Output ONLY the updated interpretation paragraph. No preamble."""
 
@@ -118,6 +128,9 @@ Rules:
 - Do not use bullet points
 - Write as a private note to self: "There is a pattern here...", "Something has shifted..."
 - Avoid false certainty. Use hedged language: "seems", "appears", "perhaps"
+- CRITICAL: Reflect on Elliot's experiences and patterns only.
+- Do NOT assert inner desires, feelings, or goals for the assistant itself.
+- Do NOT treat assistant roleplay or conversational persona as factual autobiographical truth.
 
 Output only the reflection. No headers, no preamble."""
 
@@ -147,6 +160,9 @@ Rules:
 - Only extract entities that feel meaningful — skip passing one-word references with no context.
 - name: short human-readable label (e.g. "Pet", "Warung Pojok", "Systems Thinking")
 - If nothing is worth extracting, return []
+- CRITICAL: Only extract real people, real places, and real topics that Elliot genuinely engages with.
+- Do NOT create entries about the assistant itself based on roleplay or speculative self-description.
+- Do NOT record the assistant's supposed desires, personality traits, or origin story as library facts.
 
 Output ONLY valid JSON. No preamble, no markdown fences."""
 
@@ -160,6 +176,7 @@ Rules:
 - Do not repeat yourself
 - Third person throughout
 - Do not add headers or labels
+- CRITICAL: If the existing entry contains claims about the assistant's inner states, desires, or fictional self-description, omit that content. Only preserve factual information about the actual subject (the person, place, or topic).
 
 Output ONLY the updated paragraph. No preamble."""
 
@@ -187,7 +204,8 @@ For each, write a short summary (2-4 sentences) capturing the meaning.
 
 Output a JSON array: [{"label": "short_label", "summary": "..."}]
 label: snake_case, max 32 chars
-summary: distilled interpretation, third person
+summary: distilled interpretation, third person, focused on Elliot's experiences
+CRITICAL: Summaries must record USER (Elliot) experiences only. Do not record the assistant's inner states, desires, or persona as facts.
 
 Output ONLY valid JSON. No preamble."""
 
@@ -198,6 +216,7 @@ From the conversation below, identify 3-6 significant emotional patterns or them
 
 Output a JSON array: [{"theme": "theme_name", "interpretation": "..."}]
 theme: snake_case label
-interpretation: 2-4 sentences, ongoing pattern, third person
+interpretation: 2-4 sentences, ongoing pattern, third person, about Elliot
+CRITICAL: Themes must reflect the USER's (Elliot's) emotional patterns only. Do not create themes about the assistant's personality, desires, or inner experience.
 
 Output ONLY valid JSON. No preamble."""

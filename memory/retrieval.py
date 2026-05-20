@@ -65,9 +65,15 @@ async def retrieve_relevant_memories(
     # Gather all candidate chunks
     candidates: list[tuple[str, str]] = []  # (label, content)
 
+    # Retrieval caps: prevent unbounded growth in candidate pool.
+    # Files are sorted ascending by timestamp name; slicing [-N:] keeps the
+    # most recent N, which have the highest signal for live conversation.
+    _EPISODIC_CAP    = 200
+    _REFLECTION_CAP  = 90
+
     # 1. Episodic
     episodes = await load_all_episodes()
-    for path, content in episodes:
+    for path, content in episodes[-_EPISODIC_CAP:]:
         candidates.append((f"episodic/{path.stem}", content))
 
     # 2. Emotional themes
@@ -87,7 +93,7 @@ async def retrieve_relevant_memories(
 
     # 4. Reflections — synthesised autobiographical abstractions
     reflections = await load_all_reflections()
-    for path, content in reflections:
+    for path, content in reflections[-_REFLECTION_CAP:]:
         candidates.append((f"reflection/{path.stem}", content))
 
     if not candidates:
