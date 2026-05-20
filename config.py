@@ -20,11 +20,13 @@ LIBRARY_DIR  = BASE_DIR / "library"
 LIBRARY_CATS = ["people", "places", "topics"]
 
 # ── NVIDIA ───────────────────────────────────────────────────────────
-NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY", "")
+NVIDIA_API_KEY   = os.environ.get("NVIDIA_API_KEY", "")
+NVIDIA_API_URL   = "https://integrate.api.nvidia.com/v1/chat/completions"
+REFLECTION_MODEL = os.environ.get("REFLECTION_MODEL", "mistralai/mistral-small-4-119b-2603")
 
 # ── Inference endpoints ──────────────────────────────────────────────
 CHAT_API_URL  = "https://integrate.api.nvidia.com/v1/chat/completions"
-CHAT_MODEL    = "meta/llama-4-maverick-17b-128e-instruct"
+CHAT_MODEL    = "meta/llama-3.3-70b-instruct"
 
 MEM_API_URL   = "http://localhost:8081/v1/chat/completions"
 EMBED_API_URL = "http://localhost:8082/v1/embeddings"

@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from config import EPISODIC_DIR
+from config import EPISODIC_DIR, REFLECTIONS_DIR
 from memory.storage import (
     ensure_dirs,
     list_memory_files,
@@ -62,6 +62,17 @@ async def load_recent_episodes(n: int = 10) -> list[str]:
 async def load_all_episodes() -> list[tuple[Path, str]]:
     """Load all episodes as (path, content) pairs. Used by retrieval."""
     files = await list_memory_files(EPISODIC_DIR)
+    result = []
+    for f in files:
+        content = await read_memory_entry(f)
+        if content:
+            result.append((f, content))
+    return result
+
+
+async def load_all_reflections() -> list[tuple[Path, str]]:
+    """Load all reflection files as (path, content) pairs. Used by retrieval."""
+    files = await list_memory_files(REFLECTIONS_DIR)
     result = []
     for f in files:
         content = await read_memory_entry(f)

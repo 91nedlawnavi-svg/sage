@@ -19,7 +19,7 @@ import httpx
 
 from config import TOP_K_MEMORIES, RETRIEVAL_THRESHOLD, LIBRARY_CATS, LIBRARY_DIR
 from memory.embeddings import get_embedding, cosine_similarity
-from memory.episodic import load_all_episodes
+from memory.episodic import load_all_episodes, load_all_reflections
 from memory.emotional import load_all_themes
 from memory.storage import list_memory_files, read_memory_entry
 from utils.logger import log
@@ -84,6 +84,11 @@ async def retrieve_relevant_memories(
             content = await read_memory_entry(f)
             if content:
                 candidates.append((f"library/{cat}/{f.stem}", content))
+
+    # 4. Reflections — synthesised autobiographical abstractions
+    reflections = await load_all_reflections()
+    for path, content in reflections:
+        candidates.append((f"reflection/{path.stem}", content))
 
     if not candidates:
         return ""

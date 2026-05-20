@@ -25,7 +25,7 @@ fi
 
 echo "[boot] Sage starting..."
 echo "[boot] Logs → $LOG_DIR"
-echo "[boot] Chat → NVIDIA NIM (Llama 4 Maverick)"
+echo "[boot] Chat → NVIDIA NIM ()"
 
 # ── MEMORY WRITER (Port 8081) ─────────────────────────────────────────
 # Qwen 2.5 7B — CPU only, low temperature, reflection + distillation

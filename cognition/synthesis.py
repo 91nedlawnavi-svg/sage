@@ -14,9 +14,14 @@ from pathlib import Path
 
 import httpx
 
-from config import REFLECTIONS_DIR
+from config import (
+    NVIDIA_API_KEY,
+    NVIDIA_API_URL,
+    REFLECTION_MODEL,
+    REFLECTIONS_DIR,
+)
 from memory.episodic import load_recent_episodes, write_episode
-from memory.emotional import load_all_themes
+from memory.emotional import retrieve_relevant_themes
 from memory.storage import ensure_dirs, ts_filename, write_memory_entry
 from models.inference import mem_complete
 from models.prompts import (
@@ -26,6 +31,13 @@ from models.prompts import (
     reflection_prompt,
 )
 from utils.logger import log
+
+_REFLECTION_SYSTEM = (
+    "You synthesize recent experiences and emotional patterns into a single, "
+    "concise internal reflection. Write 2–4 sentences. Be psychologically "
+    "meaningful and emotionally intelligent. Abstract over specifics. "
+    "No roleplay, no persona, no direct address. Plain prose only."
+)
 
 
 async def extract_episode(
@@ -58,7 +70,7 @@ async def extract_episode(
 
 async def generate_reflection(client: httpx.AsyncClient) -> bool:
     """
-    Generate a reflection from recent episodic + emotional memory.
+    Generate a reflection from recent episodic + semantically relevant emotional memory.
     Persists to data/reflections/.
     Returns True if a reflection was written.
     """
@@ -68,27 +80,51 @@ async def generate_reflection(client: httpx.AsyncClient) -> bool:
     recent_episodes = await load_recent_episodes(n=5)
     episodic_text = "\n\n".join(recent_episodes) if recent_episodes else ""
 
-    # Gather emotional themes
-    themes = await load_all_themes()
+    # Retrieve only the emotional themes most relevant to the recent episodes.
+    # Using episodic_text as the query anchors retrieval to what actually
+    # happened, rather than polling all themes indiscriminately.
+    query = episodic_text if episodic_text else ""
+    if query:
+        themes = await retrieve_relevant_themes(query, client, top_k=3)
+    else:
+        themes = []
     emotional_text = "\n\n".join(content for _, content in themes) if themes else ""
 
     if not episodic_text and not emotional_text:
         log("cognition", "reflection_skipped", reason="no_material")
         return False
 
-    raw = await mem_complete(
-        system=REFLECTION_SYSTEM,
-        user=reflection_prompt(episodic_text, emotional_text),
-        client=client,
-        max_tokens=400,
-    )
+    # ── NVIDIA Mistral Small 4 reflection call ────────────────────────
+    raw = None
+    try:
+        resp = await client.post(
+            NVIDIA_API_URL,
+            headers={"Authorization": f"Bearer {NVIDIA_API_KEY}"},
+            json={
+                "model": REFLECTION_MODEL,
+                "messages": [
+                    {"role": "system", "content": _REFLECTION_SYSTEM},
+                    {"role": "user",   "content": reflection_prompt(episodic_text, emotional_text)},
+                ],
+                "stream": False,
+                "temperature": 0.7,
+                "max_tokens": 180,
+            },
+            timeout=httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=5.0),
+        )
+        resp.raise_for_status()
+        raw = resp.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        log("cognition", "reflection_error", error=str(e))
+        return False
+    # ─────────────────────────────────────────────────────────────────
 
     if not raw:
         return False
 
-    ts  = datetime.now().strftime("%Y-%m-%d %H:%M")
+    ts   = datetime.now().strftime("%Y-%m-%d %H:%M")
     stem = ts_filename("reflection_")
-    content = f"[{ts}]\n{raw.strip()}\n"
+    content = f"[{ts}]\n{raw}\n"
     await write_memory_entry(REFLECTIONS_DIR, stem, content)
     log("cognition", "reflection_written", stem=stem)
     return True

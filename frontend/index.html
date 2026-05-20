@@ -560,7 +560,7 @@
   <div id="input-area">
     <div id="input-row">
       <textarea id="user-input" placeholder="type..." rows="1"
-        onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        oninput="autoResize(this)"></textarea>
       <button id="send-btn" onclick="sendMessage()" title="Send">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="22" y1="2" x2="11" y2="13"></line>
@@ -568,7 +568,6 @@
         </svg>
       </button>
     </div>
-    <div id="hint">Enter to send · Shift+Enter for new line</div>
   </div>
 
 </div>
@@ -815,12 +814,7 @@ function setSendDisabled(v) {
   document.getElementById('send-btn').disabled = v;
 }
 
-function handleKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
-}
+
 
 function autoResize(el) {
   el.style.height = 'auto';

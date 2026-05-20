@@ -6,7 +6,7 @@ notable people, places, and topics, then writes or merges entries
 into ~/sage_data/library/{category}/{name}.txt
 
 Design:
-  - Notes everything (Van cleans up manually)
+  - Notes everything (Elliot cleans up manually)
   - Merges intelligently with existing entries (like emotional themes)
   - Prose format, third person
   - Never overwrites with less information than already exists

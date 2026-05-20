@@ -49,7 +49,7 @@ You are a memory distiller. From the conversation excerpt below, extract one con
 
 Rules:
 - Describe what happened in a single paragraph (2-5 sentences).
-- Write in third person: "Van mentioned...", "They discussed..."
+- Write in third person: "Elliot mentioned...", "They discussed..."
 - Focus on MEANING and SIGNIFICANCE, not a literal transcript recap.
 - If nothing noteworthy occurred, reply with exactly: SKIP
 
@@ -68,7 +68,7 @@ Rules:
 - Output a JSON array. Each item: {"theme": "short_name", "interpretation": "paragraph"}
 - theme: a short snake_case label (e.g., "school_frustration", "longing_for_pet")
 - interpretation: 2-4 sentences describing the emotional pattern as an ongoing theme
-- Write about ongoing states: "Van increasingly...", "There is a recurring..."
+- Write about ongoing states: "Elliot increasingly...", "There is a recurring..."
 - Only extract themes that feel meaningful and recurring, not passing moods
 - If no significant emotional patterns exist, return []
 
@@ -91,7 +91,7 @@ Rules:
 - Preserve the historical arc: how this pattern has evolved
 - Integrate new observations naturally
 - Do not repeat yourself
-- Write in third person, present-continuous: "Van continues to...", "There is..."
+- Write in third person, present-continuous: "Elliot continues to...", "There is..."
 
 Output ONLY the updated interpretation paragraph. No preamble."""
 
@@ -140,10 +140,10 @@ From the conversation below, identify any people, places, or topics worth noting
 
 Rules:
 - Output a JSON array. Each item: {"category": "people"|"places"|"topics", "name": "short name", "note": "prose paragraph"}
-- people: named individuals Van mentions (friends, family, teachers, etc.)
-- places: specific locations Van references (a warung, school, city, etc.)
-- topics: recurring subjects Van returns to (a hobby, interest, project, obsession, etc.)
-- note: 2-4 sentences of distilled prose. Third person. What this person/place/topic means to Van, not just that it was mentioned.
+- people: named individuals Elliot mentions (friends, family, teachers, etc.)
+- places: specific locations Elliot references (a warung, school, city, etc.)
+- topics: recurring subjects Elliot returns to (a hobby, interest, project, obsession, etc.)
+- note: 2-4 sentences of distilled prose. Third person. What this person/place/topic means to Elliot, not just that it was mentioned.
 - Only extract entities that feel meaningful — skip passing one-word references with no context.
 - name: short human-readable label (e.g. "Pet", "Warung Pojok", "Systems Thinking")
 - If nothing is worth extracting, return []

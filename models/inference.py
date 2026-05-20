@@ -2,11 +2,11 @@
 models/inference.py — LLM inference wrappers
 
 Two endpoints:
-  chat_stream()  → streaming tokens from NVIDIA NIM (Llama 4 Maverick)
+  chat_stream()  → streaming tokens from NVIDIA NIM
   mem_complete() → single completion from local memory model (8081)
-
-Both are thin async wrappers. No prompt logic lives here.
 """
+
+import json
 from typing import AsyncIterator, Optional
 
 import httpx
@@ -23,6 +23,7 @@ from config import (
     MEM_TEMPERATURE,
     MEM_TOP_P,
 )
+
 from utils.logger import log
 
 
@@ -31,10 +32,11 @@ async def chat_stream(
     client: httpx.AsyncClient,
 ) -> AsyncIterator[str]:
     """
-    Stream tokens from NVIDIA NIM (Llama 4 Maverick).
-    Yields string tokens as they arrive.
-    Yields an error string on connection failure.
+    Streaming NVIDIA NIM chat completion wrapper.
+    Yields string tokens as they arrive via SSE.
+    Yields an error string on failure.
     """
+
     if not NVIDIA_API_KEY:
         yield "\n\n⚠️ NVIDIA_API_KEY not set. Check your ~/.bashrc."
         return
@@ -55,8 +57,10 @@ async def chat_stream(
                 "max_tokens": CHAT_MAX_TOKENS,
                 "top_p": CHAT_TOP_P,
             },
+            timeout=httpx.Timeout(connect=10.0, read=180.0, write=10.0, pool=5.0),
         ) as resp:
             resp.raise_for_status()
+
             async for line in resp.aiter_lines():
                 if not line or not line.startswith("data: "):
                     continue
@@ -64,7 +68,7 @@ async def chat_stream(
                 if data_str == "[DONE]":
                     break
                 try:
-                    chunk = __import__("json").loads(data_str)
+                    chunk = json.loads(data_str)
                     token = (
                         chunk.get("choices", [{}])[0]
                         .get("delta", {})
@@ -72,13 +76,20 @@ async def chat_stream(
                     )
                     if token:
                         yield token
-                except Exception:
+                except json.JSONDecodeError:
                     continue
 
     except httpx.ConnectError:
         yield "\n\n⚠️ Cannot reach NVIDIA NIM. Check internet connection."
+
     except httpx.HTTPStatusError as e:
-        yield f"\n\n⚠️ NVIDIA API error {e.response.status_code}: {e.response.text}"
+        try:
+            await e.response.aread()
+            body = e.response.text
+        except Exception:
+            body = "(unreadable)"
+        yield f"\n\n⚠️ NVIDIA API error {e.response.status_code}: {body}"
+
     except Exception as e:
         yield f"\n\n⚠️ Chat error: {e}"
 
@@ -93,6 +104,7 @@ async def mem_complete(
     Single (non-streaming) completion from the local memory model.
     Returns the response text, or None on failure.
     """
+
     try:
         resp = await client.post(
             MEM_API_URL,
@@ -107,8 +119,13 @@ async def mem_complete(
             },
             timeout=90.0,
         )
+
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"].strip()
+
+        return (
+            resp.json()["choices"][0]["message"]["content"].strip()
+        )
+
     except Exception as e:
         log("inference", "mem_complete_error", error=str(e))
         return None
