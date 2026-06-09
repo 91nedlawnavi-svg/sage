@@ -1,6 +1,7 @@
 import random
 from datetime import datetime
 from config.settings import HISTORY_TURNS
+from cognition.inner_context import select_inner_context
 
 
 def build_chat_messages(directive: str, user_input: str, history: list[dict]) -> list[dict]:
@@ -8,17 +9,27 @@ def build_chat_messages(directive: str, user_input: str, history: list[dict]) ->
     # Time context
     time_context = f"[Current date and time: {datetime.now():%A, %B %d, %Y at %I:%M %p}]"
 
-    # System content: directive ALWAYS first, then time context
-    # Extension points clearly marked for future phases
-    system_content = (
-        directive.strip()
-        + "\n\n"
-        + time_context
-        + "\n\n"
-        + "[ELLIOT'S MEMORY — extension point]\n"
-        + "[SAGE'S INNER CONTEXT — extension point]\n"
-        + "[SEARCH BLOCKS — extension point]"
-    )
+    # Pull Sage's inner context (reflections + findings) — the Membrane
+    inner_context = select_inner_context()
+
+    # System content: directive ALWAYS first, then time context, then inner context
+    # Inner context sits AFTER directive, BEFORE conversation — it's her interior
+    parts = [
+        directive.strip(),
+        "\n\n",
+        time_context,
+    ]
+
+    if inner_context:
+        parts.append("\n\n")
+        parts.append(inner_context)
+
+    parts.append("\n\n")
+    parts.append("[ELLIOT'S MEMORY — extension point]")
+    parts.append("\n")
+    parts.append("[SEARCH BLOCKS — extension point]")
+
+    system_content = "".join(parts)
 
     # Build messages: system + history + user
     messages = [{"role": "system", "content": system_content}]
