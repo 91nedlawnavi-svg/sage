@@ -90,6 +90,9 @@ Rules for every felt-test / completion report:
    you must quote that specific self-originated content.
 
 ## Phase log
-- **Phase 0 — COMPLETE.** Clean spine (directive loader + NIM chat), real directive installed, voice validated.
-- **Phase 1 — Heartbeat (next).** Autonomous tick decoupled from conversation.
-- Later: self-originated curiosity & search → the Membrane (collision) → optional threads/meta.
+- **Phase 0 — COMPLETE.** Clean spine (directive loader + NIM chat), directive installed, voice validated.
+- **Phase 1 — COMPLETE.** Autonomous heartbeat + private reflection, decoupled from conversation (`phase1-complete`). P1.5: thin `launch.py`.
+- **Phase 2a — COMPLETE.** Broke the reflection attractor ("The silence." loop); she wonders outward.
+- **Phase 2 — COMPLETE / MATURE.** Self-originated curiosity + SearXNG. Both halves verified live: curiosity→search, and finding→next-reflection (the money shot). Tag `phase2.1-complete`.
+- **Phase 3 — the Membrane (NEXT).** Her interior reaches into conversation.
+- Later: Phase 4 Memory foundation → Phase 5 people-graph → Phase 6 optional threads/meta. Parallel: frontends (6969 chat, 7979 admin).
