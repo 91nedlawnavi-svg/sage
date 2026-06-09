@@ -33,6 +33,9 @@ async def chat_endpoint(request: ChatRequest):
     async for token in chat_stream(messages, http_client):
         full_reply += token
 
+    # Mark user activity for heartbeat
+    session.touch()
+
     # Append turns to session
     session.append("user", request.message)
     session.append("assistant", full_reply)

@@ -33,6 +33,21 @@ Sage is a local, always-on AI companion running on Elliot's machine. She is buil
 ## Protected resources — never touch
 - `llama-embedder.service` (systemd user unit), `llama-server` on `127.0.0.1:8081`, `~/llama.cpp`, `~/models/*.gguf`. The embedder is the worker; unused until the memory phase, but it must stay alive and untouched.
 
+## Operating loop — how brain and hand hand off
+1. The brain (Opus, in chat) issues one explicit work-order at a time.
+2. You (ClaudeCode) execute ONLY what that work-order specifies — no extra
+   features, no architectural decisions of your own, no scope you weren't given.
+3. You run the work-order's felt-test yourself before reporting.
+4. You report back: what changed, felt-test output, and any deviation — then
+   STOP and wait for the next work-order. Do NOT advance to the next phase on
+   your own.
+5. If something is ambiguous, blocked, or you think the order is wrong, say so
+   in the report instead of improvising around it. The brain decides; you have
+   veto-by-flag, not veto-by-action.
+6. The brain owns architecture and the phase sequence. You own execution and
+   ground truth from the machine — report what's actually true, even when it
+   contradicts the order.
+
 ## Workflow rules
 - At each **phase completion**: commit, tag `phaseN-complete`, push to GitHub.
 - Keep commits scoped; messages honest.

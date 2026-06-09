@@ -3,16 +3,21 @@ import httpx
 from fastapi import FastAPI
 from config.settings import PORT, CHAT_MODEL
 from backend.api.chat import router as chat_router
+from backend.heartbeat import Heartbeat
 from config.directive import get_directive
 from utils.logger import info, error
+from memory.reflection_log import read_recent
+from backend.session import session
 
 # Global HTTP client
 http_client: httpx.AsyncClient | None = None
+# Global heartbeat instance
+heartbeat: Heartbeat | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global http_client
+    global http_client, heartbeat
     # Startup: verify directive exists and is non-empty
     try:
         get_directive()
@@ -24,8 +29,16 @@ async def lifespan(app: FastAPI):
     # Create shared HTTP client
     http_client = httpx.AsyncClient()
     info("HTTP client created")
+
+    # Start heartbeat
+    heartbeat = Heartbeat(http_client)
+    heartbeat.start()
+
     yield
+
     # Shutdown
+    if heartbeat:
+        heartbeat.stop()
     if http_client:
         await http_client.aclose()
         info("HTTP client closed")
@@ -38,6 +51,25 @@ app.include_router(chat_router)
 @app.get("/health")
 async def health():
     return {"ok": True, "model": CHAT_MODEL}
+
+
+@app.get("/reflections")
+async def get_reflections(n: int = 20):
+    """Return the most recent N private reflections."""
+    return {"reflections": read_recent(n)}
+
+
+@app.get("/heartbeat")
+async def get_heartbeat():
+    """Return heartbeat status for observability."""
+    if not heartbeat:
+        return {"error": "Heartbeat not initialized"}
+    return {
+        "last_beat_ts": heartbeat.last_beat_ts,
+        "last_reflection_ts": heartbeat.last_reflection_ts,
+        "idle_seconds": session.idle_seconds(),
+        "reflecting": heartbeat.reflecting,
+    }
 
 
 if __name__ == "__main__":
