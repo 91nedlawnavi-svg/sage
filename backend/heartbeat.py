@@ -8,7 +8,7 @@ from config.settings import (
 from cognition.reflection import run_reflection
 from memory.reflection_log import append_reflection
 from backend.session import session
-from utils.logger import info, warning
+from utils.logger import info, warning, log
 
 
 class Heartbeat:
@@ -85,7 +85,8 @@ class Heartbeat:
                 if text:
                     append_reflection(text, idle)
                     self._last_reflection_ts = time.time()
-                    info(f"Reflection logged ({len(text)} chars, idle={idle:.0f}s)")
+                    preview = text[:80]
+                    log("heartbeat", "reflection", preview=preview, chars=len(text), idle_seconds=round(idle, 1))
             except Exception as e:
                 warning(f"Reflection failed: {e}")
             finally:
