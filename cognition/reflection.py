@@ -7,6 +7,7 @@ from config.settings import (
 from models.inference.engine import nim_complete
 from models.prompts.templates import build_reflection_messages
 from backend.session import session
+from memory.reflection_log import read_recent
 
 
 async def run_reflection(client) -> str | None:
@@ -15,8 +16,15 @@ async def run_reflection(client) -> str | None:
         directive = get_directive()
         recent_digest = session.recent_digest()
         idle_seconds = session.idle_seconds()
+        # Pull recent reflections for anti-repeat / continuity
+        recent_reflections = read_recent(3)
 
-        messages = build_reflection_messages(directive, recent_digest, idle_seconds)
+        messages = build_reflection_messages(
+            directive=directive,
+            recent_digest=recent_digest,
+            idle_seconds=idle_seconds,
+            recent_reflections=recent_reflections,
+        )
 
         text = await nim_complete(
             system=messages[0]["content"],
