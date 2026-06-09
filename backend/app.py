@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from pathlib import Path
 from config.settings import PORT, CHAT_MODEL
 from backend.api.chat import router as chat_router
 from backend.heartbeat import Heartbeat
@@ -10,6 +12,9 @@ from memory.reflection_log import read_recent
 from memory.findings_log import read_recent as read_recent_findings
 from memory.conversation_log import load_all
 from backend.session import session
+
+# Frontend static file serving
+FRONTEND = Path(__file__).parent.parent / "frontend"
 
 # Global HTTP client
 http_client: httpx.AsyncClient | None = None
@@ -89,6 +94,12 @@ async def get_heartbeat():
         "idle_seconds": session.idle_seconds(),
         "reflecting": heartbeat.reflecting,
     }
+
+
+@app.get("/")
+async def chat_ui():
+    """Serve the chat UI."""
+    return FileResponse(FRONTEND / "index.html")
 
 
 if __name__ == "__main__":

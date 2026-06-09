@@ -63,7 +63,7 @@ def main():
     try:
         uvicorn.run(
             "backend.app:app",
-            host="127.0.0.1",
+            host="0.0.0.0",
             port=PORT,
             reload=False,
             log_level="warning",
