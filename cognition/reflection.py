@@ -7,7 +7,8 @@ from config.settings import (
 from models.inference.engine import nim_complete
 from models.prompts.templates import build_reflection_messages
 from backend.session import session
-from memory.reflection_log import read_recent
+from memory.reflection_log import read_recent as read_recent_reflections
+from memory.findings_log import read_recent as read_recent_findings
 
 
 async def run_reflection(client) -> str | None:
@@ -17,13 +18,16 @@ async def run_reflection(client) -> str | None:
         recent_digest = session.recent_digest()
         idle_seconds = session.idle_seconds()
         # Pull recent reflections for anti-repeat / continuity
-        recent_reflections = read_recent(3)
+        recent_reflections = read_recent_reflections(3)
+        # Pull recent findings to feed curiosity
+        recent_findings = read_recent_findings(2)
 
         messages = build_reflection_messages(
             directive=directive,
             recent_digest=recent_digest,
             idle_seconds=idle_seconds,
             recent_reflections=recent_reflections,
+            recent_findings=recent_findings,
         )
 
         text = await nim_complete(

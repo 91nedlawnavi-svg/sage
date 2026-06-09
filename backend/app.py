@@ -7,6 +7,7 @@ from backend.heartbeat import Heartbeat
 from config.directive import get_directive
 from utils.logger import info, error
 from memory.reflection_log import read_recent
+from memory.findings_log import read_recent as read_recent_findings
 from backend.session import session
 
 # Global HTTP client
@@ -59,6 +60,12 @@ async def get_reflections(n: int = 20):
     return {"reflections": read_recent(n)}
 
 
+@app.get("/findings")
+async def get_findings(n: int = 20):
+    """Return the most recent N web search findings."""
+    return {"findings": read_recent_findings(n)}
+
+
 @app.get("/heartbeat")
 async def get_heartbeat():
     """Return heartbeat status for observability."""
@@ -67,6 +74,8 @@ async def get_heartbeat():
     return {
         "last_beat_ts": heartbeat.last_beat_ts,
         "last_reflection_ts": heartbeat.last_reflection_ts,
+        "last_search_ts": heartbeat.last_search_ts,
+        "searches_today": heartbeat.searches_today,
         "idle_seconds": session.idle_seconds(),
         "reflecting": heartbeat.reflecting,
     }

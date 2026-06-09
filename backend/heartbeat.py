@@ -1,12 +1,19 @@
 import asyncio
 import time
+from datetime import datetime
 from config.settings import (
     HEARTBEAT_INTERVAL_SECONDS,
     REFLECTION_MIN_IDLE_SECONDS,
     REFLECTION_COOLDOWN_SECONDS,
+    WEB_SEARCH_ENABLED,
+    AUTONOMOUS_SEARCH_COOLDOWN_SECONDS,
+    AUTONOMOUS_SEARCH_MAX_PER_DAY,
 )
 from cognition.reflection import run_reflection
+from cognition.web_search import search
+from cognition.curiosity import extract_query
 from memory.reflection_log import append_reflection
+from memory.findings_log import append_finding
 from backend.session import session
 from utils.logger import info, warning, log
 
@@ -23,6 +30,11 @@ class Heartbeat:
         self._last_beat_ts: float = 0.0
         self._reflecting = False
 
+        # Search tracking
+        self._last_search_ts: float = 0.0
+        self._searches_today: int = 0
+        self._search_day: str = datetime.now().date().isoformat()
+
     @property
     def last_beat_ts(self) -> float:
         return self._last_beat_ts
@@ -30,6 +42,14 @@ class Heartbeat:
     @property
     def last_reflection_ts(self) -> float:
         return self._last_reflection_ts
+
+    @property
+    def last_search_ts(self) -> float:
+        return self._last_search_ts
+
+    @property
+    def searches_today(self) -> int:
+        return self._searches_today
 
     @property
     def reflecting(self) -> bool:
@@ -49,6 +69,13 @@ class Heartbeat:
         if self._task:
             self._task.cancel()
             info("Heartbeat stopped")
+
+    def _check_day_rollover(self):
+        """Reset daily search counter if date changed."""
+        today = datetime.now().date().isoformat()
+        if today != self._search_day:
+            self._search_day = today
+            self._searches_today = 0
 
     async def _run_loop(self):
         """Main heartbeat loop — runs every HEARTBEAT_INTERVAL_SECONDS."""
@@ -87,7 +114,44 @@ class Heartbeat:
                     self._last_reflection_ts = time.time()
                     preview = text[:80]
                     log("heartbeat", "reflection", preview=preview, chars=len(text), idle_seconds=round(idle, 1))
+
+                    # After logging reflection, maybe trigger a search
+                    await self._maybe_search(text)
             except Exception as e:
                 warning(f"Reflection failed: {e}")
             finally:
                 self._reflecting = False
+
+    async def _maybe_search(self, reflection_text: str):
+        """Check conditions and run web search if appropriate."""
+        if not WEB_SEARCH_ENABLED:
+            return
+
+        self._check_day_rollover()
+
+        # Daily cap
+        if self._searches_today >= AUTONOMOUS_SEARCH_MAX_PER_DAY:
+            return
+
+        # Cooldown gate
+        now = time.time()
+        if (now - self._last_search_ts) < AUTONOMOUS_SEARCH_COOLDOWN_SECONDS:
+            return
+
+        # Extract query from reflection
+        query = await extract_query(reflection_text, self._client)
+        if not query:
+            return
+
+        # Search (never raises, returns [] on failure)
+        try:
+            results = search(query)
+        except Exception:
+            results = []
+
+        # Log finding (even if empty results)
+        append_finding(query, results)
+        self._last_search_ts = time.time()
+        self._searches_today += 1
+
+        log("heartbeat", "search", query=query, n=len(results))

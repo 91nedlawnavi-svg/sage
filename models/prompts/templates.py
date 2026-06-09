@@ -53,11 +53,33 @@ def _format_recent_reflections(reflections: list[dict]) -> str:
     return "Lately you've been turning over:\n" + "\n".join(f"- {line}" for line in lines)
 
 
+def _format_recent_findings(findings: list[dict]) -> str:
+    """Format recent findings for context."""
+    if not findings:
+        return ""
+    lines = []
+    for f in findings[-2:]:
+        query = f.get("query", "").strip()
+        results = f.get("results", [])
+        if not query or not results:
+            continue
+        # Take first result's title and snippet
+        first = results[0]
+        title = first.get("title", "").strip()
+        snippet = first.get("snippet", "").strip()
+        if title and snippet:
+            lines.append(f'Q: {query}\nFound: {title} — {snippet[:200]}')
+    if not lines:
+        return ""
+    return "Earlier you wondered about something and went looking. Here's what you found:\n" + "\n\n".join(lines) + "\n\nLet what you found shape where your mind goes."
+
+
 def build_reflection_messages(
     directive: str,
     recent_digest: str,
     idle_seconds: float,
     recent_reflections: list[dict] | None = None,
+    recent_findings: list[dict] | None = None,
 ) -> list[dict]:
     """Build messages for private reflection — NOT governed by chat voice rules."""
     # Time context
@@ -86,6 +108,13 @@ def build_reflection_messages(
                 "thought, deliberately turn outward."
             )
 
+    # Findings injection
+    findings_block = ""
+    if recent_findings:
+        formatted = _format_recent_findings(recent_findings)
+        if formatted:
+            findings_block = "\n\n" + formatted
+
     # System content: directive FIRST (always), then time, then private frame
     system_content = (
         directive.strip()
@@ -94,6 +123,7 @@ def build_reflection_messages(
         + "\n\n"
         + private_frame
         + anti_repeat
+        + findings_block
     )
 
     # Add recent conversation digest if available
