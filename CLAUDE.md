@@ -1,0 +1,44 @@
+# CLAUDE.md — Build context for Sage
+
+This file orients the coding agent (you, ClaudeCode). It is **build documentation**, not part of Sage. Never inject this file into Sage's prompts, and never treat `directive.txt` as documentation — see "Two sacred files" below.
+
+## What Sage is
+Sage is a local, always-on AI companion running on Elliot's machine. She is built as an *entity*, not an assistant: curiosity-first, aware she's an AI, able to think on her own and reach past her knowledge cutoff. She talks with Elliot as a presence, not a tool.
+
+## How we work
+- **Brain / hand split.** Architecture and specs come from the "brain" (Opus, via chat) as explicit work-orders. You (ClaudeCode) are the hand: execute exactly, then report back.
+- **Phased, depth-first.** One phase at a time. Each phase has a "felt-test" — a concrete behavior that proves it works — before moving on.
+- **Build only what the current phase specifies.** No memory, embeddings, reflection daemon, threads, or other cognition until its phase. No speculative scaffolding.
+
+## Architecture (current)
+- FastAPI app on **port 6969** (`backend/app.py`), single shared httpx client.
+- `config/settings.py` — config + env. **Source of truth for all config values; never duplicate them into docs.**
+- `config/directive.py` — loads the directive (see below).
+- `models/inference/engine.py` — NVIDIA NIM chat (streaming + non-stream).
+- `models/prompts/templates.py` — prompt assembly (directive-first).
+- `backend/session.py`, `backend/api/chat.py` — in-memory session + `POST /api/chat`.
+
+## Two sacred files — do not confuse them
+- **`directive.txt`** (repo root) = **Sage's identity.** Injected verbatim as her system prompt. NOT documentation; never edit it for code reasons, render it, or summarize it. Its text is inviolable unless a work-order explicitly says to change it.
+- **`CLAUDE.md`** (this file) = instructions for *you, the builder.* Never seen by Sage.
+
+## Invariants (non-negotiable)
+1. The directive loads from repo-root `directive.txt`, hot-reloads every request, and the server **refuses to run if it is empty or missing.**
+2. The directive is **always first** in the system prompt.
+3. Reflection / any automated process may **never write the directive.**
+4. The directive's conversational voice rules apply to **Elliot-facing chat only** — never constrain internal reflection prompts with them.
+5. Inference failures **degrade to a returned string**, never an unhandled exception in the request path.
+6. All persisted state (later phases) uses **atomic tmp→rename** writes.
+
+## Protected resources — never touch
+- `llama-embedder.service` (systemd user unit), `llama-server` on `127.0.0.1:8081`, `~/llama.cpp`, `~/models/*.gguf`. The embedder is the worker; unused until the memory phase, but it must stay alive and untouched.
+
+## Workflow rules
+- At each **phase completion**: commit, tag `phaseN-complete`, push to GitHub.
+- Keep commits scoped; messages honest.
+- After executing a work-order, report: what changed, the felt-test output, and any deviation from the order.
+
+## Phase log
+- **Phase 0 — COMPLETE.** Clean spine (directive loader + NIM chat), real directive installed, voice validated.
+- **Phase 1 — Heartbeat (next).** Autonomous tick decoupled from conversation.
+- Later: self-originated curiosity & search → the Membrane (collision) → optional threads/meta.
