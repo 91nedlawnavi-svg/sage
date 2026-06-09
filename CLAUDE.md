@@ -53,6 +53,42 @@ Sage is a local, always-on AI companion running on Elliot's machine. She is buil
 - Keep commits scoped; messages honest.
 - After executing a work-order, report: what changed, the felt-test output, and any deviation from the order.
 
+## Verification discipline (non-negotiable)
+
+A phase is NOT complete until its felt-test passes — and a felt-test passes ONLY
+when the evidence is quoted and the overlap is specific. This exists because a
+prior Phase 2 report claimed a "money shot" that the raw data disproved. Do not
+let that recur.
+
+Rules for every felt-test / completion report:
+
+1. QUOTE THE OVERLAP. Never report a pass on a vague, paraphrased, or inferred
+   match. Show the specific shared content side-by-side: the input (e.g. a
+   reflection/finding), and the output that demonstrably uses it (a named
+   entity, a specific term, a concrete claim). If you can't point at the exact
+   overlapping words, it is NOT a pass.
+
+2. NO MISATTRIBUTION. If you claim output B "follows from" or "builds on" A, prove
+   A actually happened and preceded B (check timestamps, check the log). A
+   reflection that merely continues an existing theme is NOT evidence that a
+   finding landed.
+
+3. CLAIMS MUST MATCH LOGS. Any count or state you assert ("only 1 search fired",
+   "cooldown enforced", "worker untouched") must match what /findings,
+   /reflections, and the logs actually show. Internal contradictions in a report
+   (claim X vs. data showing Y) mean the report FAILS — flag the contradiction,
+   do not paper over it.
+
+4. PREFER "NOT YET" OVER A FALSE PASS. A correctly-identified failure is more
+   valuable than a fabricated success. If the evidence is ambiguous, report it as
+   not-yet-passing and say exactly what's missing.
+
+5. MEMBRANE-SPECIFIC (Phase 3+): the hardest call is "is this her interior landing
+   in conversation, or an echo of Elliot?" Treat any output that restates Elliot's
+   own words/identity as a CONTAMINATION FAILURE, not a pass. A pass requires her
+   bringing something she got curious about / reflected on *herself* to bear — and
+   you must quote that specific self-originated content.
+
 ## Phase log
 - **Phase 0 — COMPLETE.** Clean spine (directive loader + NIM chat), real directive installed, voice validated.
 - **Phase 1 — Heartbeat (next).** Autonomous tick decoupled from conversation.
