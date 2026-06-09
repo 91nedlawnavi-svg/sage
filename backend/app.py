@@ -8,6 +8,7 @@ from config.directive import get_directive
 from utils.logger import info, error
 from memory.reflection_log import read_recent
 from memory.findings_log import read_recent as read_recent_findings
+from memory.conversation_log import load_all
 from backend.session import session
 
 # Global HTTP client
@@ -19,13 +20,22 @@ heartbeat: Heartbeat | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global http_client, heartbeat
-    # Startup: verify directive exists and is non-empty
+    # Startup: verify directive exists and non-empty
     try:
         get_directive()
         info("Directive loaded successfully")
     except RuntimeError as e:
         error(f"Directive validation failed: {e}")
         raise
+
+    # Hydrate conversation history from disk (Phase 4 Layer 0)
+    try:
+        history = load_all()
+        for turn in history:
+            session.append(turn["role"], turn["content"])
+        info(f"Conversation history loaded: {len(history)} turns")
+    except Exception as e:
+        error(f"Failed to load conversation history: {e}")
 
     # Create shared HTTP client
     http_client = httpx.AsyncClient()

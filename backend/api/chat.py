@@ -5,6 +5,7 @@ from config.directive import get_directive
 from models.inference.engine import chat_stream
 from models.prompts.templates import build_chat_messages
 from backend.session import session
+from memory.conversation_log import append_message, rotate_log
 
 router = APIRouter()
 
@@ -28,13 +29,17 @@ async def chat_endpoint(request: ChatRequest):
 
     # Stream and accumulate
     full_reply = ""
-    # Note: we'll inject the client via app.state in app.py
     from backend.app import http_client
     async for token in chat_stream(messages, http_client):
         full_reply += token
 
     # Mark user activity for heartbeat
     session.touch()
+
+    # Persist to conversation log BEFORE appending to session
+    # (so if session append fails, log is already safe)
+    append_message("user", request.message)
+    append_message("assistant", full_reply)
 
     # Append turns to session
     session.append("user", request.message)
