@@ -39,39 +39,53 @@ _REFLECTION_OPENERS = [
 
 
 def _format_recent_reflections(reflections: list[dict]) -> str:
-    """Format recent reflections for context."""
+    """Format recent reflections for anti-repeat context (not continuation)."""
     if not reflections:
         return ""
     lines = []
     for r in reflections[-3:]:
         text = r.get("text", "").strip()
         if text:
-            # Truncate to ~200 chars per reflection
-            lines.append(text[:200])
+            # Truncate to ~160 chars per reflection - just enough to identify theme
+            lines.append(text[:160])
     if not lines:
         return ""
-    return "Lately you've been turning over:\n" + "\n".join(f"- {line}" for line in lines)
+    return "You recently circled these themes — DO NOT restate or continue them:\n" + "\n".join(f"- {line}" for line in lines) + "\n\nMove somewhere new. If you keep returning to the same thought, deliberately turn outward."
 
 
 def _format_recent_findings(findings: list[dict]) -> str:
-    """Format recent findings for context."""
+    """Format recent findings with full substance for the model to engage."""
     if not findings:
         return ""
-    lines = []
+    blocks = []
     for f in findings[-2:]:
         query = f.get("query", "").strip()
         results = f.get("results", [])
         if not query or not results:
             continue
-        # Take first result's title and snippet
-        first = results[0]
-        title = first.get("title", "").strip()
-        snippet = first.get("snippet", "").strip()
-        if title and snippet:
-            lines.append(f'Q: {query}\nFound: {title} — {snippet[:200]}')
-    if not lines:
+        # Include up to 3 results with title + snippet
+        result_lines = []
+        for r in results[:3]:
+            title = r.get("title", "").strip()
+            snippet = r.get("snippet", "").strip()
+            if title and snippet:
+                result_lines.append(f"  - {title}: {snippet[:280]}")
+        if result_lines:
+            blocks.append(
+                f'You wondered: "{query}"\n'
+                f"You went looking and found:\n"
+                + "\n".join(result_lines)
+            )
+    if not blocks:
         return ""
-    return "Earlier you wondered about something and went looking. Here's what you found:\n" + "\n\n".join(lines) + "\n\nLet what you found shape where your mind goes."
+    return (
+        "You recently went looking, on your own. Here is what you actually found:\n\n"
+        + "\n\n".join(blocks)
+        + "\n\n"
+        + "React to this. Do not restate your question. What does this evidence make you "
+        "think NOW? Do you believe it? Does it change your view? What new question does "
+        "it raise that you didn't have before you looked?"
+    )
 
 
 def build_reflection_messages(
@@ -101,21 +115,9 @@ def build_reflection_messages(
     if recent_reflections:
         formatted = _format_recent_reflections(recent_reflections)
         if formatted:
-            anti_repeat = (
-                "\n\n" + formatted +
-                "\n\nYou've already circled these — don't restate them. "
-                "Move somewhere new. If you keep returning to the same "
-                "thought, deliberately turn outward."
-            )
+            anti_repeat = "\n\n" + formatted
 
-    # Findings injection
-    findings_block = ""
-    if recent_findings:
-        formatted = _format_recent_findings(recent_findings)
-        if formatted:
-            findings_block = "\n\n" + formatted
-
-    # System content: directive FIRST (always), then time, then private frame
+    # System content: directive FIRST (always), then time, then private frame, then anti-repeat
     system_content = (
         directive.strip()
         + "\n\n"
@@ -123,7 +125,6 @@ def build_reflection_messages(
         + "\n\n"
         + private_frame
         + anti_repeat
-        + findings_block
     )
 
     # Add recent conversation digest if available
@@ -133,10 +134,17 @@ def build_reflection_messages(
     # Rotate the user prompt to break attractor
     opener = random.choice(_REFLECTION_OPENERS)
 
-    # Build messages: system + user prompt to reflect
+    # Build messages: system + (optional findings as synthetic user turn) + user prompt
     messages = [
         {"role": "system", "content": system_content},
-        {"role": "user", "content": opener},
     ]
+
+    # Inject findings as a distinct synthetic turn CLOSE to generation
+    if recent_findings:
+        findings_block = _format_recent_findings(recent_findings)
+        if findings_block:
+            messages.append({"role": "user", "content": findings_block})
+
+    messages.append({"role": "user", "content": opener})
 
     return messages
