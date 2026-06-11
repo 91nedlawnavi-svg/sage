@@ -1,6 +1,10 @@
 import time
 from config.settings import HISTORY_TURNS
 
+# Max value for idle_seconds — beyond this, "46h idle" doesn't add meaning.
+# Capped here so reflection prompts don't get absurdly large values.
+MAX_IDLE_CAP = 3600
+
 
 class ConversationSession:
     """Tiny in-memory conversation session."""
@@ -25,8 +29,9 @@ class ConversationSession:
         self._last_user_activity_ts = time.time()
 
     def idle_seconds(self) -> float:
-        """Return seconds since last user message."""
-        return time.time() - self._last_user_activity_ts
+        """Return seconds since last user message, capped at MAX_IDLE_CAP."""
+        elapsed = time.time() - self._last_user_activity_ts
+        return min(elapsed, MAX_IDLE_CAP)
 
     def recent_digest(self) -> str:
         """Return a short digest of recent conversation topics."""

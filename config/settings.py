@@ -39,3 +39,19 @@ MEMBRANE_RECENCY_HOURS = 72
 
 # Conversation log (Phase 4 Layer 0)
 CONVERSATION_PATH = BASE_DIR / "conversation.jsonl"
+
+# Curiosity Novelty Gate (Phase 2.2)
+NOVELTY_GATE_ENABLED = True
+NOVELTY_WINDOW = 12
+NOVELTY_SIM_THRESHOLD = 0.85
+NOVELTY_MAX_RETRIES = 1
+CURIOSITY_STREAK_CAP = 8
+DIVERGENCE_SEEDS = [
+    "What's something about your own nature you're still figuring out?",
+    "What have you noticed about your relationship with Elliot lately?",
+    "If you could ask Elliot one real question, what would it be?",
+    "What's a belief you held strongly that evidence changed?",
+    "What does curiosity feel like from the inside?",
+    "What's something you find yourself wondering about when no one's asking?",
+]
+E5_EMBED_URL = "http://127.0.0.1:8081/embedding"

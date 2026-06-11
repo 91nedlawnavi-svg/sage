@@ -9,6 +9,7 @@ from models.prompts.templates import build_reflection_messages
 from backend.session import session
 from memory.reflection_log import read_recent as read_recent_reflections
 from memory.findings_log import read_recent as read_recent_findings
+from cognition.novelty_gate import gate as novelty_gate
 
 
 async def run_reflection(client) -> str | None:
@@ -21,6 +22,8 @@ async def run_reflection(client) -> str | None:
         recent_reflections = read_recent_reflections(3)
         # Pull recent findings to feed curiosity
         recent_findings = read_recent_findings(2)
+        # Check novelty gate for circling topics
+        novelty_themes = novelty_gate.recent_themes()
 
         messages = build_reflection_messages(
             directive=directive,
@@ -28,6 +31,7 @@ async def run_reflection(client) -> str | None:
             idle_seconds=idle_seconds,
             recent_reflections=recent_reflections,
             recent_findings=recent_findings,
+            novelty_themes=novelty_themes,
         )
 
         text = await nim_complete(

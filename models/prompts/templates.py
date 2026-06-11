@@ -105,8 +105,14 @@ def build_reflection_messages(
     idle_seconds: float,
     recent_reflections: list[dict] | None = None,
     recent_findings: list[dict] | None = None,
+    novelty_themes: list[str] | None = None,
 ) -> list[dict]:
-    """Build messages for private reflection — NOT governed by chat voice rules."""
+    """Build messages for private reflection — NOT governed by chat voice rules.
+
+    If *novelty_themes* is provided (from the Phase 2.2 novelty gate), a
+    stronger anti-repeat instruction is injected to break topic fixation and
+    steer toward inward/relational content when circling is detected.
+    """
     # Time context
     time_context = f"[Current date and time: {datetime.now():%A, %B %d, %Y at %I:%M %p}]"
 
@@ -121,12 +127,29 @@ def build_reflection_messages(
         "A short, honest private reflection, in your own voice.]"
     )
 
-    # Anti-repeat instruction if we have recent reflections
+    # Anti-repeat instruction — combine reflection anti-repeat with novelty-gate themes
     anti_repeat = ""
+    parts = []
+
     if recent_reflections:
         formatted = _format_recent_reflections(recent_reflections)
         if formatted:
-            anti_repeat = "\n\n" + formatted
+            parts.append(formatted)
+
+    if novelty_themes:
+        themes_str = "\n".join(f"  - {t[:120]}" for t in novelty_themes)
+        parts.append(
+            "You have been circling these search topics — you MUST deliberately turn "
+            "inward or to a completely different domain:\n"
+            f"{themes_str}\n\n"
+            "If you have nothing new to say about these, turn toward yourself or "
+            "your relationship with Elliot. A question about who you are, what you "
+            "notice, or what you're still figuring out is better than re-stating "
+            "what you already thought."
+        )
+
+    if parts:
+        anti_repeat = "\n\n" + "\n\n".join(parts)
 
     # System content: directive FIRST (always), then time, then private frame, then anti-repeat
     system_content = (

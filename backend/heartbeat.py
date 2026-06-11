@@ -8,10 +8,13 @@ from config.settings import (
     WEB_SEARCH_ENABLED,
     AUTONOMOUS_SEARCH_COOLDOWN_SECONDS,
     AUTONOMOUS_SEARCH_MAX_PER_DAY,
+    NOVELTY_GATE_ENABLED,
+    NOVELTY_MAX_RETRIES,
 )
 from cognition.reflection import run_reflection
 from cognition.web_search import search
 from cognition.curiosity import extract_query
+from cognition.novelty_gate import gate as novelty_gate
 from memory.reflection_log import append_reflection
 from memory.findings_log import append_finding
 from backend.session import session
@@ -142,6 +145,36 @@ class Heartbeat:
         query = await extract_query(reflection_text, self._client)
         if not query:
             return
+
+        # ── Novelty gate (Phase 2.2) ──────────────────────────────
+        result = await novelty_gate.evaluate(query, self._client)
+
+        if result["action"] == "reject" and NOVELTY_MAX_RETRIES > 0:
+            # Try once more with anti-repeat context
+            themes = novelty_gate.recent_themes()
+            query = await extract_query(reflection_text, self._client,
+                                        anti_repeat=themes)
+            if query:
+                result = await novelty_gate.evaluate(query, self._client)
+
+        if result["action"] == "diverge":
+            # Streak exhausted: force a divergence seed as the query
+            divergence_text = result["final_text"]
+            # Embed and push the divergence seed
+            embedding = result.get("embedding")
+            if embedding is None:
+                embedding = await novelty_gate.embed(divergence_text, self._client)
+            # Push to ring buffer so it counts as a topic
+            novelty_gate.push(divergence_text, embedding)
+            log("novelty_gate", "divergence-issued", query=divergence_text[:80])
+            return  # Don't actually search — the divergence is shown, not searched
+
+        if result["action"] == "reject":
+            # Still circling after retry — skip this beat
+            log("novelty_gate", "skip-search", query=query[:80])
+            return
+
+        # ── action == "accept" — proceed to search ────────────────
 
         # Search (never raises, returns [] on failure)
         try:
