@@ -106,12 +106,17 @@ def build_reflection_messages(
     recent_reflections: list[dict] | None = None,
     recent_findings: list[dict] | None = None,
     novelty_themes: list[str] | None = None,
+    forced_seed: str | None = None,
 ) -> list[dict]:
     """Build messages for private reflection — NOT governed by chat voice rules.
 
     If *novelty_themes* is provided (from the Phase 2.2 novelty gate), a
     stronger anti-repeat instruction is injected to break topic fixation and
     steer toward inward/relational content when circling is detected.
+
+    If *forced_seed* is provided (Phase 2.2b), it replaces the random opener
+    — used when the stall detector determines Sage has been in a topic basin
+    too long, forcing an inward/relational reflection instead.
     """
     # Time context
     time_context = f"[Current date and time: {datetime.now():%A, %B %d, %Y at %I:%M %p}]"
@@ -165,8 +170,11 @@ def build_reflection_messages(
     if recent_digest:
         system_content += f"\n\nLately the conversation touched on: {recent_digest}"
 
-    # Rotate the user prompt to break attractor
-    opener = random.choice(_REFLECTION_OPENERS)
+    # Phase 2.2b: forced inward seed overrides the random opener when stalled
+    if forced_seed:
+        opener = forced_seed
+    else:
+        opener = random.choice(_REFLECTION_OPENERS)
 
     # Build messages: system + (optional findings as synthetic user turn) + user prompt
     messages = [

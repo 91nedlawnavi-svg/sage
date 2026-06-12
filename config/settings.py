@@ -40,12 +40,18 @@ MEMBRANE_RECENCY_HOURS = 72
 # Conversation log (Phase 4 Layer 0)
 CONVERSATION_PATH = BASE_DIR / "conversation.jsonl"
 
-# Curiosity Novelty Gate (Phase 2.2)
+# Curiosity Novelty Gate (Phase 2.2 / 2.2b)
 NOVELTY_GATE_ENABLED = True
 NOVELTY_WINDOW = 12
-NOVELTY_SIM_THRESHOLD = 0.85
+NOVELTY_SIM_THRESHOLD = 0.82  # lowered from 0.85 — drift steps landed 0.80–0.88
 NOVELTY_MAX_RETRIES = 1
 CURIOSITY_STREAK_CAP = 8
+
+# Basin-drift detection (Phase 2.2b)
+BASIN_WINDOW = 16           # rolling window for accepted-topic centroid
+BASIN_SIM_THRESHOLD = 0.80  # cosine-sim to centroid still counts as "in basin"
+BASIN_STREAK_CAP = 6        # consecutive in-basin accepts → force divergence
+STALL_TICKS = 6             # heartbeat ticks without novel topic → force inward reflection
 DIVERGENCE_SEEDS = [
     "What's something about your own nature you're still figuring out?",
     "What have you noticed about your relationship with Elliot lately?",

@@ -150,12 +150,13 @@ class Heartbeat:
         result = await novelty_gate.evaluate(query, self._client)
 
         if result["action"] == "reject" and NOVELTY_MAX_RETRIES > 0:
-            # Try once more with anti-repeat context
-            themes = novelty_gate.recent_themes()
+            # Phase 2.2b: steer toward a POSITIVE divergence seed, not "avoid these"
+            seed = result.get("divergence_seed")
             query = await extract_query(reflection_text, self._client,
-                                        anti_repeat=themes)
+                                        steer_toward=seed)
             if query:
-                result = await novelty_gate.evaluate(query, self._client)
+                result = await novelty_gate.evaluate(query, self._client,
+                                                     retry=True)
 
         if result["action"] == "diverge":
             # Streak exhausted: force a divergence seed as the query

@@ -10,6 +10,7 @@ from backend.session import session
 from memory.reflection_log import read_recent as read_recent_reflections
 from memory.findings_log import read_recent as read_recent_findings
 from cognition.novelty_gate import gate as novelty_gate
+from utils.logger import log
 
 
 async def run_reflection(client) -> str | None:
@@ -25,6 +26,15 @@ async def run_reflection(client) -> str | None:
         # Check novelty gate for circling topics
         novelty_themes = novelty_gate.recent_themes()
 
+        # Phase 2.2b: stall detection -> force inward reflection
+        forced_seed = None
+        if novelty_gate.stalled:
+            forced_seed = novelty_gate.consume_divergence_seed()
+            ticks = novelty_gate.ticks_since_novel
+            log("novelty_gate", "stall-inward",
+                seed=forced_seed[:60],
+                ticks_since_novel=ticks)
+
         messages = build_reflection_messages(
             directive=directive,
             recent_digest=recent_digest,
@@ -32,6 +42,7 @@ async def run_reflection(client) -> str | None:
             recent_reflections=recent_reflections,
             recent_findings=recent_findings,
             novelty_themes=novelty_themes,
+            forced_seed=forced_seed,
         )
 
         text = await nim_complete(
