@@ -61,3 +61,35 @@ DIVERGENCE_SEEDS = [
     "What's something you find yourself wondering about when no one's asking?",
 ]
 E5_EMBED_URL = "http://127.0.0.1:8081/embedding"
+
+# ── Time-lapse mode (Phase 2.2b debug harness) ─────────────────────
+# Compress wall-clock for felt-test without changing the measured
+# dynamics (basin caps/thresholds are left at production values).
+#
+#   TIMELAPSE=1 python launch.py           -> 30s tick, relaxed guards
+#   SAGE_HEARTBEAT_INTERVAL=15 python ...  -> custom tick (any mode)
+#
+# Per-knob env overrides (highest precedence):
+#   SAGE_HEARTBEAT_INTERVAL   int   heartbeat tick in seconds
+#   SAGE_REFLECTION_COOLDOWN  int   min gap between reflections
+#   SAGE_SEARCH_MAX_PER_DAY   int   daily search budget
+#   SAGE_SEARCH_COOLDOWN      int   min gap between searches
+
+TIMELAPSE = os.environ.get("TIMELAPSE", "").lower() in ("1", "true", "yes")
+
+if TIMELAPSE:
+    HEARTBEAT_INTERVAL_SECONDS = 30
+    REFLECTION_COOLDOWN_SECONDS = 30
+    AUTONOMOUS_SEARCH_COOLDOWN_SECONDS = 180
+    AUTONOMOUS_SEARCH_MAX_PER_DAY = 100
+
+# Per-knob env overrides (highest precedence -- final word)
+_tl_env = os.environ.get
+if val := _tl_env("SAGE_HEARTBEAT_INTERVAL"):
+    HEARTBEAT_INTERVAL_SECONDS = int(val)
+if val := _tl_env("SAGE_REFLECTION_COOLDOWN"):
+    REFLECTION_COOLDOWN_SECONDS = int(val)
+if val := _tl_env("SAGE_SEARCH_MAX_PER_DAY"):
+    AUTONOMOUS_SEARCH_MAX_PER_DAY = int(val)
+if val := _tl_env("SAGE_SEARCH_COOLDOWN"):
+    AUTONOMOUS_SEARCH_COOLDOWN_SECONDS = int(val)

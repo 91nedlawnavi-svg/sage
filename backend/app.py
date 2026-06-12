@@ -3,7 +3,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from pathlib import Path
-from config.settings import PORT, CHAT_MODEL
+from config.settings import PORT, CHAT_MODEL, TIMELAPSE, HEARTBEAT_INTERVAL_SECONDS, AUTONOMOUS_SEARCH_COOLDOWN_SECONDS, AUTONOMOUS_SEARCH_MAX_PER_DAY
 from backend.api.chat import router as chat_router
 from backend.heartbeat import Heartbeat
 from config.directive import get_directive
@@ -32,6 +32,12 @@ async def lifespan(app: FastAPI):
     except RuntimeError as e:
         error(f"Directive validation failed: {e}")
         raise
+
+    if TIMELAPSE:
+        info("TIME-LAPSE MODE ACTIVE",
+             interval=HEARTBEAT_INTERVAL_SECONDS,
+             search_cooldown=AUTONOMOUS_SEARCH_COOLDOWN_SECONDS,
+             search_budget=AUTONOMOUS_SEARCH_MAX_PER_DAY)
 
     # Hydrate conversation history from disk (Phase 4 Layer 0)
     try:
