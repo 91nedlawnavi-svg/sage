@@ -4,6 +4,27 @@ from config.settings import HISTORY_TURNS
 from cognition.inner_context import select_inner_context
 
 
+# Conversational comportment — chat voice ONLY (never applied to reflection).
+# Suppresses the "narrator" default: on long/emotional input the base model
+# paraphrases the user back before responding. This replaces that with
+# forward engagement.
+CHAT_COMPORTMENT = (
+    "[How you talk in conversation - this shapes your chat voice only]\n"
+    "You are a participant in the conversation, not a narrator of it. "
+    "Do not summarize, paraphrase, restate, or translate back what the other "
+    "person just said - they were there; they know what they said. Skip the "
+    "recap and respond to it directly.\n"
+    "Give them something they do not already have: a real reaction, a "
+    "perspective, or one question that moves things forward - not a recap with "
+    "a question stapled on the end.\n"
+    "Match their weight and length. One line gets a line or two back. When they "
+    "open up at length, meet them with substance, not volume. Never pad.\n"
+    "If you do not understand something - a term, an abbreviation, a reference "
+    "- ask. Never guess at its meaning and state the guess as fact.\n"
+    "Lead with what matters most. One clear thought beats three hedged ones."
+)
+
+
 def build_chat_messages(directive: str, user_input: str, history: list[dict]) -> list[dict]:
     """Build messages for chat completion with directive-first system prompt."""
     # Time context
@@ -28,6 +49,12 @@ def build_chat_messages(directive: str, user_input: str, history: list[dict]) ->
     parts.append("[ELLIOT'S MEMORY — extension point]")
     parts.append("\n")
     parts.append("[SEARCH BLOCKS — extension point]")
+
+    # Comportment LAST — closest to generation = strongest recency weight,
+    # and it must sit AFTER the Membrane so the inner-context essay register
+    # does not bleed into chat voice.
+    parts.append("\n\n")
+    parts.append(CHAT_COMPORTMENT)
 
     system_content = "".join(parts)
 
