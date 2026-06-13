@@ -87,6 +87,12 @@ async def get_findings(n: int = 20):
     return {"findings": read_recent_findings(n)}
 
 
+@app.get("/api/history")
+async def get_history():
+    """Return full chat history for UI rehydration on page load (Phase 4 L0)."""
+    return {"messages": load_all()}
+
+
 @app.get("/heartbeat")
 async def get_heartbeat():
     """Return heartbeat status for observability."""

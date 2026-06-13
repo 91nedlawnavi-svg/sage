@@ -251,7 +251,7 @@
         </svg>
       </button>
     </div>
-    <div id="hint">Enter to send, Shift+Enter for a new line</div>
+    <div id="hint">Enter for a new line · send with the button</div>
   </div>
 
 </div>
@@ -267,9 +267,9 @@ const CONFIG = {
   CHAT_ENDPOINT: "/api/chat",              // POST {message} -> {jid}
   POLL_ENDPOINT: "/api/poll",              // GET  /api/poll/{jid}?frm={offset}
   HISTORY_ENDPOINT: "/api/history",        // GET  -> {messages:[{role,content}]}
-  REFLECTIONS_ENDPOINT: "/api/memories/sage?n=8",
-  FINDINGS_ENDPOINT: "/api/findings?n=8",  // best-guess; degrades quietly if absent
-  STATUS_ENDPOINT: "/api/status",
+  REFLECTIONS_ENDPOINT: "/reflections?n=8",
+  FINDINGS_ENDPOINT: "/findings?n=8",
+  STATUS_ENDPOINT: "/health",
   POLL_INTERVAL_MS: 500,
   INNER_REFRESH_MS: 15000,
 };
@@ -485,14 +485,27 @@ async function loadTab(tab) {
     c.querySelector(".drawer-note").textContent = note;
     for (const it of list) {
       const ts = pick(it, ["timestamp", "created_at", "created", "time", "ts", "date"]);
-      const body = pick(it, ["text", "content", "body", "reflection", "finding", "summary", "thought", "memory"]) || (typeof it === "string" ? it : JSON.stringify(it));
-      const src = pick(it, ["source", "url", "link", "provenance", "href"]);
+      const body = pick(it, ["text", "content", "body", "reflection", "finding", "query", "summary", "thought", "memory"]) || (typeof it === "string" ? it : JSON.stringify(it));
+      const results = (it.results && Array.isArray(it.results) && it.results.length) ? it.results : null;
+      const src = results ? null : pick(it, ["source", "url", "link", "provenance", "href"]);
+      const hasSrc = results || src;
       const el = document.createElement("div");
       el.className = "entry " + (isRef ? "reflection" : "finding");
-      el.innerHTML = (ts ? '<div class="ts"></div>' : "") + '<div class="body"></div>' + (src ? '<div class="src"></div>' : "");
+      el.innerHTML = (ts ? '<div class="ts"></div>' : "") + '<div class="body"></div>' + (hasSrc ? '<div class="src"></div>' : "");
       if (ts) el.querySelector(".ts").textContent = fmtTime(ts);
       el.querySelector(".body").textContent = body;
-      if (src) el.querySelector(".src").innerHTML = '<a href="' + escapeHtml(src) + '" target="_blank" rel="noopener">' + escapeHtml(src) + "</a>";
+      if (hasSrc) {
+        const srcEl = el.querySelector(".src");
+        if (results) {
+          srcEl.innerHTML = results.map((r) => {
+            const url = r.url || r.link || r.href || "";
+            const label = r.title || r.name || url;
+            return url ? '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(label) + "</a>" : escapeHtml(label);
+          }).join(" · ");
+        } else {
+          srcEl.innerHTML = '<a href="' + escapeHtml(src) + '" target="_blank" rel="noopener">' + escapeHtml(src) + "</a>";
+        }
+      }
       c.appendChild(el);
     }
   } catch (e) {
@@ -520,9 +533,6 @@ async function checkStatus() {
 
 /* ---------- input ---------- */
 function autoResize(el) { el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 160) + "px"; }
-$("user-input").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-});
 
 /* ---------- boot ---------- */
 loadHistory();
