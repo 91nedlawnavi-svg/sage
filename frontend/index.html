@@ -1,547 +1,256 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Sage</title>
 <style>
-  :root {
-    --bg:        #0f0f0f;
-    --bg2:       #171717;
-    --bg3:       #1f1f1f;
-    --bg4:       #262626;
-    --border:    #2a2a2a;
-    --border2:   #333333;
-    --text:      #efefef;
-    --muted:     #737373;
-    --soft:      #a3a3a3;
-    --accent-dim:#404040;
-    --radius:    12px;
-    --mono:      ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
-    --sans:      -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  }
+:root{
+  --bg:#121110;--bg2:#191816;--bg3:#211f1d;--border:#272522;--border2:#33302c;
+  --text:#ece8e1;--soft:#a7a199;--muted:#736d64;--faint:#4a443c;
+  --accent:#cfcbc4;--accent-dim:#5c574f;--err:#c06a5a;
+  --radius:14px;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --mono:ui-monospace,'SF Mono','Cascadia Code','Fira Code',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased;}
+#app{display:flex;flex-direction:column;height:100dvh;max-width:760px;margin:0 auto;position:relative;}
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+#header{display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 20px;flex-shrink:0;border-bottom:1px solid var(--border);}
+#header-left{display:flex;align-items:center;gap:11px;}
+#status-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);position:relative;transition:background .25s;}
+#status-dot::after{content:'';position:absolute;inset:-5px;border-radius:50%;background:var(--accent);animation:pulse 1.9s cubic-bezier(.4,0,.6,1) infinite;}
+#status-dot.cold{background:var(--faint);}
+#status-dot.cold::after{display:none;}
+#status-dot.down{background:var(--err);}
+#status-dot.down::after{background:var(--err);animation-duration:.95s;}
+@keyframes pulse{0%{transform:scale(.5);opacity:.6;}70%,100%{transform:scale(1.8);opacity:0;}}
+#header-title{font-size:14.5px;font-weight:600;letter-spacing:-0.01em;}
+#inner-toggle{display:flex;align-items:center;gap:8px;background:none;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:12.5px;padding:6px 12px;border-radius:999px;cursor:pointer;transition:all .15s;}
+#inner-toggle:hover{border-color:var(--border2);color:var(--soft);}
+#inner-dot{width:5px;height:5px;border-radius:50%;background:var(--faint);transition:background .3s,box-shadow .3s;}
+#inner-toggle.has-new #inner-dot{background:var(--accent);box-shadow:0 0 8px var(--accent-dim);}
 
-  html, body { height: 100%; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    -webkit-font-smoothing: antialiased;
-  }
+#messages{flex:1;overflow-y:auto;padding:28px 20px;display:flex;flex-direction:column;gap:22px;scroll-behavior:smooth;}
+#messages::-webkit-scrollbar{width:5px;}
+#messages::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+.msg{display:flex;flex-direction:column;animation:rise .2s ease;}
+@keyframes rise{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:translateY(0);}}
+.msg.user{align-items:flex-end;}
+.msg.ai{align-items:flex-start;}
+.msg.user .bubble{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);border-bottom-right-radius:4px;padding:10px 15px;max-width:80%;}
+.msg.ai .bubble{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);border-bottom-left-radius:4px;padding:10px 15px;max-width:82%;}
+.bubble{font-size:14.5px;line-height:1.7;word-break:break-word;}
+.bubble.error{color:var(--err);}
+.bubble strong{font-weight:400;color:var(--text);}
+.bubble em{color:var(--soft);}
+.bubble code{font-family:var(--mono);font-size:12.5px;background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:1px 6px;}
+.bubble pre{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:13px 15px;margin:10px 0;overflow-x:auto;}
+.bubble pre code{background:none;border:none;padding:0;color:var(--soft);font-size:12.5px;line-height:1.6;}
+.thinking{display:flex;gap:5px;align-items:center;padding:4px 1px;}
+.thinking span{width:5px;height:5px;border-radius:50%;background:var(--muted);animation:tdot 1.5s ease-in-out infinite;}
+.thinking span:nth-child(2){animation-delay:.2s;}
+.thinking span:nth-child(3){animation-delay:.4s;}
+@keyframes tdot{0%,60%,100%{opacity:.2;transform:translateY(0);}30%{opacity:.85;transform:translateY(-3px);}}
+#empty{margin:auto;display:flex;flex-direction:column;align-items:center;gap:12px;user-select:none;}
+#empty-glyph{font-size:26px;color:var(--faint);}
+#empty-sub{font-size:13px;color:var(--muted);}
 
-  #app {
-    display: flex;
-    flex-direction: column;
-    height: 100dvh;
-    max-width: 820px;
-    margin: 0 auto;
-    position: relative;
-  }
+#input-area{flex-shrink:0;padding:8px 20px 18px;}
+#input-row{display:flex;align-items:flex-end;gap:8px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:9px 9px 9px 16px;transition:border-color .15s,box-shadow .15s;}
+#input-row:focus-within{border-color:var(--border2);box-shadow:0 0 0 3px rgba(255,255,255,.05);}
+#user-input{flex:1;background:none;border:none;outline:none;resize:none;color:var(--text);font-family:inherit;font-size:14.5px;line-height:1.6;max-height:170px;min-height:23px;padding:2px 0;}
+#user-input::placeholder{color:var(--muted);}
+#send-btn{flex-shrink:0;width:34px;height:34px;border-radius:50%;border:none;background:var(--bg3);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+#send-btn:hover:not(:disabled){background:var(--accent);color:var(--bg);}
+#send-btn:active:not(:disabled){transform:scale(.92);}
+#send-btn:disabled{opacity:.4;cursor:default;}
+#send-btn svg{width:17px;height:17px;}
+#hint{text-align:center;font-size:11px;color:var(--faint);margin-top:9px;height:13px;opacity:0;transition:opacity .2s;}
+#input-row:focus-within ~ #hint{opacity:1;}
 
-  /* Header */
-  #header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 16px; height: 56px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg); flex-shrink: 0; z-index: 10;
-  }
-  #header-left { display: flex; align-items: center; gap: 10px; }
-  #status-dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: #3d8b3d; flex-shrink: 0;
-    transition: background 0.3s;
-  }
-  #status-dot.cold { background: var(--accent-dim); }
-  #header-title { font-size: 14px; font-weight: 500; color: var(--text); letter-spacing: -0.01em; }
+#drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);opacity:0;pointer-events:none;transition:opacity .25s;z-index:40;}
+#drawer-overlay.show{opacity:1;pointer-events:auto;}
+#drawer{position:fixed;top:0;right:0;height:100dvh;width:min(380px,92vw);background:var(--bg2);border-left:1px solid var(--border);z-index:50;transform:translateX(100%);transition:transform .26s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;}
+#drawer.open{transform:translateX(0);}
+#drawer-header{display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 18px;flex-shrink:0;border-bottom:1px solid var(--border);}
+#drawer-title{font-size:13.5px;font-weight:600;}
+#drawer-close{background:none;border:none;color:var(--muted);font-size:15px;width:30px;height:30px;border-radius:7px;cursor:pointer;transition:all .15s;}
+#drawer-close:hover{background:var(--bg3);color:var(--text);}
+#drawer-tabs{display:flex;gap:4px;padding:12px 16px 0;flex-shrink:0;}
+.drawer-tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-family:inherit;font-size:12px;font-weight:500;padding:7px 0 9px;cursor:pointer;transition:all .15s;}
+.drawer-tab.active{color:var(--text);border-bottom-color:var(--accent);}
+.drawer-tab:hover:not(.active){color:var(--soft);}
+#drawer-note{padding:12px 18px 0;font-size:11px;color:var(--muted);line-height:1.55;flex-shrink:0;}
+#drawer-content{flex:1;overflow-y:auto;padding:14px 18px 20px;}
+#drawer-content::-webkit-scrollbar{width:5px;}
+#drawer-content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+.entry{padding:13px 0;border-bottom:1px solid var(--border);}
+.entry:last-child{border-bottom:none;}
+.entry .ts{font-size:10.5px;color:var(--accent-dim);letter-spacing:.03em;text-transform:uppercase;}
+.entry .body{margin-top:6px;font-size:13px;line-height:1.65;color:var(--soft);}
+.entry.reflection{padding-left:11px;border-left:2px solid var(--border2);}
+.entry .src{margin-top:8px;font-size:11px;line-height:1.6;}
+.entry .src a{color:var(--muted);text-decoration:none;border-bottom:1px solid var(--border2);}
+.entry .src a:hover{color:var(--accent);}
+.drawer-empty{color:var(--faint);font-size:12.5px;padding:10px 0;}
 
-  #menu-btn {
-    background: none; border: 1px solid var(--border); color: var(--muted);
-    cursor: pointer; width: 34px; height: 34px; border-radius: 8px;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-    transition: border-color 0.15s, background 0.15s, color 0.15s;
-  }
-  #menu-btn:hover { border-color: var(--border2); background: var(--bg3); color: var(--soft); }
-  #menu-btn span { display: block; width: 14px; height: 1.5px; background: currentColor; border-radius: 1px; }
-
-  /* Drawer */
-  #drawer {
-    position: fixed; top: 0; right: 0;
-    width: min(340px, 90vw); height: 100dvh;
-    background: var(--bg2); border-left: 1px solid var(--border);
-    z-index: 100; transform: translateX(100%);
-    transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
-    display: flex; flex-direction: column;
-  }
-  #drawer.open { transform: translateX(0); }
-  #drawer-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-    z-index: 99; opacity: 0; pointer-events: none; transition: opacity 0.22s;
-  }
-  #drawer-overlay.show { opacity: 1; pointer-events: all; }
-  #drawer-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 16px; height: 56px; border-bottom: 1px solid var(--border); flex-shrink: 0;
-  }
-  #drawer-header-title { font-size: 13px; font-weight: 500; color: var(--text); }
-  #drawer-close {
-    background: none; border: none; color: var(--muted); cursor: pointer;
-    width: 28px; height: 28px; border-radius: 6px;
-    display: flex; align-items: center; justify-content: center;
-    transition: background 0.15s, color 0.15s;
-  }
-  #drawer-close:hover { background: var(--bg3); color: var(--text); }
-  #drawer-close svg { width: 14px; height: 14px; }
-
-  #drawer-tabs {
-    display: flex; padding: 8px 12px 0; gap: 2px;
-    border-bottom: 1px solid var(--border); flex-shrink: 0;
-  }
-  .drawer-tab {
-    flex: 1; min-width: 0; background: none; border: none;
-    padding: 6px 6px 8px; font-family: var(--sans); font-size: 11px; font-weight: 500;
-    color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent;
-    transition: color 0.15s, border-color 0.15s; margin-bottom: -1px; white-space: nowrap;
-  }
-  .drawer-tab.active { color: var(--text); border-bottom-color: var(--text); }
-  .drawer-tab:hover:not(.active) { color: var(--soft); }
-
-  #drawer-content {
-    flex: 1; overflow-y: auto; padding: 16px;
-    font-family: var(--mono); font-size: 12px; line-height: 1.7; color: var(--soft);
-  }
-  #drawer-content::-webkit-scrollbar { width: 4px; }
-  #drawer-content::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-  .drawer-note { color: var(--muted); font-size: 11px; margin-bottom: 14px; line-height: 1.6; }
-  .entry { padding: 12px 0; border-bottom: 1px solid var(--border); }
-  .entry:last-child { border-bottom: none; }
-  .entry .ts { font-size: 10.5px; color: var(--accent-dim); letter-spacing: 0.03em; }
-  .entry .body { margin-top: 5px; color: var(--soft); }
-  .entry.reflection .body { font-style: italic; color: var(--soft); }
-  .entry .src { margin-top: 7px; font-size: 10.5px; color: var(--muted); word-break: break-all; }
-  .entry .src a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--border2); }
-  .entry .src a:hover { color: var(--soft); }
-  .drawer-empty { color: var(--accent-dim); font-size: 12px; padding: 8px 0; }
-
-  /* Messages */
-  #messages {
-    flex: 1; overflow-y: auto; padding: 24px 16px;
-    display: flex; flex-direction: column; gap: 4px; scroll-behavior: smooth;
-  }
-  #messages::-webkit-scrollbar { width: 4px; }
-  #messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-  .msg-group { display: flex; flex-direction: column; gap: 2px; animation: fadeUp 0.18s ease; }
-  @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  .msg-label { font-size: 11px; font-weight: 500; padding: 0 4px; margin-bottom: 2px; color: var(--muted); }
-  .msg-label.user { text-align: right; }
-  .msg-label.ai { text-align: left; }
-
-  .bubble {
-    padding: 10px 14px; border-radius: var(--radius); max-width: 82%;
-    word-break: break-word; font-size: 14px; line-height: 1.65; position: relative;
-  }
-  .bubble.user { background: var(--bg3); border: 1px solid var(--border2); margin-left: auto; border-bottom-right-radius: 3px; }
-  .bubble.ai { background: var(--bg); border: 1px solid var(--border); margin-right: auto; border-bottom-left-radius: 3px; }
-  .bubble.error { color: #b04545; }
-  .bubble code { font-family: var(--mono); font-size: 12px; background: var(--bg3); border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; color: var(--soft); }
-  .bubble pre { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; margin: 8px 0; font-family: var(--mono); font-size: 12px; line-height: 1.6; }
-  .bubble pre code { background: none; border: none; padding: 0; color: var(--soft); }
-  .bubble strong { font-weight: 600; color: var(--text); }
-  .bubble em { color: var(--soft); font-style: italic; }
-
-  .thinking-indicator {
-    display: flex; align-items: center; gap: 10px; padding: 12px 14px;
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: var(--radius); border-bottom-left-radius: 3px;
-    width: fit-content; margin-right: auto;
-  }
-  .thinking-dots { display: flex; gap: 4px; align-items: center; }
-  .thinking-dots span { width: 4px; height: 4px; background: var(--muted); border-radius: 50%; animation: thinkDot 1.6s ease-in-out infinite; }
-  .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
-  .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes thinkDot { 0%,60%,100% { opacity: 0.2; transform: translateY(0); } 30% { opacity: 0.9; transform: translateY(-3px); } }
-
-  /* Input */
-  #input-area { padding: 12px 16px 16px; border-top: 1px solid var(--border); background: var(--bg); flex-shrink: 0; }
-  #input-row {
-    display: flex; gap: 8px; align-items: flex-end;
-    background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius);
-    padding: 8px 8px 8px 14px; transition: border-color 0.15s, box-shadow 0.15s;
-  }
-  #input-row:focus-within { box-shadow: 0 0 0 3px rgba(255,255,255,0.04); }
-  #user-input {
-    flex: 1; background: none; border: none; outline: none; color: var(--text);
-    font-family: var(--sans); font-size: 14px; line-height: 1.55; resize: none;
-    max-height: 160px; min-height: 22px; overflow-y: auto; padding: 2px 0;
-  }
-  #user-input::placeholder { color: var(--muted); }
-  #send-btn {
-    background: var(--text); border: none; color: var(--bg);
-    width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-    transition: opacity 0.15s, transform 0.1s;
-  }
-  #send-btn:hover { opacity: 0.88; }
-  #send-btn:active { transform: scale(0.93); }
-  #send-btn:disabled { opacity: 0.25; cursor: not-allowed; }
-  #send-btn svg { width: 15px; height: 15px; }
-  #hint { margin-top: 7px; font-size: 11px; color: var(--accent-dim); text-align: center; }
-
-  /* Empty state */
-  #empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 10px; user-select: none; }
-  #empty-glyph { width: 40px; height: 40px; border: 1.5px solid var(--border2); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 18px; }
-  #empty-title { font-size: 15px; font-weight: 500; color: var(--soft); }
-  #empty-sub { font-size: 12px; color: var(--muted); }
-
-  @media (max-width: 600px) {
-    #header { padding: 0 12px; }
-    #messages { padding: 16px 12px; }
-    #input-area { padding: 10px 12px 14px; }
-    .bubble { max-width: 92%; }
-  }
+@media(max-width:600px){
+  #header{padding:0 14px;}
+  #messages{padding:18px 14px;}
+  #input-area{padding:6px 14px 14px;}
+  .msg.user .bubble{max-width:88%;}
+}
 </style>
 </head>
 <body>
 <div id="app">
-
   <header id="header">
     <div id="header-left">
-      <span id="status-dot" class="cold"></span>
+      <span id="status-dot" class="cold" title="connecting"></span>
       <span id="header-title">Sage</span>
     </div>
-    <button id="menu-btn" aria-label="Menu" onclick="toggleDrawer()">
-      <span></span><span></span><span></span>
+    <button id="inner-toggle" aria-label="Notebook">
+      <span id="inner-dot"></span>
+      <span>Notebook</span>
     </button>
   </header>
 
-  <div id="drawer-overlay" onclick="closeDrawer()"></div>
-
-  <div id="drawer">
-    <div id="drawer-header">
-      <span id="drawer-header-title">Inner life</span>
-      <button id="drawer-close" onclick="closeDrawer()" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
-      </button>
-    </div>
-    <div id="drawer-tabs">
-      <button class="drawer-tab active" data-tab="reflections" onclick="switchTab('reflections')">Reflections</button>
-      <button class="drawer-tab" data-tab="findings" onclick="switchTab('findings')">Findings</button>
-    </div>
-    <div id="drawer-content">Loading...</div>
-  </div>
-
-  <div id="messages">
+  <main id="messages">
     <div id="empty">
       <div id="empty-glyph">&#9671;</div>
-      <div id="empty-title">No messages yet</div>
-      <div id="empty-sub">Start a conversation below</div>
+      <div id="empty-sub">Begin when you're ready.</div>
     </div>
-  </div>
+  </main>
 
   <div id="input-area">
     <div id="input-row">
-      <textarea id="user-input" placeholder="type..." rows="1" oninput="autoResize(this)"></textarea>
-      <button id="send-btn" onclick="sendMessage()" title="Send">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="22" y1="2" x2="11" y2="13"></line>
-          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-        </svg>
+      <textarea id="user-input" rows="1" placeholder="Message Sage"></textarea>
+      <button id="send-btn" aria-label="Send">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
-    <div id="hint">Enter for a new line · send with the button</div>
+    <div id="hint">Enter for a new line &middot; Cmd / Ctrl + Enter to send</div>
   </div>
-
 </div>
 
+<div id="drawer-overlay"></div>
+<aside id="drawer">
+  <div id="drawer-header">
+    <span id="drawer-title">Notebook</span>
+    <button id="drawer-close" aria-label="Close">&#10005;</button>
+  </div>
+  <div id="drawer-tabs">
+    <button class="drawer-tab active" data-tab="reflections">Reflections</button>
+    <button class="drawer-tab" data-tab="findings">Findings</button>
+  </div>
+  <div id="drawer-note"></div>
+  <div id="drawer-content">Loading</div>
+</aside>
+
 <script>
-/* ====================================================================
-   Sage frontend. Single file, no dependencies.
-   Serve this from the FastAPI app on :6969 (same origin) so the /api
-   calls resolve. If routes were named differently, edit CONFIG only.
-   ==================================================================== */
-const CONFIG = {
-  API_BASE: "",                            // "" = same origin
-  CHAT_ENDPOINT: "/api/chat",              // POST {message} -> {jid}
-  POLL_ENDPOINT: "/api/poll",              // GET  /api/poll/{jid}?frm={offset}
-  HISTORY_ENDPOINT: "/api/history",        // GET  -> {messages:[{role,content}]}
-  REFLECTIONS_ENDPOINT: "/reflections?n=8",
-  FINDINGS_ENDPOINT: "/findings?n=8",
-  STATUS_ENDPOINT: "/health",
-  POLL_INTERVAL_MS: 500,
-  INNER_REFRESH_MS: 15000,
-};
+(function(){
+  var CFG={CHAT:'/api/chat',HISTORY:'/api/history',REFLECTIONS:'/reflections?n=12',FINDINGS:'/findings?n=12',STATUS:'/health',REFRESH_MS:15000};
+  var $=function(id){return document.getElementById(id);};
+  var messagesEl=$('messages'),inputEl=$('user-input'),sendBtn=$('send-btn');
+  var sending=false,activeTab='reflections';
+  var FENCE=String.fromCharCode(96,96,96);
+  var codeRe=new RegExp(FENCE+'[\\w]*\\n?([\\s\\S]*?)'+FENCE,'g');
 
-const api = (p) => (CONFIG.API_BASE || "") + p;
-const $ = (id) => document.getElementById(id);
-const messagesEl = $("messages");
-let isStreaming = false;
-let activeTab = "reflections";
-let _pollOffset = 0;
-
-/* ---------- markdown (minimal, same as legacy) ---------- */
-function renderMarkdown(text) {
-  let s = String(text)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  s = s.replace(/```[\w]*\n([\s\S]*?)```/g, (_, code) => "<pre><code>" + code.replace(/\s+$/, "") + "</code></pre>");
-  s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
-  s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-  s = s.replace(/\*(.+?)\*/g, "<em>$1</em>");
-  s = s.replace(/\n/g, "<br>");
-  return s;
-}
-function escapeHtml(t) {
-  return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-/* ---------- chat rendering ---------- */
-function hideEmpty() { const e = $("empty"); if (e) e.remove(); }
-function scrollBottom() { messagesEl.scrollTop = messagesEl.scrollHeight; }
-
-function appendUser(text) {
-  hideEmpty();
-  const g = document.createElement("div");
-  g.className = "msg-group";
-  g.innerHTML = '<div class="msg-label user">You</div><div class="bubble user"></div>';
-  g.querySelector(".bubble").textContent = text;
-  messagesEl.appendChild(g);
-  scrollBottom();
-}
-
-function createAiBubble(groupId) {
-  hideEmpty();
-  const g = document.createElement("div");
-  g.className = "msg-group";
-  g.id = groupId;
-  g.innerHTML = '<div class="msg-label ai">Sage</div><div class="bubble ai" id="' + groupId + '-bubble"></div>';
-  messagesEl.appendChild(g);
-  scrollBottom();
-  return $(groupId + "-bubble");
-}
-
-function appendTyping(id) {
-  hideEmpty();
-  const g = document.createElement("div");
-  g.className = "msg-group";
-  g.id = id;
-  g.innerHTML = '<div class="thinking-indicator"><div class="thinking-dots"><span></span><span></span><span></span></div></div>';
-  messagesEl.appendChild(g);
-  scrollBottom();
-}
-function removeTyping(id) { const e = $(id); if (e) e.remove(); }
-
-function showError(bubbleEl, msg) {
-  bubbleEl.classList.add("error");
-  bubbleEl.textContent = "Could not reach Sage: " + msg;
-}
-
-/* ---------- send + poll (matches legacy job/poll contract) ---------- */
-async function sendMessage() {
-  const ta = $("user-input");
-  const text = ta.value.trim();
-  if (!text || isStreaming) return;
-
-  appendUser(text);
-  ta.value = ""; autoResize(ta);
-
-  const typingId = "typing-" + Date.now();
-  appendTyping(typingId);
-
-  isStreaming = true; setSendDisabled(true);
-  const aiGroupId = "ai-" + Date.now();
-
-  try {
-    const res = await fetch(api(CONFIG.CHAT_ENDPOINT), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text }),
-    });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    const jid = data.jid || data.job_id;
-    if (jid) {
-      await pollJob(jid, aiGroupId, typingId);
-    } else {
-      // backend answered synchronously
-      removeTyping(typingId);
-      const reply = typeof data === "string" ? data : (data.response || data.reply || data.message || data.text || "");
-      const b = createAiBubble(aiGroupId);
-      b.innerHTML = renderMarkdown(reply || "(she went quiet)");
-    }
-  } catch (e) {
-    removeTyping(typingId);
-    showError(createAiBubble(aiGroupId), e.message);
-  } finally {
-    isStreaming = false; setSendDisabled(false);
-    $("user-input").focus();
-    scrollBottom();
-    if (activeTab === "reflections") loadTab("reflections");
+  function escapeHtml(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function renderMarkdown(text){
+    var s=escapeHtml(text);
+    s=s.replace(codeRe,function(_,c){return '<pre><code>'+c.replace(/\\s+$/,'')+'</code></pre>';});
+    s=s.replace(/`([^`]+)`/g,'<code>$1</code>');
+    s=s.replace(/\\*\\*([^*]+)\\*\\*/g,'<strong>$1</strong>');
+    s=s.replace(/\\*([^*]+)\\*/g,'<em>$1</em>');
+    s=s.replace(/\\n/g,'<br>');
+    return s;
   }
-}
+  function scrollBottom(){messagesEl.scrollTop=messagesEl.scrollHeight;}
+  function hideEmpty(){var e=$('empty');if(e)e.remove();}
+  function addUser(text){hideEmpty();var m=document.createElement('div');m.className='msg user';var b=document.createElement('div');b.className='bubble';b.textContent=text;m.appendChild(b);messagesEl.appendChild(m);scrollBottom();}
+  function addAi(){hideEmpty();var m=document.createElement('div');m.className='msg ai';var b=document.createElement('div');b.className='bubble';m.appendChild(b);messagesEl.appendChild(m);scrollBottom();return b;}
+  function addThinking(){hideEmpty();var m=document.createElement('div');m.className='msg ai';m.id='thinking';var t=document.createElement('div');t.className='thinking';t.innerHTML='<span></span><span></span><span></span>';m.appendChild(t);messagesEl.appendChild(m);scrollBottom();}
+  function rmThinking(){var e=$('thinking');if(e)e.remove();}
+  function setSending(v){sending=v;sendBtn.disabled=v;}
 
-function pollJob(jid, aiGroupId, typingId) {
-  _pollOffset = 0;
-  let bubbleEl = null;
-  let full = "";
-  return new Promise((resolve) => {
-    const tick = async () => {
-      try {
-        const r = await fetch(api(CONFIG.POLL_ENDPOINT) + "/" + jid + "?frm=" + _pollOffset);
-        if (r.status === 404) { removeTyping(typingId); resolve(full); return; }
-        const d = await r.json();
-
-        if (d.text || d.done) {
-          if ($(typingId)) removeTyping(typingId);
-          if (!bubbleEl) bubbleEl = createAiBubble(aiGroupId);
-        }
-        if (d.text) {
-          full += d.text;
-          _pollOffset += (d.new_count || d.text.length);
-          bubbleEl.innerHTML = renderMarkdown(full);
-          scrollBottom();
-        }
-        if (d.done) {
-          if (!full.trim() && bubbleEl) bubbleEl.textContent = "(she went quiet)";
-          resolve(full); return;
-        }
-        setTimeout(tick, CONFIG.POLL_INTERVAL_MS);
-      } catch (e) {
-        removeTyping(typingId);
-        if (!bubbleEl) bubbleEl = createAiBubble(aiGroupId);
-        showError(bubbleEl, e.message);
-        resolve(full);
-      }
-    };
-    tick();
-  });
-}
-
-function setSendDisabled(v) { $("send-btn").disabled = v; }
-
-async function loadHistory() {
-  try {
-    const r = await fetch(api(CONFIG.HISTORY_ENDPOINT));
-    if (!r.ok) return;
-    const data = await r.json();
-    const msgs = data.messages || [];
-    if (!msgs.length) return;
-    hideEmpty();
-    msgs.forEach((m) => {
-      if (m.role === "user") appendUser(m.content);
-      else { const b = createAiBubble("ai-h-" + Math.random().toString(36).slice(2)); b.innerHTML = renderMarkdown(m.content); }
-    });
-    scrollBottom();
-  } catch (e) { /* no history, fine */ }
-}
-
-/* ---------- drawer ---------- */
-function toggleDrawer() { $("drawer").classList.contains("open") ? closeDrawer() : openDrawer(); }
-function openDrawer() {
-  $("drawer").classList.add("open");
-  $("drawer-overlay").classList.add("show");
-  loadTab(activeTab);
-}
-function closeDrawer() {
-  $("drawer").classList.remove("open");
-  $("drawer-overlay").classList.remove("show");
-}
-function switchTab(tab) {
-  activeTab = tab;
-  document.querySelectorAll(".drawer-tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === tab));
-  loadTab(tab);
-}
-
-function pick(o, keys) { for (const k of keys) if (o && o[k] != null && o[k] !== "") return o[k]; return null; }
-function fmtTime(v) {
-  if (v == null) return "";
-  const d = typeof v === "number" ? new Date(v < 1e12 ? v * 1000 : v) : new Date(v);
-  if (isNaN(d)) return String(v);
-  return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-function normalizeList(data, keys) {
-  if (Array.isArray(data)) return data;
-  for (const k of keys) if (Array.isArray(data && data[k])) return data[k];
-  return [];
-}
-
-async function loadTab(tab) {
-  const c = $("drawer-content");
-  const isRef = tab === "reflections";
-  const endpoint = isRef ? CONFIG.REFLECTIONS_ENDPOINT : CONFIG.FINDINGS_ENDPOINT;
-  const note = isRef
-    ? "What she has been thinking on her own. Read-only."
-    : "What she went looking for, and found. Read-only.";
-  try {
-    const r = await fetch(api(endpoint));
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    const data = await r.json();
-    let list = normalizeList(data, [tab, "memories", "items", "results", "data"]);
-    list = list.slice().reverse();
-    if (tab !== activeTab) return;
-    if (!list.length) { c.innerHTML = '<div class="drawer-note"></div><div class="drawer-empty">Nothing yet. Leave her idle for a while and she will wander.</div>'; c.querySelector(".drawer-note").textContent = note; return; }
-    c.innerHTML = '<div class="drawer-note"></div>';
-    c.querySelector(".drawer-note").textContent = note;
-    for (const it of list) {
-      const ts = pick(it, ["timestamp", "created_at", "created", "time", "ts", "date"]);
-      const body = pick(it, ["text", "content", "body", "reflection", "finding", "query", "summary", "thought", "memory"]) || (typeof it === "string" ? it : JSON.stringify(it));
-      const results = (it.results && Array.isArray(it.results) && it.results.length) ? it.results : null;
-      const src = results ? null : pick(it, ["source", "url", "link", "provenance", "href"]);
-      const hasSrc = results || src;
-      const el = document.createElement("div");
-      el.className = "entry " + (isRef ? "reflection" : "finding");
-      el.innerHTML = (ts ? '<div class="ts"></div>' : "") + '<div class="body"></div>' + (hasSrc ? '<div class="src"></div>' : "");
-      if (ts) el.querySelector(".ts").textContent = fmtTime(ts);
-      el.querySelector(".body").textContent = body;
-      if (hasSrc) {
-        const srcEl = el.querySelector(".src");
-        if (results) {
-          srcEl.innerHTML = results.map((r) => {
-            const url = r.url || r.link || r.href || "";
-            const label = r.title || r.name || url;
-            return url ? '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(label) + "</a>" : escapeHtml(label);
-          }).join(" · ");
-        } else {
-          srcEl.innerHTML = '<a href="' + escapeHtml(src) + '" target="_blank" rel="noopener">' + escapeHtml(src) + "</a>";
-        }
-      }
-      c.appendChild(el);
-    }
-  } catch (e) {
-    if (tab !== activeTab) return;
-    c.innerHTML = '<div class="drawer-note"></div><div class="drawer-empty"></div>';
-    c.querySelector(".drawer-note").textContent = note;
-    c.querySelector(".drawer-empty").textContent = isRef
-      ? "Cannot read her reflections yet (" + e.message + ")."
-      : "No findings feed wired up yet (" + e.message + "). Set FINDINGS_ENDPOINT in CONFIG.";
+  function send(){
+    var text=inputEl.value.trim();
+    if(!text||sending)return;
+    addUser(text);inputEl.value='';autoResize();addThinking();setSending(true);
+    fetch(CFG.CHAT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})})
+      .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
+      .then(function(data){rmThinking();var reply=(typeof data==='string')?data:(data.reply||data.response||data.message||data.text||'');var b=addAi();if(reply&&reply.trim())b.innerHTML=renderMarkdown(reply);else b.textContent='(she went quiet)';})
+      .catch(function(e){rmThinking();var b=addAi();b.className='bubble error';b.textContent='Could not reach Sage: '+e.message;})
+      .then(function(){setSending(false);inputEl.focus();scrollBottom();refreshInnerHint();});
   }
-}
 
-/* ---------- status dot ---------- */
-async function checkStatus() {
-  try {
-    const r = await fetch(api(CONFIG.STATUS_ENDPOINT));
-    if (!r.ok) throw new Error();
-    $("status-dot").classList.remove("cold");
-  } catch {
-    // fall back to history endpoint as a liveness probe
-    try { const r2 = await fetch(api(CONFIG.HISTORY_ENDPOINT)); $("status-dot").classList.toggle("cold", !r2.ok); }
-    catch { $("status-dot").classList.add("cold"); }
+  function loadHistory(){
+    fetch(CFG.HISTORY).then(function(r){return r.ok?r.json():null;}).then(function(data){
+      if(!data)return;var msgs=data.messages||[];if(!msgs.length)return;hideEmpty();
+      msgs.forEach(function(m){if(m.role==='user')addUser(m.content);else{var b=addAi();b.innerHTML=renderMarkdown(m.content||'');}});
+      scrollBottom();
+    }).catch(function(){});
   }
-}
 
-/* ---------- input ---------- */
-function autoResize(el) { el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 160) + "px"; }
+  function openDrawer(){$('drawer').classList.add('open');$('drawer-overlay').classList.add('show');markSeen();loadTab(activeTab);}
+  function closeDrawer(){$('drawer').classList.remove('open');$('drawer-overlay').classList.remove('show');}
+  function switchTab(tab){activeTab=tab;var t=document.querySelectorAll('.drawer-tab');for(var i=0;i<t.length;i++){t[i].classList.toggle('active',t[i].getAttribute('data-tab')===tab);}loadTab(tab);}
 
-/* ---------- boot ---------- */
-loadHistory();
-checkStatus();
-setInterval(() => {
-  checkStatus();
-  if ($("drawer").classList.contains("open")) loadTab(activeTab);
-}, CONFIG.INNER_REFRESH_MS);
-$("user-input").focus();
+  function pick(o,keys){for(var i=0;i<keys.length;i++){var k=keys[i];if(o&&o[k]!=null&&o[k]!=='')return o[k];}return null;}
+  function fmtTime(v){if(v==null)return '';var d=(typeof v==='number')?new Date(v<1e12?v*1000:v):new Date(v);if(isNaN(d))return String(v);return d.toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});}
+  function normalizeList(data,keys){if(Array.isArray(data))return data;for(var i=0;i<keys.length;i++){if(data&&Array.isArray(data[keys[i]]))return data[keys[i]];}return [];}
+
+  function loadTab(tab){
+    var c=$('drawer-content'),note=$('drawer-note');var isRef=(tab==='reflections');
+    note.textContent=isRef?'What she has turned over on her own. Read-only.':'What she went looking for, and found. Read-only.';
+    fetch(isRef?CFG.REFLECTIONS:CFG.FINDINGS).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(data){
+      if(tab!==activeTab)return;
+      var list=normalizeList(data,[tab,'memories','items','results','data']).slice().reverse();
+      if(!list.length){c.innerHTML='<div class=\"drawer-empty\">Nothing yet. Leave her idle a while and she will wander.</div>';return;}
+      c.innerHTML='';
+      list.forEach(function(it){
+        var ts=pick(it,['timestamp','created_at','created','time','ts','date']);
+        var body=pick(it,['text','content','body','reflection','finding','query','summary','thought'])||(typeof it==='string'?it:JSON.stringify(it));
+        var results=(it.results&&it.results.length)?it.results:null;
+        var src=results?null:pick(it,['source','url','link','href']);
+        var el=document.createElement('div');el.className='entry '+(isRef?'reflection':'finding');
+        if(ts){var tsEl=document.createElement('div');tsEl.className='ts';tsEl.textContent=fmtTime(ts);el.appendChild(tsEl);}
+        var bodyEl=document.createElement('div');bodyEl.className='body';bodyEl.textContent=body;el.appendChild(bodyEl);
+        if(results||src){var srcEl=document.createElement('div');srcEl.className='src';
+          if(results){srcEl.innerHTML=results.map(function(r){var u=r.url||r.link||r.href||'';var label=r.title||r.name||u;return u?'<a href=\"'+u+'\" target=\"_blank\" rel=\"noopener\">'+escapeHtml(label)+'</a>':escapeHtml(label);}).join(' &middot; ');}
+          else{srcEl.innerHTML='<a href=\"'+src+'\" target=\"_blank\" rel=\"noopener\">'+escapeHtml(src)+'</a>';}
+          el.appendChild(srcEl);}
+        c.appendChild(el);
+      });
+    }).catch(function(e){if(tab!==activeTab)return;c.innerHTML='<div class=\"drawer-empty\">Cannot read her '+(isRef?'reflections':'findings')+' yet ('+e.message+').</div>';});
+  }
+
+  function latestTs(list){var max=0;list.forEach(function(it){var ts=pick(it,['timestamp','created_at','created','time','ts','date']);var d=(typeof ts==='number')?(ts<1e12?ts*1000:ts):Date.parse(ts);if(d&&d>max)max=d;});return max;}
+  function refreshInnerHint(){fetch(CFG.REFLECTIONS).then(function(r){return r.ok?r.json():null;}).then(function(data){if(!data)return;var list=normalizeList(data,['reflections','memories','items','data']);if(!list.length)return;var latest=latestTs(list);var seen=parseInt(localStorage.getItem('sage_seen_ts')||'0',10);$('inner-toggle').classList.toggle('has-new',latest>seen);}).catch(function(){});}
+  function markSeen(){fetch(CFG.REFLECTIONS).then(function(r){return r.ok?r.json():null;}).then(function(data){if(!data)return;var list=normalizeList(data,['reflections','memories','items','data']);localStorage.setItem('sage_seen_ts',String(latestTs(list)||Date.now()));$('inner-toggle').classList.remove('has-new');}).catch(function(){});}
+
+  function setStatus(state){var d=$('status-dot');d.classList.remove('cold','down');if(state==='down'){d.classList.add('down');d.title='Problem reaching Sage';}else if(state==='cold'){d.classList.add('cold');d.title='Connecting';}else{d.title='Online';}}
+  function checkStatus(){fetch(CFG.STATUS).then(function(r){if(r.status===404)throw{fb:true};if(!r.ok)throw{fb:false};return r.json().then(function(d){return d;},function(){return {};});}).then(function(d){if(d&&(d.ok===false||d.healthy===false||d.status==='error'||d.status==='down'))setStatus('down');else setStatus('ok');}).catch(function(e){if(e&&e.fb){fetch(CFG.HISTORY).then(function(r){setStatus(r.ok?'ok':'down');}).catch(function(){setStatus('down');});}else setStatus('down');});}
+
+  function autoResize(){inputEl.style.height='auto';inputEl.style.height=Math.min(inputEl.scrollHeight,170)+'px';}
+
+  sendBtn.addEventListener('click',send);
+  inputEl.addEventListener('input',autoResize);
+  inputEl.addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){e.preventDefault();send();}});
+  $('inner-toggle').addEventListener('click',openDrawer);
+  $('drawer-close').addEventListener('click',closeDrawer);
+  $('drawer-overlay').addEventListener('click',closeDrawer);
+  var tb=document.querySelectorAll('.drawer-tab');
+  for(var i=0;i<tb.length;i++){(function(btn){btn.addEventListener('click',function(){switchTab(btn.getAttribute('data-tab'));});})(tb[i]);}
+
+  loadHistory();checkStatus();refreshInnerHint();
+  setInterval(function(){checkStatus();refreshInnerHint();if($('drawer').classList.contains('open'))loadTab(activeTab);},CFG.REFRESH_MS);
+  inputEl.focus();
+})();
 </script>
 </body>
 </html>
