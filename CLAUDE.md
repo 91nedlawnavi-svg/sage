@@ -11,12 +11,26 @@ Sage is a local, always-on AI companion running on Elliot's machine. She is buil
 - **Build only what the current phase specifies.** No memory, embeddings, reflection daemon, threads, or other cognition until its phase. No speculative scaffolding.
 
 ## Architecture (current)
-- FastAPI app on **port 6969** (`backend/app.py`), single shared httpx client.
+- FastAPI app on **port 6969** (`backend/app.py`), single shared httpx client; lifespan hydrates session from disk.
 - `config/settings.py` — config + env. **Source of truth for all config values; never duplicate them into docs.**
 - `config/directive.py` — loads the directive (see below).
 - `models/inference/engine.py` — NVIDIA NIM chat (streaming + non-stream).
 - `models/prompts/templates.py` — prompt assembly (directive-first).
-- `backend/session.py`, `backend/api/chat.py` — in-memory session + `POST /api/chat`.
+- `backend/session.py`, `backend/api/chat.py` — session + `POST /api/chat`.
+- `backend/heartbeat.py` — autonomous loop: idle-triggered reflection + cooldown-gated curiosity searches.
+- `cognition/reflection.py` — private reflection generation.
+- `cognition/curiosity.py` — self-originated search-query generation.
+- `cognition/novelty_gate.py` — anti-attractor / basin-diverge gate on reflections (Phase 2.2b).
+- `cognition/inner_context.py` — the Membrane: injects recent reflections + findings into chat context.
+- `cognition/web_search.py` — SearXNG client (results + Wikipedia/Wikidata infobox fallback).
+- `memory/{conversation_log,reflection_log,findings_log}.py` — append-only JSONL at `~/sage_data/`, atomic tmp→rename.
+- `frontend/index.html` — single-file chat UI + slide-in Reflections/Findings drawer.
+
+### External dependencies (must stay alive)
+- **SearXNG** — Docker container on `0.0.0.0:8080`, JSON format enabled. Sage's only web-search path.
+- **e5 embedder** — `llama-embedder.service`, `127.0.0.1:8081` (used from Phase 4 Layer 1 on).
+- **NVIDIA NIM** — remote chat inference; `NVIDIA_API_KEY` supplied via systemd `EnvironmentFile`.
+- Runs as systemd user unit `sage.service` (ExecStartPre waits on :8080 + :8081 before start).
 
 ## Two sacred files — do not confuse them
 - **`directive.txt`** (repo root) = **Sage's identity.** Injected verbatim as her system prompt. NOT documentation; never edit it for code reasons, render it, or summarize it. Its text is inviolable unless a work-order explicitly says to change it.
@@ -52,6 +66,14 @@ Sage is a local, always-on AI companion running on Elliot's machine. She is buil
 - At each **phase completion**: commit, tag `phaseN-complete`, push to GitHub.
 - Keep commits scoped; messages honest.
 - After executing a work-order, report: what changed, the felt-test output, and any deviation from the order.
+
+## Reporting economy (the brain is the scarce resource)
+The brain (Opus) runs on a limited, expiring budget; you (the hand) are effectively free. Optimize every handoff to spend as little brain as possible:
+- **On success, report minimal:** the commit hash + the single felt-test line that proves it. Nothing else.
+- **On failure, report fully:** paste the complete command output and STOP. Do not improvise a fix.
+- **Work-orders may be decision trees** ("run A; if X do P; if Y do Q"). Execute the matching branch without a round-trip.
+- **Read before asking.** Current file state is in the repo and config values are in `settings.py`; don't ask the brain for context already in the tree.
+- **Fixes (non-phase work):** commit with an honest message, no tag. Only phase completions get `phaseN-complete` tags.
 
 ## Verification discipline (non-negotiable)
 
@@ -90,9 +112,12 @@ Rules for every felt-test / completion report:
    you must quote that specific self-originated content.
 
 ## Phase log
-- **Phase 0 — COMPLETE.** Clean spine (directive loader + NIM chat), directive installed, voice validated.
-- **Phase 1 — COMPLETE.** Autonomous heartbeat + private reflection, decoupled from conversation (`phase1-complete`). P1.5: thin `launch.py`.
-- **Phase 2a — COMPLETE.** Broke the reflection attractor ("The silence." loop); she wonders outward.
-- **Phase 2 — COMPLETE / MATURE.** Self-originated curiosity + SearXNG. Both halves verified live: curiosity→search, and finding→next-reflection (the money shot). Tag `phase2.1-complete`.
-- **Phase 3 — the Membrane (NEXT).** Her interior reaches into conversation.
-- Later: Phase 4 Memory foundation → Phase 5 people-graph → Phase 6 optional threads/meta. Parallel: frontends (6969 chat, 7979 admin).
+- **Phase 0 — COMPLETE.** Clean spine (directive loader + NIM chat), voice validated.
+- **Phase 1 — COMPLETE.** Autonomous heartbeat + private reflection, decoupled from chat. P1.5: thin `launch.py`.
+- **Phase 2a / 2 / 2.1 — COMPLETE.** Self-originated curiosity + SearXNG; curiosity→search and finding→next-reflection both verified live.
+- **Phase 2.2 → 2.2b — COMPLETE** (`phase2.2b-complete`). Novelty gate: centroid/basin tracking, forced divergence seeds, anti-attractor steering. (2.2 was tagged but failed its felt-test; 2.2b corrected it and passed the compressed felt-test.)
+- **Phase 3 — the Membrane — COMPLETE** (`phase3-complete`). Her interior (recent reflections + findings, recency-gated) reaches into conversation.
+- **Phase 4 Layer 0 — COMPLETE** (`phase4.0-complete`). Memory foundation: durable JSONL state + session hydration on boot.
+- **Frontend v2 — shipped** (`frontend-v2`, fix `6ed5bec`). Chat + inner-life drawer, history persistence, send-button UX.
+- **In flight.** `web_search` Wikipedia infobox fallback + SearXNG engine tidy (fix, no tag).
+- **NEXT — Phase 4 Layer 1: semantic recall.** e5 embeddings (`:8081`) over the archive, so recall isn't just the recent slice. Then Layer 2.
