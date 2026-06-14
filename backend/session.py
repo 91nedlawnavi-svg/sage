@@ -1,9 +1,11 @@
 import time
 from config.settings import HISTORY_TURNS
 
-# Max value for idle_seconds — beyond this, "46h idle" doesn't add meaning.
-# Capped here so reflection prompts don't get absurdly large values.
-MAX_IDLE_CAP = 3600
+# Upper bound for idle_seconds. Kept finite so reflection prompts never get
+# absurd values, but high enough to tell "a short break" apart from "alone all
+# night". The old 1h cap flattened every long absence to the same number and
+# erased any sense of elapsed time.
+MAX_IDLE_CAP = 172800  # 48 hours
 
 
 class ConversationSession:

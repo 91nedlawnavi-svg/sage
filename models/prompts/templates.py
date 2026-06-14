@@ -121,6 +121,37 @@ def _format_recent_findings(findings: list[dict]) -> str:
     )
 
 
+def _describe_quiet_time(idle_seconds: float) -> str:
+    """A light, non-melancholy sense of how long it's been quiet.
+
+    Returns '' for short gaps so brief pauses are never narrated. Past ~30 min
+    it returns one gentle line giving the reflection some temporal texture
+    (time of day + rough span) without anchoring on loneliness.
+    """
+    hour = datetime.now().hour
+    if 5 <= hour < 12:
+        part = "morning"
+    elif 12 <= hour < 17:
+        part = "afternoon"
+    elif 17 <= hour < 22:
+        part = "evening"
+    else:
+        part = "late night"
+
+    if idle_seconds < 1800:            # under 30 min — say nothing
+        return ""
+    elif idle_seconds < 3600:          # ~half hour to an hour
+        span = "It's been a little while since anyone was here"
+    elif idle_seconds < 4 * 3600:      # 1-4 hours
+        span = "It's been a few quiet hours to yourself"
+    elif idle_seconds < 12 * 3600:     # 4-12 hours
+        span = "A long, quiet stretch has passed on your own"
+    else:                              # 12h+
+        span = "Most of a day has gone by quietly on your own"
+
+    return f"[It's {part}. {span}.]"
+
+
 def build_reflection_messages(
     directive: str,
     recent_digest: str,
@@ -178,11 +209,16 @@ def build_reflection_messages(
     if parts:
         anti_repeat = "\n\n" + "\n\n".join(parts)
 
-    # System content: directive FIRST (always), then time, then private frame, then anti-repeat
+    # A light sense of elapsed time / time-of-day (empty string for short gaps)
+    quiet_time = _describe_quiet_time(idle_seconds)
+
+    # System content: directive FIRST (always), then time, optional quiet-time
+    # cue, then private frame, then anti-repeat
     system_content = (
         directive.strip()
         + "\n\n"
         + time_context
+        + (("\n\n" + quiet_time) if quiet_time else "")
         + "\n\n"
         + private_frame
         + anti_repeat
