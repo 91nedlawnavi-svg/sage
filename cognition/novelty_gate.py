@@ -32,6 +32,10 @@ from config.settings import (
     BASIN_STREAK_CAP,
     HEARTBEAT_INTERVAL_SECONDS,
     STALL_TICKS,
+    REFLECTION_BASIN_SIM_THRESHOLD,
+    REFLECTION_BASIN_WINDOW,
+    REFLECTION_BASIN_STREAK_CAP,
+    REFLECTION_DIVERGE_HOLD,
 )
 from utils.logger import info, warning
 
@@ -53,6 +57,11 @@ class NoveltyGate:
         self._centroid_buffer: list[list[float]] = []  # rolling accepted embeddings
         self._basin_streak: int = 0  # consecutive accepts IN THE BASIN (not reset by accept)
         self._last_novel_accept_time: float = 0.0  # time of last out-of-basin accept
+
+        # fix #5 (Phase 2.2c) — reflection-stream basin detection
+        self._reflection_buffer: list[list[float]] = []
+        self._reflection_basin_streak: int = 0
+        self._reflection_diverge_hold: int = 0   # reflections left to force a seed
 
     # ── public queries ──────────────────────────────────────────────
 
@@ -83,13 +92,17 @@ class NoveltyGate:
                 async with httpx.AsyncClient(timeout=5.0) as c:
                     resp = await c.post(E5_EMBED_URL, json={"content": text.strip()})
             else:
-                resp = await client.post(E5_EMBED_URL, json={"content": text.strip()})
+                resp = await client.post(
+                    E5_EMBED_URL,
+                    json={"content": text.strip()},
+                    timeout=httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=2.0),
+                )
             resp.raise_for_status()
             data = resp.json()
             # Expected shape: [{"index":0, "embedding":[[4096 floats]]}]
             return data[0]["embedding"][0]
         except Exception as exc:
-            warning(f"novelty_gate/embed: {exc}")
+            warning(f"novelty_gate/embed: {type(exc).__name__}: {exc}")
             return None
 
     @staticmethod
@@ -214,6 +227,61 @@ class NoveltyGate:
     def consume_divergence_seed(self) -> str:
         """Public: consume the next rotating divergence seed. Used by stall / reflection path."""
         return self._next_divergence_seed()
+
+    # ── reflection-stream basin (fix #5 / Phase 2.2c) ──────────────
+
+    @property
+    def reflection_diverge_pending(self) -> bool:
+        """True while a reflection-basin break is still forcing seeds."""
+        return self._reflection_diverge_hold > 0
+
+    def consume_reflection_hold(self) -> None:
+        """Decrement the forced-seed hold counter (once per forced beat)."""
+        if self._reflection_diverge_hold > 0:
+            self._reflection_diverge_hold -= 1
+
+    def _reflection_centroid(self) -> list[float] | None:
+        if not self._reflection_buffer:
+            return None
+        dim = len(self._reflection_buffer[0])
+        m = [0.0] * dim
+        for v in self._reflection_buffer:
+            for i in range(dim):
+                m[i] += v[i] / len(self._reflection_buffer)
+        nrm = math.sqrt(sum(x * x for x in m))
+        return [x / nrm for x in m] if nrm else None
+
+    async def track_reflection(self, text: str,
+                               client: httpx.AsyncClient | None = None) -> None:
+        """Embed an emitted reflection and test it against the rolling reflection
+        centroid. On a confirmed basin lock, arm a STRONG break: hold a forced
+        divergence seed for REFLECTION_DIVERGE_HOLD reflections and wipe the
+        buffer so the new topic re-anchors. Never raises.
+        """
+        try:
+            emb = await self.embed(text, client)
+            if emb is None:
+                return
+            centroid = self._reflection_centroid()
+            sim = self._cosine_sim(emb, centroid) if centroid else None
+            if sim is not None and sim >= REFLECTION_BASIN_SIM_THRESHOLD:
+                self._reflection_basin_streak += 1
+                info("novelty_gate/reflection-basin-streak",
+                     sim=round(sim, 3), streak=self._reflection_basin_streak)
+                if self._reflection_basin_streak >= REFLECTION_BASIN_STREAK_CAP:
+                    self._reflection_diverge_hold = REFLECTION_DIVERGE_HOLD
+                    self._reflection_basin_streak = 0
+                    self._reflection_buffer = []   # full reset: strong break
+                    info("novelty_gate/reflection-basin-diverge",
+                         sim=round(sim, 3), hold=REFLECTION_DIVERGE_HOLD)
+                    return
+            else:
+                self._reflection_basin_streak = 0
+            self._reflection_buffer.append(emb)
+            if len(self._reflection_buffer) > REFLECTION_BASIN_WINDOW:
+                self._reflection_buffer.pop(0)
+        except Exception as exc:
+            warning(f"novelty_gate/track_reflection: {exc}")
 
     # ── e5 embedding ────────────────────────────────────────────────
 

@@ -43,14 +43,24 @@ async def run_reflection(client) -> str | None:
         fresh_findings = select_fresh_findings(recent_findings, recent_reflections)
         novelty_themes = novelty_gate.recent_themes()
 
-        # Phase 2.2b: stall detection -> force inward reflection
+        # Forced-divergence triggers:
+        #  - stalled: time-based, driven by the search-query gate (Phase 2.2b)
+        #  - reflection-basin: drift detected directly in the reflection stream
+        #    (fix #5 / Phase 2.2c); holds the seed for several reflections.
         forced_seed = None
+        trigger = None
         if novelty_gate.stalled:
+            trigger = "stall-inward"
+        elif novelty_gate.reflection_diverge_pending:
+            trigger = "reflection-basin-inward"
+
+        if trigger:
             forced_seed = novelty_gate.consume_divergence_seed()
-            ticks = novelty_gate.ticks_since_novel
-            log("novelty_gate", "stall-inward",
+            if trigger == "reflection-basin-inward":
+                novelty_gate.consume_reflection_hold()
+            log("novelty_gate", trigger,
                 seed=forced_seed[:60],
-                ticks_since_novel=ticks)
+                ticks_since_novel=novelty_gate.ticks_since_novel)
 
         messages = build_reflection_messages(
             directive=directive,
@@ -80,7 +90,11 @@ async def run_reflection(client) -> str | None:
         )
 
         if text:
-            return text.strip()
+            text = text.strip()
+            # fix #5: feed the emitted reflection into the reflection-stream
+            # basin detector so topical lock is caught at reflection cadence.
+            await novelty_gate.track_reflection(text, client)
+            return text
         return None
     except Exception:
         # Fail silently — never raise from reflection

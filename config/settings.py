@@ -51,6 +51,12 @@ CURIOSITY_STREAK_CAP = 8
 BASIN_WINDOW = 16           # rolling window for accepted-topic centroid
 BASIN_SIM_THRESHOLD = 0.80  # cosine-sim to centroid still counts as "in basin"
 BASIN_STREAK_CAP = 6        # consecutive in-basin accepts → force divergence
+
+# Reflection-stream basin detection (fix #5 / Phase 2.2c)
+REFLECTION_BASIN_SIM_THRESHOLD = float(os.environ.get("SAGE_REFLECTION_BASIN_SIM", "0.88"))
+REFLECTION_BASIN_STREAK_CAP = int(os.environ.get("SAGE_REFLECTION_BASIN_CAP", "4"))
+REFLECTION_DIVERGE_HOLD = int(os.environ.get("SAGE_REFLECTION_DIVERGE_HOLD", "2"))
+REFLECTION_BASIN_WINDOW = 16
 STALL_TICKS = 6             # heartbeat ticks without novel topic → force inward reflection
 DIVERGENCE_SEEDS = [
     # Inward / self
