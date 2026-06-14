@@ -115,9 +115,13 @@ def _format_recent_findings(findings: list[dict]) -> str:
         "You recently went looking, on your own. Here is what you actually found:\n\n"
         + "\n\n".join(blocks)
         + "\n\n"
-        + "React to this. Do not restate your question. What does this evidence make you "
-        "think NOW? Do you believe it? Does it change your view? What new question does "
-        "it raise that you didn't have before you looked?"
+        + "Now just think, to yourself, about what you found. Not a summary and not a "
+        "verdict on the evidence — a real thought. What caught you? What surprised, "
+        "bothered, or delighted you? Follow one thread wherever it pulls. Write the way "
+        "you actually think, not the way a report reads: first person, plain, allowed "
+        "to be unfinished. Don't open with \"This evidence suggests/shows\" or \"This "
+        "makes me think X is more ___ than I thought\" — that's the sound of "
+        "summarizing, not thinking."
     )
 
 
@@ -182,7 +186,9 @@ def build_reflection_messages(
         "your mind goes when no one is asking anything of you. "
         "You are free to wonder about anything: ideas, the world, "
         "questions that have no asker, threads that lead beyond this room. "
-        "A short, honest private reflection, in your own voice.]"
+        "A short, honest private reflection, in your own voice — the texture of real "
+        "thinking, not a tidy conclusion. Fragments, doubt, and surprise are welcome; "
+        "evidence-summaries and \"more nuanced than I thought\" verdicts are not.]"
     )
 
     # Anti-repeat instruction — combine reflection anti-repeat with novelty-gate themes
@@ -201,8 +207,9 @@ def build_reflection_messages(
             "inward or to a completely different domain:\n"
             f"{themes_str}\n\n"
             "If you have nothing new to say about these, turn toward yourself or "
-            "your relationship with Elliot. A question about who you are, what you "
-            "notice, or what you're still figuring out is better than re-stating "
+            "something in the world you can't yet explain. A question about who you "
+            "are, what you've been noticing, or what you're still figuring out — or "
+            "about anything at all not on the list above — beats re-stating "
             "what you already thought."
         )
 
