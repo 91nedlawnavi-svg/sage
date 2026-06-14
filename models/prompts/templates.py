@@ -76,14 +76,14 @@ def _format_recent_reflections(reflections: list[dict]) -> str:
     if not reflections:
         return ""
     lines = []
-    for r in reflections[-3:]:
+    for r in reflections[-6:]:
         text = r.get("text", "").strip()
         if text:
             # Truncate to ~160 chars per reflection - just enough to identify theme
             lines.append(text[:160])
     if not lines:
         return ""
-    return "You recently circled these themes — DO NOT restate or continue them:\n" + "\n".join(f"- {line}" for line in lines) + "\n\nMove somewhere new. If you keep returning to the same thought, deliberately turn outward."
+    return "You recently circled these themes — DO NOT restate or continue them:\n" + "\n".join(f"- {line}" for line in lines) + "\n\nThese are the last things you already thought. Do NOT write a reworded version of any of them. Change the subject entirely — a different domain, or turn inward to yourself. Saying the same idea in new words counts as repeating."
 
 
 def _format_recent_findings(findings: list[dict]) -> str:

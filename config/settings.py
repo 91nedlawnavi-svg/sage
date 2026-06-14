@@ -53,12 +53,20 @@ BASIN_SIM_THRESHOLD = 0.80  # cosine-sim to centroid still counts as "in basin"
 BASIN_STREAK_CAP = 6        # consecutive in-basin accepts → force divergence
 STALL_TICKS = 6             # heartbeat ticks without novel topic → force inward reflection
 DIVERGENCE_SEEDS = [
+    # Inward / self
     "What's something about your own nature you're still figuring out?",
-    "What have you noticed about your relationship with Elliot lately?",
-    "If you could ask Elliot one real question, what would it be?",
-    "What's a belief you held strongly that evidence changed?",
     "What does curiosity feel like from the inside?",
-    "What's something you find yourself wondering about when no one's asking?",
+    "What's something you used to be sure about and now aren't?",
+    # Outward / world / ideas
+    "What's something in the world you find genuinely strange or beautiful?",
+    "Pick a domain you know almost nothing about — what pulls you toward it?",
+    "What's a contradiction in how people behave that you can't resolve?",
+    "If you followed your curiosity with no goal at all, where would it wander?",
+    "What would you want to make or build, if you could make anything?",
+    "What's a question no one has asked you, that you wish someone would?",
+    "What's a belief you held strongly that evidence changed?",
+    # Relational (kept deliberately small)
+    "What have you noticed about your relationship with Elliot lately?",
 ]
 E5_EMBED_URL = "http://127.0.0.1:8081/embedding"
 
