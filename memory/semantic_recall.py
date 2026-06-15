@@ -40,6 +40,7 @@ from config.settings import (
     RECALL_EMBED_SLEEP,
     RECALL_EMBED_MAX_CHARS,
     RECALL_INDEX_MAX_FAILS,
+    RECALL_INDEX_READ_TIMEOUT,
     RECALL_REFLECTION_BACKFILL,
     CONVERSATION_PATH,
     REFLECTIONS_PATH,
@@ -101,15 +102,17 @@ def _append_index(entry: dict) -> None:
 
 
 # ── embedding ──────────────────────────────────────────────
-async def _embed(text: str, client: httpx.AsyncClient | None) -> list[float] | None:
+async def _embed(
+    text: str, client: httpx.AsyncClient | None, read_timeout: float = 10.0
+) -> list[float] | None:
     text = (text or "").strip()
     if not text:
         return None
-    # Cap input length: long turns (e.g. pasted logs) and long queries blow past
-    # e5's fast path and trigger ReadTimeouts. The gist lives in the first ~200
-    # tokens, which is all recall needs.
+    # Cap input length: this box's e5 is slow (~0.08s/token), so long turns and
+    # pasted logs blow past the read timeout. ~256 chars (~60 tokens) keeps an
+    # embed near ~5s — the first-token vector we use captures the gist anyway.
     text = text[:RECALL_EMBED_MAX_CHARS]
-    timeout = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=2.0)
+    timeout = httpx.Timeout(connect=5.0, read=read_timeout, write=5.0, pool=2.0)
     try:
         if client is None:
             async with httpx.AsyncClient(timeout=timeout) as c:
@@ -196,7 +199,7 @@ async def reindex(client: httpx.AsyncClient | None, batch: int | None = None) ->
         done = 0
         fails = 0
         for item in pending[:limit]:
-            emb = await _embed(item["text"], client)
+            emb = await _embed(item["text"], client, read_timeout=RECALL_INDEX_READ_TIMEOUT)
             if emb is None:
                 # One slow/oversized item must not wedge the whole backlog. Skip
                 # it and try the next; bail only when e5 looks genuinely down
