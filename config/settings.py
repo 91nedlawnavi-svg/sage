@@ -50,12 +50,12 @@ RECALL_MAX_CHARS = 2200            # char budget for the injected recall block
 RECALL_MIN_CHARS = 24              # skip trivially short texts (indexing and querying)
 RECALL_RECENT_EXCLUDE_TURNS = 24   # skip the N most recent conversation messages (already in the live window)
 RECALL_RECENT_HOURS = MEMBRANE_RECENCY_HOURS  # reflections newer than this are already shown by the Membrane
-RECALL_INDEX_BATCH = int(os.environ.get("SAGE_RECALL_INDEX_BATCH", "4"))  # embeds per indexing pass; small so a pass doesn't starve the heartbeat (e5 is slow, ~5s/embed)
+RECALL_INDEX_BATCH = int(os.environ.get("SAGE_RECALL_INDEX_BATCH", "12"))  # embeds per indexing pass; e5 is GPU-fast now (~2s/embed) so a larger batch drains the backlog in minutes
 RECALL_EMBED_SLEEP = 0.15          # seconds between sequential embeds while indexing
 RECALL_REFLECTION_BACKFILL = int(os.environ.get("SAGE_RECALL_REFL_BACKFILL", "500"))  # only index the most recent N reflections
-RECALL_EMBED_MAX_CHARS = int(os.environ.get("SAGE_RECALL_EMBED_MAX_CHARS", "256"))  # cap text sent to e5 per embed; this box's e5 is ~0.08s/token, so ~256 chars (~60 tok) keeps an embed near ~5s
+RECALL_EMBED_MAX_CHARS = int(os.environ.get("SAGE_RECALL_EMBED_MAX_CHARS", "1000"))  # cap text sent to e5 per embed; e5 on GPU handles ~1000 chars in ~2s, matching the stored index text length
 RECALL_INDEX_MAX_FAILS = int(os.environ.get("SAGE_RECALL_INDEX_MAX_FAILS", "3"))  # consecutive embed failures before a reindex pass bails (e5 likely down)
-RECALL_INDEX_READ_TIMEOUT = float(os.environ.get("SAGE_RECALL_INDEX_READ_TIMEOUT", "20"))  # background indexer can wait longer than the chat path (e5 is slow on longer inputs)
+RECALL_INDEX_READ_TIMEOUT = float(os.environ.get("SAGE_RECALL_INDEX_READ_TIMEOUT", "12"))  # background indexer read ceiling; generous margin over the ~2s GPU embed
 
 # Curiosity Novelty Gate (Phase 2.2 / 2.2b)
 NOVELTY_GATE_ENABLED = True
