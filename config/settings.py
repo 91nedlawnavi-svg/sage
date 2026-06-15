@@ -53,6 +53,8 @@ RECALL_RECENT_HOURS = MEMBRANE_RECENCY_HOURS  # reflections newer than this are 
 RECALL_INDEX_BATCH = 8             # max embeds per indexing pass — throttles the e5 sequential-hang quirk
 RECALL_EMBED_SLEEP = 0.15          # seconds between sequential embeds while indexing
 RECALL_REFLECTION_BACKFILL = int(os.environ.get("SAGE_RECALL_REFL_BACKFILL", "500"))  # only index the most recent N reflections
+RECALL_EMBED_MAX_CHARS = int(os.environ.get("SAGE_RECALL_EMBED_MAX_CHARS", "800"))  # cap text sent to e5 per embed — long turns/pastes blow past e5's fast path and time out
+RECALL_INDEX_MAX_FAILS = int(os.environ.get("SAGE_RECALL_INDEX_MAX_FAILS", "3"))  # consecutive embed failures before a reindex pass bails (e5 likely down)
 
 # Curiosity Novelty Gate (Phase 2.2 / 2.2b)
 NOVELTY_GATE_ENABLED = True

@@ -38,6 +38,8 @@ from config.settings import (
     RECALL_RECENT_HOURS,
     RECALL_INDEX_BATCH,
     RECALL_EMBED_SLEEP,
+    RECALL_EMBED_MAX_CHARS,
+    RECALL_INDEX_MAX_FAILS,
     RECALL_REFLECTION_BACKFILL,
     CONVERSATION_PATH,
     REFLECTIONS_PATH,
@@ -103,6 +105,10 @@ async def _embed(text: str, client: httpx.AsyncClient | None) -> list[float] | N
     text = (text or "").strip()
     if not text:
         return None
+    # Cap input length: long turns (e.g. pasted logs) and long queries blow past
+    # e5's fast path and trigger ReadTimeouts. The gist lives in the first ~200
+    # tokens, which is all recall needs.
+    text = text[:RECALL_EMBED_MAX_CHARS]
     timeout = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=2.0)
     try:
         if client is None:
@@ -188,10 +194,22 @@ async def reindex(client: httpx.AsyncClient | None, batch: int | None = None) ->
             return 0
         limit = batch if batch is not None else RECALL_INDEX_BATCH
         done = 0
+        fails = 0
         for item in pending[:limit]:
             emb = await _embed(item["text"], client)
             if emb is None:
-                break  # e5 down — bail, retry next pass
+                # One slow/oversized item must not wedge the whole backlog. Skip
+                # it and try the next; bail only when e5 looks genuinely down
+                # (several embeds failing back-to-back).
+                fails += 1
+                if fails >= RECALL_INDEX_MAX_FAILS:
+                    warning(
+                        f"semantic_recall/reindex: bailing after {fails} "
+                        "consecutive embed failures (e5 unreachable?)"
+                    )
+                    break
+                continue
+            fails = 0
             entry = {
                 "key": item["key"],
                 "kind": item["kind"],
