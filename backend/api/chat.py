@@ -7,6 +7,7 @@ from models.inference.engine import chat_stream
 from models.prompts.templates import build_chat_messages
 from backend.session import session
 from memory.conversation_log import append_message, rotate_log
+from memory import semantic_recall
 
 router = APIRouter()
 
@@ -26,10 +27,15 @@ async def chat_endpoint(request: ChatRequest):
     # Get directive (fails fast if missing/empty)
     directive = get_directive()
 
-    # Build messages with history
-    messages = build_chat_messages(directive, request.message, session.history())
-
     from backend.app import http_client
+
+    # Phase 4 Layer 1: recall relevant older conversation + reflections by meaning
+    recall_block = await semantic_recall.recall(request.message, http_client)
+
+    # Build messages with history (+ recalled long-term memory)
+    messages = build_chat_messages(
+        directive, request.message, session.history(), recall_block=recall_block
+    )
 
     async def token_stream():
         full_reply = ""

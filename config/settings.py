@@ -40,6 +40,20 @@ MEMBRANE_RECENCY_HOURS = 72
 # Conversation log (Phase 4 Layer 0)
 CONVERSATION_PATH = BASE_DIR / "conversation.jsonl"
 
+# Semantic recall (Phase 4 Layer 1) — relevance-based memory of older
+# conversation turns + reflections that have scrolled out of the context window.
+RECALL_ENABLED = os.environ.get("SAGE_RECALL_ENABLED", "1").lower() in ("1", "true", "yes")
+RECALL_INDEX_PATH = BASE_DIR / "recall_index.jsonl"
+RECALL_TOP_K = int(os.environ.get("SAGE_RECALL_TOP_K", "4"))          # max items injected per turn
+RECALL_MIN_SIM = float(os.environ.get("SAGE_RECALL_MIN_SIM", "0.70"))  # cosine floor to count as relevant
+RECALL_MAX_CHARS = 2200            # char budget for the injected recall block
+RECALL_MIN_CHARS = 24              # skip trivially short texts (indexing and querying)
+RECALL_RECENT_EXCLUDE_TURNS = 24   # skip the N most recent conversation messages (already in the live window)
+RECALL_RECENT_HOURS = MEMBRANE_RECENCY_HOURS  # reflections newer than this are already shown by the Membrane
+RECALL_INDEX_BATCH = 8             # max embeds per indexing pass — throttles the e5 sequential-hang quirk
+RECALL_EMBED_SLEEP = 0.15          # seconds between sequential embeds while indexing
+RECALL_REFLECTION_BACKFILL = int(os.environ.get("SAGE_RECALL_REFL_BACKFILL", "500"))  # only index the most recent N reflections
+
 # Curiosity Novelty Gate (Phase 2.2 / 2.2b)
 NOVELTY_GATE_ENABLED = True
 NOVELTY_WINDOW = 12

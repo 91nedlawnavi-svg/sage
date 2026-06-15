@@ -11,6 +11,7 @@ from utils.logger import info, error
 from memory.reflection_log import read_recent
 from memory.findings_log import read_recent as read_recent_findings
 from memory.conversation_log import load_all
+from memory import semantic_recall
 from backend.session import session
 
 # Frontend static file serving
@@ -51,6 +52,14 @@ async def lifespan(app: FastAPI):
     # Create shared HTTP client
     http_client = httpx.AsyncClient()
     info("HTTP client created")
+
+    # Phase 4 Layer 1: warm the semantic-recall index with one throttled batch;
+    # the heartbeat drains the rest of the backlog over subsequent beats.
+    try:
+        indexed = await semantic_recall.reindex(http_client)
+        info(f"Semantic recall index warmed: +{indexed} this pass")
+    except Exception as e:
+        error(f"Semantic recall warm-up failed: {e}")
 
     # Start heartbeat
     heartbeat = Heartbeat(http_client)

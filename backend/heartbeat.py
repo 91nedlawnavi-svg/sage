@@ -17,6 +17,7 @@ from cognition.curiosity import extract_query
 from cognition.novelty_gate import gate as novelty_gate
 from memory.reflection_log import append_reflection
 from memory.findings_log import append_finding
+from memory import semantic_recall
 from backend.session import session
 from utils.logger import info, warning, log
 
@@ -89,6 +90,11 @@ class Heartbeat:
             except Exception as e:
                 # Loop must never die on a single bad beat
                 warning(f"Heartbeat beat error: {e}")
+            # Phase 4 L1: keep the semantic-recall index warm (throttled batch)
+            try:
+                await semantic_recall.reindex(self._client)
+            except Exception as e:
+                warning(f"Recall index error: {e}")
             await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
 
     async def _maybe_reflect(self):

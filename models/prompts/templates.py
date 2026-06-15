@@ -20,7 +20,7 @@ CHAT_COMPORTMENT = (
 )
 
 
-def build_chat_messages(directive: str, user_input: str, history: list[dict]) -> list[dict]:
+def build_chat_messages(directive: str, user_input: str, history: list[dict], recall_block: str | None = None) -> list[dict]:
     """Build messages for chat completion with directive-first system prompt."""
     # Time context
     time_context = f"[Current date and time: {datetime.now():%A, %B %d, %Y at %I:%M %p}]"
@@ -39,6 +39,11 @@ def build_chat_messages(directive: str, user_input: str, history: list[dict]) ->
     if inner_context:
         parts.append("\n\n")
         parts.append(inner_context)
+
+    # Phase 4 Layer 1: relevant older conversation + reflections, recalled by meaning
+    if recall_block:
+        parts.append("\n\n")
+        parts.append(recall_block)
 
     parts.append("\n\n")
     parts.append("[ELLIOT'S MEMORY — extension point]")
