@@ -41,6 +41,20 @@ from utils.logger import log, warning
 # the same way RECALL_INDEX_BATCH throttles the recall indexer.
 BUILD_BATCH = 12
 
+# Interior reflections are long -- a 12-bite extraction can exceed the
+# heartbeat's 45s wait_for ceiling (and sometimes even NIM's 180s read
+# timeout), so the pass gets cancelled and makes no progress. Keep interior
+# bites small so each pass finishes comfortably under the leash. Relational
+# turns are short and stay at the default.
+BUILD_BATCH_BY_NOTEBOOK = {
+    "interior": 3,
+}
+
+
+def _batch_for(notebook: str) -> int:
+    return BUILD_BATCH_BY_NOTEBOOK.get(notebook, BUILD_BATCH)
+
+
 NOTEBOOKS = ("relational", "interior")
 
 
@@ -197,10 +211,10 @@ async def run(client, *, notebook: str | None = None, batch: int | None = None) 
     """
     if not KNOWLEDGE_ENABLED:
         return 0
-    limit = batch if batch is not None else BUILD_BATCH
     targets = [notebook] if notebook else list(NOTEBOOKS)
     total = 0
     for nb in targets:
+        limit = batch if batch is not None else _batch_for(nb)
         try:
             total += await _run_one(nb, client, limit)
         except Exception as exc:
