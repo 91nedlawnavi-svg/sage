@@ -4,7 +4,7 @@ Pulls Sage's own persisted reflections and findings and formats them
 into a clearly-delimited block for injection into the chat prompt.
 """
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from config.settings import (
     MEMBRANE_ENABLED,
@@ -37,10 +37,15 @@ def _read_jsonl_safe(path: Path) -> list[dict]:
 
 
 def _filter_recent(entries: list[dict], hours: int) -> list[dict]:
-    """Filter entries to only those within the recency window."""
+    """Filter entries to only those within the recency window.
+
+    Handles naive ISO timestamps (treated as UTC), UTC-with-Z, and
+    offset-aware timestamps (converted to UTC before comparison).
+    Never raises — malformed timestamps are silently skipped.
+    """
     if not entries:
         return []
-    cutoff = datetime.now() - timedelta(hours=hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     recent = []
     for e in entries:
         ts_str = e.get("ts", "")
@@ -48,6 +53,10 @@ def _filter_recent(entries: list[dict], hours: int) -> list[dict]:
             continue
         try:
             ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            else:
+                ts = ts.astimezone(timezone.utc)
             if ts >= cutoff:
                 recent.append(e)
         except Exception:
