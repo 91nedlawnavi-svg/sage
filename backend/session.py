@@ -15,10 +15,35 @@ class ConversationSession:
         self._turns: list[dict] = []
         # Track last user activity for heartbeat idle detection
         self._last_user_activity_ts: float = time.time()
+        # Track in-flight chat requests so heartbeat knows not to run
+        self._active_chats: int = 0
 
     def append(self, role: str, content: str):
         """Append a turn to the conversation."""
         self._turns.append({"role": role, "content": content})
+
+    def begin_chat(self):
+        """Record the start of an active chat request.
+
+        Immediately marks user activity so heartbeat sees recent activity,
+        then increments the active-chat counter so heartbeat knows to skip
+        private reflection while Sage is replying.
+        """
+        self.touch()
+        self._active_chats += 1
+
+    def end_chat(self):
+        """Record the end of an active chat request.
+
+        Decrements the active-chat counter, never below zero, so a chain of
+        end-calls from unclean shutdowns cannot corrupt the state.
+        """
+        if self._active_chats > 0:
+            self._active_chats -= 1
+
+    def chat_active(self) -> bool:
+        """Return True while a chat request is in flight."""
+        return self._active_chats > 0
 
     def history(self) -> list[dict]:
         """Return the last HISTORY_TURNS*2 messages for context."""

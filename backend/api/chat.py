@@ -32,30 +32,41 @@ async def chat_endpoint(request: ChatRequest):
     # Phase 4 Layer 1: recall relevant older conversation + reflections by meaning
     recall_block = await semantic_recall.recall(request.message, http_client)
 
+    # Mark user activity NOW so heartbeat knows someone just interacted.
+    # IMPORTANT: build messages uses session.history() which does NOT include
+    # the current message yet — user_input=request.message is appended as the
+    # final message by build_chat_messages itself. So we snapshot history before
+    # persisting the current user message, avoiding duplication.
+    session.begin_chat()
+
     # Build messages with history (+ recalled long-term memory)
     messages = build_chat_messages(
         directive, request.message, session.history(), recall_block=recall_block
     )
 
+    # Persist user message BEFORE streaming so it survives assistant failure.
+    # session.begin_chat() already updated the activity timestamp.
+    append_message("user", request.message)
+    session.append("user", request.message)
+
     async def token_stream():
         full_reply = ""
-        async for token in chat_stream(messages, http_client):
-            full_reply += token
-            yield token
-
-        # Persist only after a complete generation. If the client disconnects
-        # mid-stream, GeneratorExit is raised here and we skip persisting a
-        # half-delivered turn.
-        if full_reply:
-            # Mark user activity for heartbeat
-            session.touch()
-            # Persist to conversation log BEFORE appending to session
-            # (so if session append fails, the log is already safe)
-            append_message("user", request.message)
-            append_message("assistant", full_reply)
-            # Append turns to session
-            session.append("user", request.message)
-            session.append("assistant", full_reply)
+        completed = False
+        try:
+            async for token in chat_stream(messages, http_client):
+                full_reply += token
+                yield token
+            completed = True
+        finally:
+            # Persist assistant only after a complete generation. If the client
+            # disconnects mid-stream, GeneratorExit is raised inside the try
+            # block, completed stays False, and we skip persisting a
+            # half-delivered turn.
+            if full_reply and completed:
+                append_message("assistant", full_reply)
+                session.append("assistant", full_reply)
+            # Always decrement the active-chat counter, even on disconnect
+            session.end_chat()
 
     return StreamingResponse(
         token_stream(),

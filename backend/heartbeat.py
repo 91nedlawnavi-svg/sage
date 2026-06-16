@@ -143,6 +143,12 @@ class Heartbeat:
         if self._lock.locked():
             return
 
+        # Active chat gate: never reflect while Sage is replying to Elliot.
+        # This prevents the heartbeat from seeing stale idle_seconds and
+        # starting private reflection mid-conversation.
+        if session.chat_active():
+            return
+
         # Idle gate: only reflect when actually left alone
         idle = session.idle_seconds()
         if idle < REFLECTION_MIN_IDLE_SECONDS:
