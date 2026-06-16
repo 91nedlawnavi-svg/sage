@@ -82,24 +82,27 @@ class NoveltyGate:
     async def embed(self, text: str, client: httpx.AsyncClient | None = None) -> list[float] | None:
         """Embed text via e5 on 127.0.0.1:8081.
 
-        Returns a 4096-d vector or None on any failure (unreachable, bad
-        response, etc.).
+        Returns a 1024-d vector or None on any failure (unreachable, bad
+        response, etc.). The gate only ever compares these vectors against each
+        other (buffer / centroids), so it applies the e5 "query: " prefix
+        uniformly — consistency matters here, not query/passage roles.
         """
         if not text.strip():
             return None
+        payload = "query: " + text.strip()
         try:
             if client is None:
                 async with httpx.AsyncClient(timeout=5.0) as c:
-                    resp = await c.post(E5_EMBED_URL, json={"content": text.strip()})
+                    resp = await c.post(E5_EMBED_URL, json={"content": payload})
             else:
                 resp = await client.post(
                     E5_EMBED_URL,
-                    json={"content": text.strip()},
+                    json={"content": payload},
                     timeout=httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=2.0),
                 )
             resp.raise_for_status()
             data = resp.json()
-            # Expected shape: [{"index":0, "embedding":[[4096 floats]]}]
+            # Expected shape: [{"index":0, "embedding":[[1024 floats]]}]
             return data[0]["embedding"][0]
         except Exception as exc:
             warning(f"novelty_gate/embed: {type(exc).__name__}: {exc}")

@@ -103,15 +103,17 @@ def _append_index(entry: dict) -> None:
 
 # ── embedding ──────────────────────────────────────────────
 async def _embed(
-    text: str, client: httpx.AsyncClient | None, read_timeout: float = 10.0
+    text: str, client: httpx.AsyncClient | None, read_timeout: float = 10.0,
+    prefix: str = "query: ",
 ) -> list[float] | None:
     text = (text or "").strip()
     if not text:
         return None
-    # Cap input length: this box's e5 is slow (~0.08s/token), so long turns and
-    # pasted logs blow past the read timeout. ~256 chars (~60 tokens) keeps an
-    # embed near ~5s — the first-token vector we use captures the gist anyway.
-    text = text[:RECALL_EMBED_MAX_CHARS]
+    # Cap input length, then apply the e5 task prefix. e5-large-v2 is trained to
+    # expect "query: " on search queries and "passage: " on indexed documents;
+    # omitting them measurably degrades retrieval. The cap keeps inputs within
+    # the model's 512-token window (e5-large-v2 on GPU embeds in ~0.05s).
+    text = prefix + text[:RECALL_EMBED_MAX_CHARS]
     timeout = httpx.Timeout(connect=5.0, read=read_timeout, write=5.0, pool=2.0)
     try:
         if client is None:
@@ -121,7 +123,7 @@ async def _embed(
             resp = await client.post(E5_EMBED_URL, json={"content": text}, timeout=timeout)
         resp.raise_for_status()
         data = resp.json()
-        # e5 (llama-server) shape: [{"index": 0, "embedding": [[...4096 floats...]]}]
+        # e5 (llama-server) shape: [{"index": 0, "embedding": [[...1024 floats...]]}]
         return data[0]["embedding"][0]
     except Exception as exc:
         warning(f"semantic_recall/embed: {type(exc).__name__}: {exc}")
@@ -199,7 +201,7 @@ async def reindex(client: httpx.AsyncClient | None, batch: int | None = None) ->
         done = 0
         fails = 0
         for item in pending[:limit]:
-            emb = await _embed(item["text"], client, read_timeout=RECALL_INDEX_READ_TIMEOUT)
+            emb = await _embed(item["text"], client, read_timeout=RECALL_INDEX_READ_TIMEOUT, prefix="passage: ")
             if emb is None:
                 # One slow/oversized item must not wedge the whole backlog. Skip
                 # it and try the next; bail only when e5 looks genuinely down
@@ -311,7 +313,7 @@ async def recall(query_text: str, client: httpx.AsyncClient | None) -> str | Non
         if not _index:
             return None
 
-        q_emb = await _embed(q, client)
+        q_emb = await _embed(q, client, prefix="query: ")
         if q_emb is None:
             return None
 
