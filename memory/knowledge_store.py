@@ -174,6 +174,49 @@ def append_relation(
     _append_line(relation_path, entry)
 
 
+# ── Elliot correction helper ──────────────────────────────────────────
+
+def correct_relation(
+    notebook: str,
+    *,
+    subject_id: str,
+    predicate: str,
+    object_value: str,
+    object_kind: str = "literal",
+    provenance: list[str] | None = None,
+    confidence: float = 1.0,
+    locked: bool = True,
+) -> str | None:
+    """Append an Elliot-authored correction to *notebook*.
+
+    Computes the relation id via ``make_relation_id``, stamps
+    ``origin="elliot"`` and ``locked=True`` (by default), and appends an
+    append-only record.  Returns the relation id on success, or ``None`` on
+    any failure (unknown notebook, invalid kind, etc.).
+
+    This is the intended way for Elliot to correct a stale or wrong fact:
+    the correction is just another append-only record with higher authority;
+    reconcile picks the winner without deleting or mutating prior records.
+    """
+    try:
+        rid = make_relation_id(subject_id, predicate, object_value)
+        append_relation(
+            notebook,
+            id=rid,
+            subject_id=subject_id,
+            predicate=predicate,
+            object_value=object_value,
+            object_kind=object_kind,
+            provenance=provenance,
+            confidence=confidence,
+            origin="elliot",
+            locked=locked,
+        )
+        return rid
+    except Exception:
+        return None
+
+
 # ── Load functions (safe, return [] on failure) ────────────────────
 
 def _read_jsonl_safe(path: Path) -> list[dict]:
