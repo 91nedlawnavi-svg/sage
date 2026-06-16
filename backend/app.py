@@ -70,6 +70,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     if heartbeat:
         heartbeat.stop()
+        await heartbeat.aclose()
     if http_client:
         await http_client.aclose()
         info("HTTP client closed")
