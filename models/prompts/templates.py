@@ -48,8 +48,9 @@ def build_chat_messages(directive: str, user_input: str, history: list[dict], re
 
     # Phase 4 Layer 2: durable facts (reconciled relational notebook). Gated by
     # KNOWLEDGE_ENABLED; pure disk read, no NIM/embeddings; None when off/empty.
+    # Targeted to the current user message so only relevant facts surface.
     parts.append("\n\n")
-    knowledge_block = build_knowledge_block()
+    knowledge_block = build_knowledge_block(user_input=user_input)
     if knowledge_block:
         parts.append(knowledge_block)
     else:
