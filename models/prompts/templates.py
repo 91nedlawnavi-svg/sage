@@ -2,6 +2,7 @@ import random
 from datetime import datetime
 from config.settings import HISTORY_TURNS
 from cognition.inner_context import select_inner_context
+from cognition.knowledge_surface import build_knowledge_block
 
 
 # Conversational comportment — chat voice ONLY (never applied to reflection).
@@ -45,8 +46,14 @@ def build_chat_messages(directive: str, user_input: str, history: list[dict], re
         parts.append("\n\n")
         parts.append(recall_block)
 
+    # Phase 4 Layer 2: durable facts (reconciled relational notebook). Gated by
+    # KNOWLEDGE_ENABLED; pure disk read, no NIM/embeddings; None when off/empty.
     parts.append("\n\n")
-    parts.append("[ELLIOT'S MEMORY — extension point]")
+    knowledge_block = build_knowledge_block()
+    if knowledge_block:
+        parts.append(knowledge_block)
+    else:
+        parts.append("[ELLIOT'S MEMORY — extension point]")
     parts.append("\n")
     parts.append("[SEARCH BLOCKS — extension point]")
 
