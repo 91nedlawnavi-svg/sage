@@ -11,6 +11,7 @@ This is a personal project. Architecture (the "brain") and implementation (the "
 - **Novelty gate** — keeps reflection from collapsing into a single attractor; forces divergence when she loops.
 - **The Membrane** — recent reflections and findings feed back into chat, so her own inner life informs how she responds.
 - **Memory** — conversation, reflections, and findings persist as append-only JSONL (atomic writes) and survive restarts.
+- **Semantic recall** — a local e5-large-v2 embedder indexes the full conversation + reflection archive (1024-dim vectors); relevant past moments are retrieved by similarity and surfaced into chat as a `[RECALLED FROM EARLIER]` block.
 - **Web search** — via a local SearXNG instance, with a Wikipedia/Wikidata fallback for when the public engines rate-limit.
 - **Frontend** — a single-file web UI: chat plus a slide-in drawer showing her reflections and findings.
 
@@ -25,7 +26,7 @@ This is a personal project. Architecture (the "brain") and implementation (the "
 - `backend/api/chat.py`, `backend/session.py` — chat endpoint + session.
 - `backend/heartbeat.py` — idle reflection + cooldown-gated autonomous search.
 - `cognition/` — `reflection.py`, `curiosity.py`, `novelty_gate.py`, `inner_context.py` (Membrane), `web_search.py`.
-- `memory/` — `conversation_log.py`, `reflection_log.py`, `findings_log.py` (JSONL at `~/sage_data/`).
+- `memory/` — `conversation_log.py`, `reflection_log.py`, `findings_log.py`, `semantic_recall.py` (JSONL at `~/sage_data/`; recall index at `recall_index.jsonl`).
 - `frontend/index.html` — chat UI + inner-life drawer.
 
 ## Endpoints
@@ -43,7 +44,7 @@ This is a personal project. Architecture (the "brain") and implementation (the "
 - Python 3.11+ and the packages in `requirements.txt`.
 - `NVIDIA_API_KEY` for NIM inference.
 - A local **SearXNG** instance on `:8080` with JSON format enabled (autonomous search).
-- A local **e5 embedder** on `:8081` (`llama-embedder.service`) — used from the semantic-recall phase onward.
+- A local **e5-large-v2 embedder** on `:8081` (`llama-embedder.service`, llama.cpp / Vulkan) — 1024-dim, used for semantic recall.
 
 ## Run
 
@@ -68,4 +69,4 @@ journalctl --user -u sage -f     # logs
 
 ## Status
 
-Phases 0–3 and Phase 4 Layer 0 are complete: spine, autonomous reflection, self-originated curiosity + search, novelty gate, the Membrane, and the memory foundation. Next is **Phase 4 Layer 1 — semantic recall** (embeddings over the full archive). See `CLAUDE.md` for the full phase log and build conventions.
+Phases 0–3 and Phase 4 Layers 0–1 are complete: spine, autonomous reflection, self-originated curiosity + search, novelty gate, the Membrane, the memory foundation, and **semantic recall** (e5-large-v2 embeddings over the full archive, surfaced into chat). In progress: **Phase 4 Layer 2 — the people-graph / knowledge layer** (structured facts Sage knows, surfaced as `[WHAT YOU KNOW]`). See `CLAUDE.md` for the full phase log and build conventions.
