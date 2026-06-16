@@ -18,6 +18,7 @@ from cognition.novelty_gate import gate as novelty_gate
 from memory.reflection_log import append_reflection
 from memory.findings_log import append_finding
 from memory import semantic_recall
+from cognition import knowledge_builder
 from backend.session import session
 from utils.logger import info, warning, log
 
@@ -95,6 +96,11 @@ class Heartbeat:
                 await semantic_recall.reindex(self._client)
             except Exception as e:
                 warning(f"Recall index error: {e}")
+            # Phase 4 L2: build derived knowledge notebooks (gated, throttled)
+            try:
+                await knowledge_builder.run(self._client)
+            except Exception as e:
+                warning(f"Knowledge build error: {e}")
             await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
 
     async def _maybe_reflect(self):

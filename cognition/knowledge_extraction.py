@@ -270,7 +270,9 @@ def candidates_from_parsed(
 async def extract_from_turns(turns, client, *, notebook: str = "relational"):
     """Run one extraction pass over a batch of source records.
 
-    Returns (entity_records, relation_records). Empty on any failure. Does not
+    Returns (entity_records, relation_records) when the model replied (the lists
+    may be empty if no durable facts were found), or None on a model/infra
+    failure so callers can retry without marking these turns processed. Does not
     persist -- call persist_candidates() to write.
     """
     if not turns:
@@ -278,7 +280,7 @@ async def extract_from_turns(turns, client, *, notebook: str = "relational"):
     try:
         from models.inference.engine import nim_complete  # lazy: avoids httpx at import
     except Exception:
-        return [], []
+        return None
     system, user = build_extraction_prompt(turns, notebook=notebook)
     try:
         raw = await nim_complete(
@@ -289,7 +291,9 @@ async def extract_from_turns(turns, client, *, notebook: str = "relational"):
             max_tokens=EXTRACTION_MAX_TOKENS,
         )
     except Exception:
-        return [], []
+        return None
+    if raw is None:
+        return None
     parsed = parse_extraction(raw)
     source_keys = [t.get("id") for t in turns if t.get("id")]
     return candidates_from_parsed(
