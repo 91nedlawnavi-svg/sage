@@ -24,6 +24,11 @@ Sage is a local, always-on AI companion running on Elliot's machine. She is buil
 - `cognition/inner_context.py` — the Membrane: injects recent reflections + findings into chat context.
 - `cognition/web_search.py` — SearXNG client (results + Wikipedia/Wikidata infobox fallback).
 - `memory/{conversation_log,reflection_log,findings_log}.py` — append-only JSONL at `~/sage_data/`, atomic tmp→rename.
+- `memory/knowledge_store.py` — structured entity/relation append-only store (Phase 4 L2).
+- `cognition/knowledge_extraction.py` — LLM-driven entity+relation extraction from turns.
+- `cognition/knowledge_builder.py` — heartbeat-driven extraction loop, per-notebook cursor.
+- `cognition/knowledge_reconcile.py` — e5-based entity resolution + sticky lock support.
+- `cognition/knowledge_surface.py` — renders `[WHAT YOU KNOW]` block for chat context.
 - `frontend/index.html` — single-file chat UI + slide-in Reflections/Findings drawer.
 
 ### External dependencies (must stay alive)
@@ -120,4 +125,9 @@ Rules for every felt-test / completion report:
 - **Phase 4 Layer 0 — COMPLETE** (`phase4.0-complete`). Memory foundation: durable JSONL state + session hydration on boot.
 - **Frontend v2 — shipped** (`frontend-v2`, fix `6ed5bec`). Chat + inner-life drawer, history persistence, send-button UX.
 - **In flight.** `web_search` Wikipedia infobox fallback + SearXNG engine tidy (fix, no tag).
-- **NEXT — Phase 4 Layer 1: semantic recall.** e5 embeddings (`:8081`) over the archive, so recall isn't just the recent slice. Then Layer 2.
+- **Phase 4 Layer 1 — COMPLETE** (`phase4.1-complete`). Semantic recall via e5-large-v2 (`:8081`) over the full conversation + reflection archive, surfaced as `[RECALLED FROM EARLIER]`.
+- **Phase 4 Layer 2 — IN PROGRESS.** Store/extraction/builder/reconcile/basic `[WHAT YOU KNOW]` surfacing all exist but are **gated off by default** (`SAGE_KNOWLEDGE_ENABLED=0`). **Not signed off.** Known blockers / next work:
+  - Targeted `[WHAT YOU KNOW]` surfacing keyed by entities in the incoming message.
+  - Personal-fact recall boost so these facts beat merely topical recall.
+  - Correction path / locked-fact felt-test.
+  - Full L2 felt-test proving personal facts surface and win over topical recall.

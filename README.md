@@ -12,6 +12,7 @@ This is a personal project. Architecture (the "brain") and implementation (the "
 - **The Membrane** — recent reflections and findings feed back into chat, so her own inner life informs how she responds.
 - **Memory** — conversation, reflections, and findings persist as append-only JSONL (atomic writes) and survive restarts.
 - **Semantic recall** — a local e5-large-v2 embedder indexes the full conversation + reflection archive (1024-dim vectors); relevant past moments are retrieved by similarity and surfaced into chat as a `[RECALLED FROM EARLIER]` block.
+- **Knowledge layer (Phase 4 L2)** — structured entity/relation store, LLM-driven extraction, `[WHAT YOU KNOW]` surfacing via the heartbeat. Code exists but is **gated off** by default (`SAGE_KNOWLEDGE_ENABLED=0`); not yet signed off.
 - **Web search** — via a local SearXNG instance, with a Wikipedia/Wikidata fallback for when the public engines rate-limit.
 - **Frontend** — a single-file web UI: chat plus a slide-in drawer showing her reflections and findings.
 
@@ -69,4 +70,4 @@ journalctl --user -u sage -f     # logs
 
 ## Status
 
-Phases 0–3 and Phase 4 Layers 0–1 are complete: spine, autonomous reflection, self-originated curiosity + search, novelty gate, the Membrane, the memory foundation, and **semantic recall** (e5-large-v2 embeddings over the full archive, surfaced into chat). In progress: **Phase 4 Layer 2 — the people-graph / knowledge layer** (structured facts Sage knows, surfaced as `[WHAT YOU KNOW]`). See `CLAUDE.md` for the full phase log and build conventions.
+Phases 0–3 and Phase 4 Layers 0–1 are complete: spine, autonomous reflection, self-originated curiosity + search, novelty gate, the Membrane, the memory foundation, and **semantic recall** (e5-large-v2 embeddings over the full archive, surfaced into chat). **Phase 4 Layer 2 — the knowledge layer** (structured entity/relation store, heartbeat-driven extraction, `[WHAT YOU KNOW]` surfacing) exists in code but is **gated off** by default (`SAGE_KNOWLEDGE_ENABLED=0`) and **not yet signed off**. The next milestone is making personal facts surface consistently and win over merely topical recall. See `CLAUDE.md` for the full phase log and build conventions.
