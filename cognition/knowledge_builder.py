@@ -180,8 +180,9 @@ async def _run_one(notebook: str, client, batch: int) -> int:
     chunk = pending[:batch]
     result = await extract_from_turns(chunk, client, notebook=notebook)
     if result is None:
-        # Model/infra unavailable -- leave the cursor untouched and retry next
-        # beat. Do NOT mark these turns processed.
+        # Model/infra unavailable OR malformed extraction output -- leave the
+        # cursor untouched and retry next beat. Do NOT mark these turns
+        # processed.
         return 0
 
     entities, relations = result
@@ -292,6 +293,21 @@ if __name__ == "__main__":
         n4 = await run(None, notebook="relational")
         assert n4 == 1, f"expected 1 on recovery, got {n4}"
         assert "user_3" in _load_cursor("relational")
+
+        # Valid empty extraction: extractor returns ([], []) -> cursor MUST
+        # advance (the model replied, it just found nothing durable).
+        with open(conv, "a") as f:
+            f.write(json.dumps({"id": "user_4", "role": "user", "content": "Pass the salt.", "ts": "t5"}) + "\n")
+
+        async def _fake_empty(turns, client, *, notebook="relational"):
+            return [], []
+
+        extract_from_turns = _fake_empty
+        n5 = await run(None, notebook="relational")
+        assert n5 == 1, f"expected 1 on valid empty extraction, got {n5}"
+        assert "user_4" in _load_cursor("relational"), "cursor should advance on valid empty!"
+        # No new relations persisted by the empty extraction (still at 2 from _fake_ok runs)
+        assert len(ks.load_relations("relational")) == 2
 
         print("OK")
 

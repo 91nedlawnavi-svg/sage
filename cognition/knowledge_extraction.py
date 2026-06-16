@@ -13,10 +13,9 @@ Scope of THIS module (extraction only):
     or any heartbeat wiring -- those are later sub-steps. Nothing here is
     imported by the live app yet; the module is inert until wired in.
 
-Everything degrades silently: a model failure or unparseable output yields
-empty candidate lists, never an exception. nim_complete is imported lazily
-inside the async orchestrator so this module stays importable (and testable)
-without httpx present.
+Everything degrades silently: a model failure or unparseable output returns
+None so callers can retry without advancing their cursor; structurally valid
+but empty extractions produce empty candidate lists.
 """
 
 from __future__ import annotations
@@ -26,6 +25,7 @@ import re
 from typing import Any
 
 from memory.knowledge_store import make_entity_id, make_relation_id
+from utils.logger import warning
 
 # Entity types we recognize; anything else collapses to "topic".
 VALID_ENTITY_TYPES = ("person", "place", "project", "org", "topic", "event")
@@ -147,10 +147,22 @@ def build_extraction_prompt(turns: list[dict], *, notebook: str = "relational") 
 
 # ── parsing ────────────────────────────────────────────
 
-def parse_extraction(raw: str | None) -> dict:
-    """Robustly pull the JSON object out of a model reply. {} on any failure."""
+def parse_extraction(raw: str | None) -> dict | None:
+    """Parse and validate the model's JSON extraction output.
+
+    Returns the parsed dict on success (including valid empty extractions like
+    ``{"entities": [], "relations": []}``), or **None** when the output is
+    malformed — invalid JSON, not a dict, missing required keys, or wrong
+    value types. Callers should treat None as a retryable failure and must NOT
+    advance any processing cursor.
+
+    Validation requirements:
+    - top-level value must be a dict
+    - must contain both ``"entities"`` and ``"relations"`` keys
+    - both values must be lists
+    """
     if not raw:
-        return {}
+        return None
     text = raw.strip()
     if text.startswith("```"):
         text = re.sub(r"^```[a-zA-Z0-9]*\s*", "", text)
@@ -158,12 +170,18 @@ def parse_extraction(raw: str | None) -> dict:
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end == -1 or end <= start:
-        return {}
+        return None
     try:
         data = json.loads(text[start : end + 1])
     except (json.JSONDecodeError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+        return None
+    if not isinstance(data, dict):
+        return None
+    if "entities" not in data or "relations" not in data:
+        return None
+    if not isinstance(data["entities"], list) or not isinstance(data["relations"], list):
+        return None
+    return data
 
 
 # ── candidate shaping ──────────────────────────────────────
@@ -271,9 +289,13 @@ async def extract_from_turns(turns, client, *, notebook: str = "relational"):
     """Run one extraction pass over a batch of source records.
 
     Returns (entity_records, relation_records) when the model replied (the lists
-    may be empty if no durable facts were found), or None on a model/infra
-    failure so callers can retry without marking these turns processed. Does not
-    persist -- call persist_candidates() to write.
+    may be empty if no durable facts were found), or None when:
+    - the model/infra failed (``nim_complete`` returned None or raised)
+    - the model returned malformed output (invalid JSON or wrong shape)
+
+    Callers must treat None as a retryable failure and NOT mark these turns as
+    processed, so they are re-tried on the next beat. Does not persist — call
+    persist_candidates() to write.
     """
     if not turns:
         return [], []
@@ -295,6 +317,10 @@ async def extract_from_turns(turns, client, *, notebook: str = "relational"):
     if raw is None:
         return None
     parsed = parse_extraction(raw)
+    if parsed is None:
+        preview = (raw or "")[:200]
+        warning("knowledge_extraction: malformed model output; will retry", preview=preview)
+        return None
     source_keys = [t.get("id") for t in turns if t.get("id")]
     return candidates_from_parsed(
         parsed, source_keys, anchor_elliot=(notebook == "relational")
@@ -347,9 +373,20 @@ if __name__ == "__main__":
     # 1) parser tolerates code fences + surrounding prose
     fenced = '```json\n{"entities": [], "relations": []}\n```'
     assert parse_extraction(fenced) == {"entities": [], "relations": []}
-    assert parse_extraction("garbage no json") == {}
-    assert parse_extraction(None) == {}
-    assert parse_extraction('prefix {"entities": []} suffix') == {"entities": []}
+
+    # Valid empty (both keys present, both lists)
+    assert parse_extraction('{"entities": [], "relations": []}') == {"entities": [], "relations": []}
+
+    # Malformed returns None (not {})
+    assert parse_extraction("garbage no json") is None
+    assert parse_extraction(None) is None
+    assert parse_extraction('') is None
+    assert parse_extraction('prefix {"entities": []} suffix') is None  # missing "relations"
+    assert parse_extraction('{"entities": []}') is None                # missing "relations"
+    assert parse_extraction('{"relations": []}') is None               # missing "entities"
+    assert parse_extraction('{"entities": {}, "relations": []}') is None  # entities not a list
+    assert parse_extraction('{"entities": [], "relations": {}}') is None  # relations not a list
+    assert parse_extraction('[]') is None                                # list, not dict
 
     # 2) normalizers
     assert _norm_predicate("  Grew Up  In ") == "grew_up_in"
