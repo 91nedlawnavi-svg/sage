@@ -40,6 +40,14 @@ MEMBRANE_RECENCY_HOURS = 72
 # Conversation log (Phase 4 Layer 0)
 CONVERSATION_PATH = BASE_DIR / "conversation.jsonl"
 
+# Knowledge store (Phase 4 Layer 2 — derived notebooks)
+KNOWLEDGE_ENABLED = os.environ.get("SAGE_KNOWLEDGE_ENABLED", "0").lower() in ("1", "true", "yes")
+KNOWLEDGE_DIR = BASE_DIR / "knowledge"
+RELATIONAL_ENTITIES_PATH = KNOWLEDGE_DIR / "relational_entities.jsonl"
+RELATIONAL_RELATIONS_PATH = KNOWLEDGE_DIR / "relational_relations.jsonl"
+INTERIOR_ENTITIES_PATH = KNOWLEDGE_DIR / "interior_entities.jsonl"
+INTERIOR_RELATIONS_PATH = KNOWLEDGE_DIR / "interior_relations.jsonl"
+
 # Semantic recall (Phase 4 Layer 1) — relevance-based memory of older
 # conversation turns + reflections that have scrolled out of the context window.
 RECALL_ENABLED = os.environ.get("SAGE_RECALL_ENABLED", "1").lower() in ("1", "true", "yes")
