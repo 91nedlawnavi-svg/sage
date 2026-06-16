@@ -173,7 +173,50 @@ def _relevance_key(rel, mentioned_ids, input_words, entities):
     return (authority, entity_match, lexical, confidence, rel.get("ts") or "")
 
 
-# ── public function ──────────────────────────────────────────────────────
+# ── public helpers: structured access + formatted block ─────────────────
+
+def select_relevant_relations(
+    notebook: str = "relational",
+    *,
+    user_input: str | None = None,
+    max_facts: int = 12,
+) -> list[dict]:
+    """Return targeted relation records (with provenance) for the current user_input.
+
+    Gate-aware: returns ``[]`` when ``KNOWLEDGE_ENABLED`` is False.
+    Relations retain full provenance, so callers can extract source keys for
+    recall boost. Uses the exact same targeting/ranking logic as
+    ``build_knowledge_block()``.
+    """
+    if not KNOWLEDGE_ENABLED:
+        return []
+    try:
+        view = reconcile_notebook(notebook)
+        entities = view.get("entities", {})
+        relations = view.get("relations", {})
+        if not relations:
+            return []
+
+        if user_input is not None:
+            mentioned_ids = _mentioned_entity_ids(user_input, entities)
+            input_words = _word_set(user_input)
+            candidates = [
+                rel
+                for rel in relations.values()
+                if _is_relevant(rel, mentioned_ids, input_words, entities)
+            ]
+            if not candidates:
+                return []
+            return sorted(
+                candidates,
+                key=lambda r: _relevance_key(r, mentioned_ids, input_words, entities),
+                reverse=True,
+            )[:max_facts]
+        else:
+            return sorted(relations.values(), key=_rank_key, reverse=True)[:max_facts]
+    except Exception:
+        return []
+
 
 def build_knowledge_block(
     notebook: str = "relational",
@@ -191,34 +234,15 @@ def build_knowledge_block(
     if not KNOWLEDGE_ENABLED:
         return None
     try:
-        view = reconcile_notebook(notebook)
-        entities = view.get("entities", {})
-        relations = view.get("relations", {})
-        if not relations:
+        # Delegate targeting to the shared helper so recall boost and the
+        # formatted block stay aligned on the same fact selection.
+        ranked = select_relevant_relations(notebook, user_input=user_input, max_facts=max_facts)
+        if not ranked:
             return None
 
-        # ── targeted mode (with user_input) ──────────────────────────
-        if user_input is not None:
-            mentioned_ids = _mentioned_entity_ids(user_input, entities)
-            input_words = _word_set(user_input)
-
-            candidates = [
-                rel
-                for rel in relations.values()
-                if _is_relevant(rel, mentioned_ids, input_words, entities)
-            ]
-            if not candidates:
-                return None
-
-            ranked = sorted(
-                candidates,
-                key=lambda r: _relevance_key(r, mentioned_ids, input_words, entities),
-                reverse=True,
-            )[:max_facts]
-
-        # ── global mode (no user_input — backwards compat) ──────────
-        else:
-            ranked = sorted(relations.values(), key=_rank_key, reverse=True)[:max_facts]
+        # Reconcile entities separately for name resolution in formatting.
+        view = reconcile_notebook(notebook)
+        entities = view.get("entities", {})
 
         # ── format the block ─────────────────────────────────────────
         lines = [

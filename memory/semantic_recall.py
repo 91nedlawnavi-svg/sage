@@ -298,8 +298,19 @@ def _format_block(scored: list[tuple[float, dict]]) -> str | None:
     return block if block else None
 
 
-async def recall(query_text: str, client: httpx.AsyncClient | None) -> str | None:
+async def recall(
+    query_text: str,
+    client: httpx.AsyncClient | None,
+    *,
+    boost_keys: set[str] | None = None,
+) -> str | None:
     """Return a formatted recall block for the current message, or None.
+
+    If *boost_keys* is provided, any index entry whose ``key`` is in the set
+    receives a ``+0.15`` score boost and is allowed through the similarity
+    floor even when *sim* < RECALL_MIN_SIM — this lets provenance-linked
+    personal facts from the knowledge layer outrank or survive alongside
+    merely topical matches.
 
     Never raises — degrades silently to None (no recall) on any failure.
     """
@@ -320,11 +331,15 @@ async def recall(query_text: str, client: httpx.AsyncClient | None) -> str | Non
         excluded = _excluded_keys()
         scored: list[tuple[float, dict]] = []
         for e in _index:
-            if e.get("key") in excluded:
+            key = e.get("key", "")
+            if key in excluded:
                 continue
             sim = _cosine(q_emb, e.get("embedding") or [])
-            if sim >= RECALL_MIN_SIM:
-                scored.append((sim, e))
+            boost = 0.15 if (boost_keys and key in boost_keys) else 0.0
+            score = sim + boost
+            # Let boosted entries through even below the similarity floor.
+            if sim >= RECALL_MIN_SIM or (boost > 0 and key in (boost_keys or ())):
+                scored.append((score, e))
 
         if not scored:
             return None

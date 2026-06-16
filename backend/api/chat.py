@@ -6,6 +6,7 @@ from config.directive import get_directive
 from models.inference.engine import chat_stream
 from models.prompts.templates import build_chat_messages
 from backend.session import session
+from cognition.knowledge_surface import select_relevant_relations
 from memory.conversation_log import append_message, rotate_log
 from memory import semantic_recall
 
@@ -29,8 +30,15 @@ async def chat_endpoint(request: ChatRequest):
 
     from backend.app import http_client
 
+    # Phase 4 Layer 2: compute boost keys from targeted knowledge facts so that
+    # recall prefers source turns that actually generated a personal fact.
+    _boost_rels = select_relevant_relations(user_input=request.message, max_facts=12)
+    _boost_keys = {
+        k for rel in _boost_rels for k in (rel.get("provenance") or [])
+    } or None  # None = no boost (preserves old recall behaviour)
+
     # Phase 4 Layer 1: recall relevant older conversation + reflections by meaning
-    recall_block = await semantic_recall.recall(request.message, http_client)
+    recall_block = await semantic_recall.recall(request.message, http_client, boost_keys=_boost_keys)
 
     # Mark user activity NOW so heartbeat knows someone just interacted.
     # IMPORTANT: build messages uses session.history() which does NOT include
