@@ -63,20 +63,6 @@ class NoveltyGate:
         self._reflection_basin_streak: int = 0
         self._reflection_diverge_hold: int = 0   # reflections left to force a seed
 
-    # ── public queries ──────────────────────────────────────────────
-
-    def recent_themes(self) -> list[str]:
-        """Return recent topic texts, newest first (for anti-repeat prompts)."""
-        return [t[0] for t in self._buffer[-NOVELTY_WINDOW:]][::-1]
-
-    @property
-    def streak(self) -> int:
-        return self._streak_counter
-
-    @property
-    def accept_count(self) -> int:
-        return self._accept_count
-
     # ── e5 embedding ────────────────────────────────────────────────
 
     async def embed(self, text: str, client: httpx.AsyncClient | None = None) -> list[float] | None:

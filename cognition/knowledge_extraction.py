@@ -49,6 +49,13 @@ MIN_PERSIST_CONFIDENCE = 0.5
 # accrete on one node (the L1 miss this layer exists to fix).
 ELLIOT_ENTITY_ID = "person:elliot"
 _ELLIOT_ALIASES = frozenset({"elliot", "i", "me", "my", "myself", "user"})
+# Name tokens that mark a possessive / self-referential ENTITY name, e.g.
+# "Elliot's old school" or "my old school". The clean entity ("old school") is
+# extracted separately, so we refuse the garbled possessive duplicate at
+# registration time. Deliberately narrower than _ELLIOT_ALIASES: we exclude
+# "i"/"me"/"user" to avoid false positives on legitimate names (e.g. "User
+# Guide"); only the clear possessive/self markers belong here.
+_SELF_REF_NAME_TOKENS = frozenset({"elliot", "my", "myself"})
 
 
 # ── small normalizers ──────────────────────────────────────────
@@ -278,6 +285,14 @@ def candidates_from_parsed(
         key = _slug_key(name)
         if key in _ELLIOT_ALIASES or name_to_id.get(key) == ELLIOT_ENTITY_ID:
             return ELLIOT_ENTITY_ID
+        # Refuse possessive/self-referential entity names ("Elliot's old school",
+        # "my old school"). Returning None keeps it out of the entity table; any
+        # relation that referenced it falls through to the literal branch and is
+        # caught by the literal self-ref guard there. This extends the self-ref
+        # protection from literal objects to entity nodes.
+        name_tokens = {t for t in re.split(r"[^a-z0-9]+", name.lower()) if t}
+        if name_tokens & _SELF_REF_NAME_TOKENS:
+            return None
         if key in name_to_id:
             return name_to_id[key]
         eid = make_entity_id(type_, name)
@@ -522,6 +537,28 @@ if __name__ == "__main__":
     assert not any(r["predicate"] == "attended" for r in nrels), "self-referential object must be dropped"
     assert not any(r["predicate"] == "studied" for r in nrels), "below-confidence fact must be dropped"
     assert npreds == {"knows"}, f"only 'knows Hayumi' should remain, got {sorted(npreds)}"
+
+    # 3c) self-referential ENTITY names are refused, not just literal objects.
+    # The model sometimes emits "Elliot's old school" as a place entity and links
+    # it via attended; the clean place is emitted separately. The garbled
+    # possessive node must be refused and its relation dropped, while the clean
+    # one survives.
+    selfref = {
+        "entities": [
+            {"name": "Elliot's old school", "type": "place", "aliases": []},
+            {"name": "Lincoln High", "type": "place", "aliases": []},
+        ],
+        "relations": [
+            {"subject": "Elliot", "predicate": "attended", "object": "Elliot's old school", "object_type": "entity", "confidence": 0.8},
+            {"subject": "Elliot", "predicate": "attended", "object": "Lincoln High", "object_type": "entity", "confidence": 0.8},
+        ],
+    }
+    sents, srels = candidates_from_parsed(selfref, ["user_12"])
+    sent_ids = {e["id"] for e in sents}
+    assert "place:elliot-s-old-school" not in sent_ids, "possessive self-ref entity must be refused"
+    assert "place:lincoln-high" in sent_ids, "clean place entity must survive"
+    assert all("elliot-s-old-school" not in str(r["object_value"]) for r in srels), "relation to self-ref entity must be dropped"
+    assert any(r["object_value"] == "place:lincoln-high" for r in srels), "clean attended relation must survive"
 
     # 4) persist round-trip into a temp 'interior' notebook, then load back
     tmp = Path(tempfile.mkdtemp())

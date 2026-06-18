@@ -231,7 +231,10 @@ class Heartbeat:
 
         # Search (never raises, returns [] on failure)
         try:
-            results = search(query)
+            # Offload the blocking (sync httpx) search to a worker thread so a
+            # slow upstream (SearXNG up to the full timeout) cannot stall the
+            # asyncio event loop — chat replies and the heartbeat keep running.
+            results = await asyncio.to_thread(search, query)
         except Exception:
             results = []
 

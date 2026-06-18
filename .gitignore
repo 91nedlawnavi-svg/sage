@@ -11,3 +11,4 @@ sage_data/
 *.swp
 *.swo
 .claude/
+.qoder/

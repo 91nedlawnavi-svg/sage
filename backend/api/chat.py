@@ -7,7 +7,7 @@ from models.inference.engine import chat_stream
 from models.prompts.templates import build_chat_messages
 from backend.session import session
 from cognition.knowledge_surface import select_relevant_relations
-from memory.conversation_log import append_message, rotate_log
+from memory.conversation_log import append_message
 from memory import semantic_recall
 
 router = APIRouter()
