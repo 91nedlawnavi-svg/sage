@@ -39,6 +39,11 @@ EXTRACTION_MAX_TOKENS = 1024
 MAX_CHARS_PER_TURN = 600
 MAX_TURNS_PER_BATCH = 12
 
+# Relations below this model-reported confidence are not persisted. Conservative
+# floor for first-light; raise after inspecting a real rebuild. Facts where the
+# model omits confidence default to 0.5 and are kept.
+MIN_PERSIST_CONFIDENCE = 0.5
+
 # Canonical anchor for the human user in the relational notebook. First-person
 # references and "Elliot" all resolve to this stable id so personal facts
 # accrete on one node (the L1 miss this layer exists to fix).
@@ -82,6 +87,48 @@ def _as_text(v: Any) -> str:
     return ""
 
 
+# ── durability / quality filters ───────────────────────────────
+
+# Leading predicate tokens that denote a transient state, mood, one-off action,
+# or intention rather than a durable fact. Matched against the predicate's first
+# underscore-delimited token (so "wants_to_help" -> "wants").
+_TRANSIENT_PRED_TOKENS = frozenset({
+    "feel", "feels", "felt", "feeling",
+    "want", "wants", "wanted", "wish", "wishes", "wishing",
+    "hope", "hopes", "hoping",
+    "plan", "plans", "planning", "intend", "intends", "intending",
+    "ask", "asks", "asked", "asking",
+    "watch", "watches", "watched", "watching",
+    "need", "needs", "needed",
+    "worry", "worries", "worried",
+})
+
+# Trailing object tokens that signal a truncated / dangling fragment.
+_DANGLING_OBJECT_TAIL = frozenset({
+    "about", "with", "to", "of", "for", "and", "or", "the", "a", "an",
+    "in", "on", "at", "from", "by",
+})
+
+
+def _is_transient_predicate(pred: str) -> bool:
+    """True if the predicate's leading token denotes a transient state/action."""
+    head = pred.split("_", 1)[0]
+    return head in _TRANSIENT_PRED_TOKENS
+
+
+def _is_low_quality_object(obj: str) -> bool:
+    """True if a literal object looks like a fragment, dangling word, or empty."""
+    o = (obj or "").strip().lower()
+    if len(o) < 3:
+        return True
+    tokens = [t for t in re.split(r"[^a-z0-9]+", o) if t]
+    if not tokens:
+        return True
+    if tokens[-1] in _DANGLING_OBJECT_TAIL:
+        return True
+    return False
+
+
 # ── prompt ──────────────────────────────────────────────
 
 _SCHEMA_BLOCK = (
@@ -90,23 +137,37 @@ _SCHEMA_BLOCK = (
     '  "entities": [{"name": "...", "type": "person|place|project|org|topic|event", "aliases": ["..."]}],\n'
     '  "relations": [{"subject": "...", "predicate": "snake_case_verb", "object": "...", "object_type": "entity|literal", "confidence": 0.0}]\n'
     '}\n'
-    'Rules: "type" is one of person/place/project/org/topic/event. "subject" and '
-    '"object" are entity names. Use "Elliot" for the human user. Set "object_type" '
-    'to "entity" when the object is one of the listed entities, otherwise "literal" '
-    'for a free value (a place name, a feeling, a date, a phrase). "predicate" is a '
-    'short snake_case phrase (e.g. grew_up_in, works_on, lives_in, feels, knows, '
-    'prefers, studied). "confidence" is 0-1 for how strongly the transcript '
-    'supports the fact. If nothing durable is present, return '
-    '{"entities": [], "relations": []}.'
+    'Rules:\n'
+    '- "type" is one of person/place/project/org/topic/event.\n'
+    '- "subject" and "object" are entity names. Use "Elliot" for the human user. '
+    'Never use a possessive form of the subject as the object: write the place or '
+    'thing itself (e.g. "Lincoln High"), not "Elliot\'s school".\n'
+    '- "object_type" is "entity" when the object is one of the listed entities, '
+    'otherwise "literal" for a concrete standalone value (a place, an institution, '
+    'a field of study, a relationship). A literal must be a complete noun phrase, '
+    'not a sentence fragment and not a dangling word.\n'
+    '- "predicate" is a short snake_case phrase naming a LASTING property or '
+    'relationship. Prefer this vocabulary when it fits: grew_up_in, born_in, '
+    'lives_in, works_on, works_at, studied, studied_at, knows, friend_of, '
+    'sibling_of, parent_of, child_of, prefers, likes, dislikes, believes, values, '
+    'speaks, owns, has_role.\n'
+    '- "confidence" is 0-1 for how strongly the transcript supports a durable fact.\n'
+    'Do NOT extract momentary feelings or moods, one-off intentions or plans '
+    '("wants to", "is going to", "asked about"), single past actions, or anything '
+    'tied to a specific day ("tomorrow", "tonight"). If nothing durable is '
+    'present, return {"entities": [], "relations": []}.'
 )
 
 _RELATIONAL_FOCUS = (
     "You read a transcript between Elliot (the human) and Sage (the AI). Extract "
-    "DURABLE facts -- things still true tomorrow -- about Elliot and the people, "
-    "places, projects, organizations, topics, and events in HIS life. Strongly "
-    "prefer facts where Elliot is the subject: personal history, where he grew up, "
-    "relationships, work, preferences, beliefs, circumstances. IGNORE anything Sage "
-    "says about itself or its own inner life, and ignore transient chit-chat."
+    "only DURABLE facts -- things that will still be true next month -- about "
+    "Elliot and the people, places, projects, organizations, and topics in HIS "
+    "life: personal history, where he grew up, relationships, work, what he "
+    "studies, stable preferences and beliefs, lasting circumstances. Do NOT record "
+    "how he feels right now, what he wants or plans to do, what he asked about, or "
+    "events pinned to a particular day -- those are transient. Extract a fact only "
+    "if you would expect it to still matter weeks from now. IGNORE anything Sage "
+    "says about itself, and ignore small talk."
 )
 
 _INTERIOR_FOCUS = (
@@ -246,6 +307,13 @@ def candidates_from_parsed(
         obj = _as_text(r.get("object"))
         if not subj or not pred or not obj:
             continue
+        # Durability gate: drop transient states, moods, one-off actions, plans.
+        if _is_transient_predicate(pred):
+            continue
+        # Confidence gate: drop facts the model itself is unsure about.
+        conf = _clamp_conf(r.get("confidence"))
+        if conf < MIN_PERSIST_CONFIDENCE:
+            continue
         subj_id = name_to_id.get(_slug_key(subj))
         if subj_id is None:
             # Subject was not among the listed entities -- skip to avoid garbage
@@ -257,6 +325,16 @@ def candidates_from_parsed(
             referenced_ids.add(obj_id)
         else:
             object_kind, object_value = "literal", obj
+        # Quality gate for literal objects: reject fragments / dangling words and
+        # self-referential objects that merely restate the subject.
+        if object_kind == "literal":
+            if _is_low_quality_object(object_value):
+                continue
+            if subj_id == ELLIOT_ENTITY_ID and (
+                {t for t in re.split(r"[^a-z0-9]+", object_value.lower()) if t}
+                & _ELLIOT_ALIASES
+            ):
+                continue
         referenced_ids.add(subj_id)
         relations_out.append(
             {
@@ -265,7 +343,7 @@ def candidates_from_parsed(
                 "predicate": pred,
                 "object_value": object_value,
                 "object_kind": object_kind,
-                "confidence": _clamp_conf(r.get("confidence")),
+                "confidence": conf,
                 "provenance": list(source_keys),
             }
         )
@@ -423,6 +501,27 @@ if __name__ == "__main__":
     assert by_pred["builds"]["object_value"] == "project:sage"
     assert by_pred["builds"]["confidence"] == 1.0  # clamped
     assert all(r["provenance"] == ["user_1", "assistant_2"] for r in rels)
+
+    # 3b) durability + quality filters drop transient / fragment / self-referential
+    noisy = {
+        "entities": [{"name": "Hayumi", "type": "person", "aliases": []}],
+        "relations": [
+            {"subject": "Elliot", "predicate": "feels", "object": "concerned", "object_type": "literal", "confidence": 0.8},
+            {"subject": "Elliot", "predicate": "wants to help", "object": "Hayumi", "object_type": "entity", "confidence": 0.8},
+            {"subject": "Elliot", "predicate": "asked about", "object": "socioeconomic", "object_type": "literal", "confidence": 0.7},
+            {"subject": "Elliot", "predicate": "attended", "object": "Elliot's old school", "object_type": "literal", "confidence": 0.8},
+            {"subject": "Elliot", "predicate": "studied", "object": "music theory", "object_type": "literal", "confidence": 0.3},
+            {"subject": "Elliot", "predicate": "knows", "object": "Hayumi", "object_type": "entity", "confidence": 0.9},
+        ],
+    }
+    _, nrels = candidates_from_parsed(noisy, ["user_9"])
+    npreds = {r["predicate"] for r in nrels}
+    assert "feels" not in npreds, "transient 'feels' must be dropped"
+    assert "wants_to_help" not in npreds, "transient intention must be dropped"
+    assert "asked_about" not in npreds, "transient 'asked_about' must be dropped"
+    assert not any(r["predicate"] == "attended" for r in nrels), "self-referential object must be dropped"
+    assert not any(r["predicate"] == "studied" for r in nrels), "below-confidence fact must be dropped"
+    assert npreds == {"knows"}, f"only 'knows Hayumi' should remain, got {sorted(npreds)}"
 
     # 4) persist round-trip into a temp 'interior' notebook, then load back
     tmp = Path(tempfile.mkdtemp())
