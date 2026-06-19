@@ -139,12 +139,17 @@ def test_personal_fact_beats_topical() -> dict:
     )
 
     # ── b) Verify select_relevant_relations picks the fact ──────────
+    # After literal grounding landed, grew_up_in is a grounding predicate: the
+    # raw literal "a low-income neighborhood" is promoted at reconcile time to
+    # an entity ref (place:low-income-neighborhood) in the view. Provenance is
+    # preserved unchanged through grounding, so the boost path still works.
     selected = knowledge_surface.select_relevant_relations(
         "relational", user_input=query, max_facts=12,
     )
     assert selected, "select_relevant_relations returned empty for personal query"
-    assert selected[0]["object"]["value"] == "a low-income neighborhood", (
-        f"Expected low-income neighborhood, got {selected[0]['object']['value']}"
+    obj = selected[0]["object"]
+    assert obj["kind"] == "entity" and obj["value"] == "place:low-income-neighborhood", (
+        f"Expected grounded place:low-income-neighborhood, got {obj}"
     )
     boost_keys = {
         k for rel in selected for k in (rel.get("provenance") or [])
@@ -190,18 +195,15 @@ def test_personal_fact_beats_topical() -> dict:
     semantic_recall._excluded_keys = _mock_excluded_keys
 
     try:
-        # ── d) Without boost → only generic_1 should surface ─────────
+        # ── d) Without boost → only generic_1 surfaces; personal excluded ──
+        # Controlled cosine sims:
+        #   generic_1 vs query = 0.85  ≥ 0.70 floor  → qualifies on its own
+        #   personal   vs query = 0.55  <  0.70 floor  → excluded without boost
+        # So the no-boost block must contain the generic turn and NOT the
+        # personal one. This is the mechanism the boost exists to override.
         block_no_boost = asyncio.run(
             semantic_recall.recall(query, client=None, boost_keys=None),
         )
-        # Note: it's possible both surface (sim = 0.55 which isn't below
-        # RECALL_MIN_SIM of 0.70). Let's assert that at most 1 surfaces
-        # without boost but we can't assert 0 personal — it should just be
-        # that personal doesn't pass the floor.
-
-        # Actually, let me just check: recall returns None if no entries or
-        # scored is empty. With generic_1 at sim=0.85 it passes. Without boost,
-        # personal at 0.55 < 0.70 fails. So scored will have [generic_1].
         assert block_no_boost is not None, (
             "Without boost: recall should return a block (generic_1 qualifies)"
         )
@@ -329,13 +331,17 @@ def test_locked_correction_wins() -> None:
     assert london_id in raw_ids
     print("  RAW: Paris, Jakarta, London — all present\n")
 
-    # ── e) Reconcile: exactly 1, value = Jakarta ─────────────────────
+    # ── e) Reconcile: exactly 1, value = Jakarta (grounded to place entity) ──
+    # lives_in is a grounding predicate, so all three literal values (Paris,
+    # Jakarta, London) are promoted to place: entities at reconcile time. The
+    # locked Jakarta correction still wins the single-valued contest; we just
+    # read it back as the grounded entity ref instead of the raw literal.
     view = knowledge_reconcile.reconcile_notebook("relational")
     rels = view.get("relations", {})
     assert len(rels) == 1, f"Expected 1 reconciled relation, got {len(rels)}"
     survivor = next(iter(rels.values()))
-    assert survivor["object"]["value"] == "Jakarta", (
-        f"Expected Jakarta, got {survivor['object']['value']}"
+    assert survivor["object"] == {"kind": "entity", "value": "place:jakarta"}, (
+        f"Expected grounded place:jakarta, got {survivor['object']}"
     )
     assert survivor["origin"] == "elliot"
     assert survivor["locked"] is True
