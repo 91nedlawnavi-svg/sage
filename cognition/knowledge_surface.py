@@ -25,6 +25,12 @@ from cognition.knowledge_reconcile import reconcile_notebook
 # Split on any non-alphanumeric sequence, discarding empty strings.
 _WORD_SPLIT_RE = re.compile(r"[^a-z0-9]+")
 
+# Singular first-person subject/possessive pronouns. When any of these appear
+# in the user's message, the user is talking about themselves — i.e. Elliot.
+# Object forms ("me") are deliberately excluded so imperative phrasings like
+# "tell me about Sage" do not pollute the query with personal facts.
+_FIRST_PERSON_PRONOUNS = frozenset({"i", "my", "mine", "myself"})
+
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
@@ -77,9 +83,13 @@ def _fact_text(rel: dict, entities: dict) -> str:
 def _mentioned_entity_ids(user_input: str, entities: dict) -> set[str]:
     """Return set of entity ids whose name, alias, or id-tail appears in input.
 
-    Only literally-named entities are included (``person:elliot`` is NOT
-    auto-injected here — the ranking function separately boosts Elliot facts
-    so they have a path to surface even when he isn't named).
+    Only literally-named entities are included by default. As a special case,
+    when the input contains a singular first-person subject/possessive pronoun
+    (``i``/``my``/``mine``/``myself``) and ``person:elliot`` exists in the
+    notebook, that entity is injected — the user is talking about himself, so
+    his personal facts should have a path to surface for paraphrased queries
+    that name neither him nor any fact keyword. Object forms ("me") are
+    excluded so requests like "tell me about Sage" stay clean.
     """
     if not user_input:
         return set()
@@ -101,6 +111,13 @@ def _mentioned_entity_ids(user_input: str, entities: dict) -> set[str]:
         tail = eid.split(":")[-1] if ":" in eid else eid
         if tail and tail in input_words:
             mentioned.add(eid)
+
+    # First-person pronoun: user is talking about Elliot himself. Without this,
+    # paraphrased personal queries (no name + no fact keyword) have no path to
+    # surface — _relevance_key boosts Elliot facts but _is_relevant filters
+    # them out first, a dead path. This injection closes that gap.
+    if (input_words & _FIRST_PERSON_PRONOUNS) and "person:elliot" in entities:
+        mentioned.add("person:elliot")
 
     return mentioned
 
@@ -156,8 +173,11 @@ def _relevance_key(rel, mentioned_ids, input_words, entities):
         entity_match += 1
     if obj_id and obj_id in mentioned_ids:
         entity_match += 1
-    # Always boost facts about Elliot (even when not literally named), so
-    # personal facts have a path to surface for topical/paraphrased queries.
+    # Always boost facts about Elliot. He passes _is_relevant either via a
+    # literal name mention, via first-person pronoun injection (see
+    # _mentioned_entity_ids), or via lexical overlap; in all those cases his
+    # own facts should rank above third-party facts that happen to share a
+    # token, because this is his personal assistant.
     if subject_id == "person:elliot":
         entity_match += 1
 
@@ -377,6 +397,13 @@ if __name__ == "__main__":
     assert block is not None, f"expected block for Sage query"
     assert "builds" in block, f"builds Sage should surface for Sage query"
     assert "ramen" not in block, f"unrelated facts should not appear for Sage query"
+    # Regression guard: "me" is an object pronoun here, NOT first-person
+    # subject — Elliot's personal facts (grew_up_in, likes ramen) must NOT
+    # leak into a Sage query via the pronoun path.
+    assert "grew up in" not in block, (
+        f"'tell me about Sage' must not surface Elliot personal facts. "
+        f"Got:\n{block}"
+    )
 
     # ================================================================
     # 5. No-match query → None
@@ -385,7 +412,28 @@ if __name__ == "__main__":
     assert block is None, f"no relevant facts should return None"
 
     # ================================================================
-    # 6. Locked correction still wins (Jakarta > Paris) with targeting
+    # 6. First-person pronoun → Elliot facts surface (paraphrased query)
+    # ================================================================
+    # The pronoun path is what gives paraphrased personal queries a way in.
+    # "who was I close with" names neither Elliot nor any fact keyword, yet
+    # must surface his personal relations. Once Elliot is mention-injected
+    # all his subject facts pass _is_relevant — that is the design: the
+    # ranking (not the filter) is what orders them. Object-pronoun queries
+    # ("tell me") are excluded — see the regression guard in test #4.
+    block = build_knowledge_block(
+        "relational", user_input="who was I close with back then",
+    )
+    assert block is not None, (
+        f"first-person pronoun query should surface Elliot facts. Got None"
+    )
+    assert "Elliot" in block, f"Elliot facts should surface for 'I' query"
+    assert "grew up in" in block, (
+        f"a personal Elliot fact should surface via the pronoun path. "
+        f"Got:\n{block}"
+    )
+
+    # ================================================================
+    # 7. Locked correction still wins (Jakarta > Paris) with targeting
     # ================================================================
     block = build_knowledge_block("relational", user_input="where does Elliot live now")
     assert block is not None
@@ -394,7 +442,7 @@ if __name__ == "__main__":
     assert "(you confirmed)" in block, f"locked fact should have confirmed marker"
 
     # ================================================================
-    # 7. Empty notebook + targeting → None
+    # 8. Empty notebook + targeting → None
     # ================================================================
     # Point relational to a fresh empty dir for this test
     empty_dir = Path(tempfile.mkdtemp())
@@ -407,7 +455,7 @@ if __name__ == "__main__":
     shutil.rmtree(empty_dir)
 
     # ================================================================
-    # 8. Global mode (no user_input) — backwards compat: returns block
+    # 9. Global mode (no user_input) — backwards compat: returns block
     # ================================================================
     # Restore the original notebook paths for the next test
     knowledge_store._NOTEBOOK_PATHS["relational"] = (
