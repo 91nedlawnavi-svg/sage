@@ -116,24 +116,26 @@ class Heartbeat:
                 warning(f"Heartbeat beat error: {e}")
 
             # ── Phase 4 L1: semantic-recall index (e5 only) ──────────
-            try:
-                await asyncio.wait_for(
-                    semantic_recall.reindex(self._e5_client), timeout=45
-                )
-            except asyncio.TimeoutError:
-                warning("Recall index error: reindex timed out (45s)")
-            except Exception as e:
-                warning(f"Recall index error: {e}")
+            if not session.chat_active():
+                try:
+                    await asyncio.wait_for(
+                        semantic_recall.reindex(self._e5_client), timeout=45
+                    )
+                except asyncio.TimeoutError:
+                    warning("Recall index error: reindex timed out (45s)")
+                except Exception as e:
+                    warning(f"Recall index error: {e}")
 
             # ── Phase 4 L2: derived knowledge notebooks (NIM only) ──
-            try:
-                await asyncio.wait_for(
-                    knowledge_builder.run(self._client), timeout=45
-                )
-            except asyncio.TimeoutError:
-                warning("Knowledge build error: builder timed out (45s)")
-            except Exception as e:
-                warning(f"Knowledge build error: {e}")
+            if not session.chat_active():
+                try:
+                    await asyncio.wait_for(
+                        knowledge_builder.run(self._client), timeout=45
+                    )
+                except asyncio.TimeoutError:
+                    warning("Knowledge build error: builder timed out (45s)")
+                except Exception as e:
+                    warning(f"Knowledge build error: {e}")
 
             await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
 

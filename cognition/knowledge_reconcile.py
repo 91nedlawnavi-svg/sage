@@ -16,6 +16,15 @@ Cross-id correction (single-valued predicates only):
     contradicting machine-derived values are suppressed. This is what makes a
     hand-fixed, locked fact override a stale machine fact even though they
     carry different relation ids (the id hashes the value).
+
+Literal grounding (read-time, see _ground_literals):
+    The extractor sometimes emits an object as a free-text *literal* that really
+    names an entity (a school, a town, a person). Such a fact never links into
+    the graph, and two phrasings of the same thing ("old school" vs "Elliot's
+    old school") never converge. Before collapsing, reconcile rewrites literals
+    on entity-bearing predicates into entity refs — deterministically, and
+    only in the view. The raw append-only store is never mutated, exactly like
+    dedup and locks.
 """
 
 from __future__ import annotations
@@ -25,7 +34,7 @@ import re
 from memory import knowledge_store
 
 
-# ── Single-valued predicate registry ────────────────────────────────
+# ── Single-valued predicate registry ────────────────────────────
 # Predicates for which only ONE value may be current per subject. This is the
 # tunable knob: extend it as real duplicate/conflict patterns show up.
 SINGLE_VALUED_PREDICATES: frozenset[str] = frozenset(
@@ -75,7 +84,154 @@ def is_single_valued(predicate: str) -> bool:
     return _norm_predicate(predicate) in SINGLE_VALUED_PREDICATES
 
 
-# ── Precedence ──────────────────────────────────────────────
+# ── Literal grounding ──────────────────────────────────────
+# When the object of a relation is a literal but its predicate clearly points at
+# an entity, promote the literal into an entity ref so the fact joins the graph
+# and repeated phrasings converge on one node. The target type is inferred
+# deterministically from the predicate; everything not in this map stays a
+# literal. This is conservative on purpose — grow the map from felt need.
+_GROUNDING_PREDICATE_TYPES: dict[str, str] = {
+    # → place
+    "grew_up_in": "place",
+    "born_in": "place",
+    "birthplace": "place",
+    "lives_in": "place",
+    "located_in": "place",
+    "based_in": "place",
+    "hometown": "place",
+    "from": "place",
+    "moved_to": "place",
+    "visited": "place",
+    # → org (schools, companies, institutions)
+    "studied_at": "org",
+    "attended": "org",
+    "graduated_from": "org",
+    "works_at": "org",
+    "employed_by": "org",
+    "employer": "org",
+    "member_of": "org",
+    # → person
+    "knows": "person",
+    "friend_of": "person",
+    "sibling_of": "person",
+    "parent_of": "person",
+    "child_of": "person",
+    "married_to": "person",
+    "spouse": "person",
+    "partner": "person",
+    "colleague_of": "person",
+    "mentored_by": "person",
+}
+
+# Leading possessive / article tokens stripped before a literal is turned into
+# an entity name, so "Elliot's old school", "the old school", and "old school"
+# all converge on the same node.
+_LEADING_DROP_TOKENS: frozenset[str] = frozenset(
+    {
+        "elliot's", "elliots", "elliot’s",
+        "his", "her", "their", "my", "our", "your", "its",
+        "the", "a", "an",
+    }
+)
+
+
+def _slug(text: str) -> str:
+    """Mirror knowledge_store's slug rule (kept local to avoid coupling)."""
+    return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+
+
+def _ground_name(raw: str) -> str:
+    """Normalize a literal object into a clean entity *name*.
+
+    Strips a leading possessive/article run ("Elliot's old school" → "old
+    school") and surrounding punctuation/whitespace. Returns "" when nothing
+    usable remains (e.g. the literal was only articles).
+    """
+    text = (raw or "").strip().strip(".,;:!?\"'“”‘’")
+    if not text:
+        return ""
+    tokens = text.split()
+    i = 0
+    while i < len(tokens) and tokens[i].lower().strip(".,;:!?\"'“”‘’") in _LEADING_DROP_TOKENS:
+        i += 1
+    name = " ".join(tokens[i:]).strip()
+    return name
+
+
+def _ground_literals(
+    entities: list[dict], relations: list[dict]
+) -> tuple[list[dict], list[dict]]:
+    """Rewrite entity-bearing literal objects into entity refs (view-only).
+
+    Returns ``(entities + any minted entities, grounded_relations)``. Operates
+    on copies — the input records and the on-disk store are never mutated. The
+    grounded relation's id is recomputed over the new object so grounded
+    duplicates collapse together in the id pass that follows.
+    """
+    # Index existing entities by slug(name) and slug(alias) → record.
+    by_slug: dict[str, dict] = {}
+    for ent in entities:
+        if not ent.get("id"):
+            continue
+        nm = ent.get("name") or ""
+        if nm:
+            by_slug.setdefault(_slug(nm), ent)
+        for al in ent.get("aliases") or []:
+            if al:
+                by_slug.setdefault(_slug(al), ent)
+
+    minted: dict[str, dict] = {}
+    grounded: list[dict] = []
+
+    for rec in relations:
+        obj = rec.get("object") or {}
+        pred = _norm_predicate(rec.get("predicate", ""))
+        etype = _GROUNDING_PREDICATE_TYPES.get(pred)
+
+        # Only ground literals on a known entity-bearing predicate.
+        if etype is None or obj.get("kind") != "literal":
+            grounded.append(rec)
+            continue
+
+        name = _ground_name(str(obj.get("value", "")))
+        slug = _slug(name)
+        if not name or not slug:
+            grounded.append(rec)
+            continue
+
+        match = by_slug.get(slug)
+        if match is not None:
+            target_id = match["id"]
+        else:
+            target_id = knowledge_store.make_entity_id(etype, name)
+            if target_id not in minted:
+                ts = rec.get("ts") or rec.get("last_seen") or rec.get("first_seen") or ""
+                minted[target_id] = {
+                    "id": target_id,
+                    "kind": "entity",
+                    "type": etype,
+                    "name": name,
+                    "aliases": [],
+                    "origin": "she",
+                    "locked": False,
+                    "first_seen": rec.get("first_seen") or ts,
+                    "last_seen": rec.get("last_seen") or ts,
+                    "ts": ts,
+                    "grounded": True,  # provenance marker: minted by grounding
+                }
+                by_slug[slug] = minted[target_id]
+
+        new_rec = dict(rec)
+        new_rec["object"] = {"kind": "entity", "value": target_id}
+        new_rec["id"] = knowledge_store.make_relation_id(
+            rec.get("subject_id", ""), rec.get("predicate", ""), target_id
+        )
+        grounded.append(new_rec)
+
+    return entities + list(minted.values()), grounded
+
+
+# ── Precedence ─────────────────────────────
 def _rank(record: dict) -> int:
     """Authority rank: locked (2) > elliot (1) > she/other (0)."""
     if record.get("locked"):
@@ -101,7 +257,7 @@ def _pick_winner(records: list[dict]) -> dict:
     return best
 
 
-# ── Merge helpers (enrich the winner; never lose provenance) ────────
+# ── Merge helpers (enrich the winner; never lose provenance) ────
 def _dedupe(seq) -> list:
     out: list = []
     for item in seq:
@@ -149,7 +305,7 @@ def _collapse_by_id(records: list[dict], *, kind: str) -> dict[str, dict]:
     return collapsed
 
 
-# ── Public reconcile ──────────────────────────────────────
+# ── Public reconcile ─────────────────────────
 def reconcile_entities(records: list[dict]) -> dict[str, dict]:
     """Collapse entity records to the current view, keyed by entity id."""
     return _collapse_by_id(records, kind="entity")
@@ -190,14 +346,19 @@ def reconcile_notebook(notebook: str) -> dict:
 
         {"entities": {id: entity, ...}, "relations": {id: relation, ...}}
 
-    Safe: returns empty views if the notebook is unknown or empty.
+    Literals on entity-bearing predicates are grounded into entity refs before
+    collapse, so repeated phrasings converge and facts join the graph. Safe:
+    returns empty views if the notebook is unknown or empty.
     """
-    entities = reconcile_entities(knowledge_store.load_entities(notebook))
-    relations = reconcile_relations(knowledge_store.load_relations(notebook))
+    raw_entities = knowledge_store.load_entities(notebook)
+    raw_relations = knowledge_store.load_relations(notebook)
+    grounded_entities, grounded_relations = _ground_literals(raw_entities, raw_relations)
+    entities = reconcile_entities(grounded_entities)
+    relations = reconcile_relations(grounded_relations)
     return {"entities": entities, "relations": relations}
 
 
-# ── Self-test ───────────────────────────────────────────
+# ── Self-test ──────────────────────────
 if __name__ == "__main__":
     import shutil
     import tempfile
@@ -274,7 +435,55 @@ if __name__ == "__main__":
     re_likes = reconcile_relations([pizza, ramen])
     assert len(re_likes) == 2, f"expected both likes kept, got {len(re_likes)}"
 
-    # ---- integration: reconcile_notebook via tempdir ----
+    # ---- unit: literal grounding (the L2 "old school" drift) ----
+    g_entities = [
+        {"id": "person:elliot", "kind": "entity", "type": "person", "name": "Elliot",
+         "origin": "she", "locked": False, "ts": "2026-01-01T00:00:00"},
+        {"id": "person:hayumi", "kind": "entity", "type": "person", "name": "Hayumi",
+         "origin": "she", "locked": False, "ts": "2026-01-01T00:00:00"},
+    ]
+    g_relations = [
+        {"id": "x1", "kind": "relation", "subject_id": "person:elliot", "predicate": "studied_at",
+         "object": {"kind": "literal", "value": "old school"}, "provenance": ["u1"],
+         "confidence": 0.8, "origin": "she", "locked": False, "ts": "2026-01-01T00:00:00"},
+        {"id": "x2", "kind": "relation", "subject_id": "person:hayumi", "predicate": "attended",
+         "object": {"kind": "literal", "value": "Elliot's old school"}, "provenance": ["u2"],
+         "confidence": 0.8, "origin": "she", "locked": False, "ts": "2026-01-02T00:00:00"},
+        {"id": "x3", "kind": "relation", "subject_id": "person:elliot", "predicate": "values",
+         "object": {"kind": "literal", "value": "exploring ideas"}, "provenance": ["u3"],
+         "confidence": 0.7, "origin": "she", "locked": False, "ts": "2026-01-03T00:00:00"},
+    ]
+    gent, grel = _ground_literals(g_entities, g_relations)
+    gent_ids = {e["id"] for e in gent}
+    assert "org:old-school" in gent_ids, gent_ids
+    school_refs = [r for r in grel if (r["object"].get("value") == "org:old-school")]
+    assert len(school_refs) == 2, school_refs                    # both phrasings grounded
+    assert all(r["object"]["kind"] == "entity" for r in school_refs)
+    assert {r["subject_id"] for r in school_refs} == {"person:elliot", "person:hayumi"}
+    vals = [r for r in grel if r["predicate"] == "values"]       # non-grounding predicate untouched
+    assert vals and vals[0]["object"]["kind"] == "literal", vals
+
+    # ---- unit: grounding matches an EXISTING entity instead of minting a dup ----
+    g_entities2 = g_entities + [
+        {"id": "org:lincoln-high", "kind": "entity", "type": "org", "name": "Lincoln High",
+         "aliases": ["Lincoln"], "origin": "she", "locked": False, "ts": "2026-01-01T00:00:00"},
+    ]
+    g_relations2 = [
+        {"id": "y1", "kind": "relation", "subject_id": "person:elliot", "predicate": "studied_at",
+         "object": {"kind": "literal", "value": "lincoln high"}, "provenance": ["u4"],
+         "confidence": 0.8, "origin": "she", "locked": False, "ts": "2026-01-01T00:00:00"},
+    ]
+    gent2, grel2 = _ground_literals(g_entities2, g_relations2)
+    assert grel2[0]["object"] == {"kind": "entity", "value": "org:lincoln-high"}, grel2[0]
+    assert sum(1 for e in gent2 if e["id"] == "org:lincoln-high") == 1   # no dup minted
+
+    # ---- unit: _ground_name strips possessives/articles ----
+    assert _ground_name("Elliot's old school") == "old school"
+    assert _ground_name("the old school") == "old school"
+    assert _ground_name("old school") == "old school"
+    assert _ground_name("   the   ") == ""
+
+    # ---- integration: reconcile_notebook via tempdir (now grounds lives_in) ----
     tmp = Path(tempfile.mkdtemp())
     knowledge_store._NOTEBOOK_PATHS["interior"] = (
         tmp / "interior_entities.jsonl",
@@ -291,8 +500,11 @@ if __name__ == "__main__":
         locked=True, confidence=1.0)
     view = reconcile_notebook("interior")
     assert e_id in view["entities"]
+    # lives_in literals are grounded into place entities; locked Jakarta still wins
+    assert "place:jakarta" in view["entities"], list(view["entities"].keys())
     assert len(view["relations"]) == 1, view["relations"]
-    assert next(iter(view["relations"].values()))["object"]["value"] == "Jakarta"
+    surv = next(iter(view["relations"].values()))
+    assert surv["object"] == {"kind": "entity", "value": "place:jakarta"}, surv
     shutil.rmtree(tmp)
 
     print("OK")
