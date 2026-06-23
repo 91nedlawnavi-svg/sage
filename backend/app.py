@@ -43,8 +43,7 @@ async def lifespan(app: FastAPI):
     # Hydrate conversation history from disk (Phase 4 Layer 0)
     try:
         history = load_all()
-        for turn in history:
-            session.append(turn["role"], turn["content"])
+        session.replace_history(history)
         info(f"Conversation history loaded: {len(history)} turns")
     except Exception as e:
         error(f"Failed to load conversation history: {e}")
@@ -71,9 +70,11 @@ async def lifespan(app: FastAPI):
     if heartbeat:
         heartbeat.stop()
         await heartbeat.aclose()
+        heartbeat = None
     if http_client:
         await http_client.aclose()
         info("HTTP client closed")
+        http_client = None
 
 
 app = FastAPI(title="Sage v2", lifespan=lifespan)

@@ -12,7 +12,7 @@ This is a personal project. Architecture (the "brain") and implementation (the "
 - **The Membrane** — recent reflections and findings feed back into chat, so her own inner life informs how she responds.
 - **Memory** — conversation, reflections, and findings persist as append-only JSONL (atomic writes) and survive restarts.
 - **Semantic recall** — a local e5-large-v2 embedder indexes the full conversation + reflection archive (1024-dim vectors); relevant past moments are retrieved by similarity and surfaced into chat as a `[RECALLED FROM EARLIER]` block.
-- **Knowledge layer (Phase 4 L2)** — structured entity/relation store, LLM-driven extraction, `[WHAT YOU KNOW]` surfacing via the heartbeat. Code exists but is **gated off** by default (`SAGE_KNOWLEDGE_ENABLED=0`); not yet signed off.
+- **Knowledge layer (Phase 4 L2)** — structured entity/relation store, LLM-driven extraction, fact embeddings, targeted `[WHAT YOU KNOW]` surfacing, and provenance-boosted recall. The offline felt-test passes, but it is still **gated off** by default for live activation (`SAGE_KNOWLEDGE_ENABLED=0`).
 - **Web search** — via a local SearXNG instance, with a Wikipedia/Wikidata fallback for when the public engines rate-limit.
 - **Frontend** — a single-file web UI: chat plus a slide-in drawer showing her reflections and findings.
 
@@ -70,4 +70,4 @@ journalctl --user -u sage -f     # logs
 
 ## Status
 
-Phases 0–3 and Phase 4 Layers 0–1 are complete: spine, autonomous reflection, self-originated curiosity + search, novelty gate, the Membrane, the memory foundation, and **semantic recall** (e5-large-v2 embeddings over the full archive, surfaced into chat). **Phase 4 Layer 2 — the knowledge layer** (structured entity/relation store, heartbeat-driven extraction, `[WHAT YOU KNOW]` surfacing) exists in code but is **gated off** by default (`SAGE_KNOWLEDGE_ENABLED=0`) and **not yet signed off**. The next milestone is making personal facts surface consistently and win over merely topical recall. See `CLAUDE.md` for the full phase log and build conventions.
+Phases 0–3 and Phase 4 Layers 0–2 are implemented: spine, autonomous reflection, self-originated curiosity + search, novelty gate, the Membrane, durable memory, semantic recall, and the structured knowledge layer. **Phase 4 Layer 2** passes the offline integrated felt-test for targeted personal facts, provenance-boosted recall, and locked corrections, but remains **gated off** by default (`SAGE_KNOWLEDGE_ENABLED=0`) for live sign-off. See `CLAUDE.md` for the full phase log and build conventions.

@@ -52,6 +52,7 @@ knowledge_surface.KNOWLEDGE_ENABLED = True
 _QUERY_EMB = [1.0, 0.0, 0.0]
 _GENERIC_EMB = [0.85, 0.527, 0.0]
 _PERSONAL_EMB = [0.55, 0.0, 0.835]
+_ORTHOGONAL_EMB = [0.0, 1.0, 0.0]
 
 
 async def _mock_embed(
@@ -439,12 +440,100 @@ def test_integrated_prompt(recall_block: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 5.  Main
+# 5.  Integrated: semantic fact selection reaches [WHAT YOU KNOW]
+# ---------------------------------------------------------------------------
+
+def test_semantic_fact_reaches_prompt() -> None:
+    """A semantically admitted fact with zero lexical overlap must be rendered
+    into the final system prompt when the chat path passes its selected
+    ``knowledge_relations`` into ``build_chat_messages``.
+
+    This guards against a split-brain bug where chat selected semantic facts
+    for recall boosting, but prompt assembly rebuilt ``[WHAT YOU KNOW]`` using
+    only the lexical fallback and silently dropped those facts.
+    """
+    print("─" * 60)
+    print("FELT-TEST #4  —  semantic fact reaches [WHAT YOU KNOW]\n")
+
+    tmp = _setup_temp_notebook()
+    query = "zzzzyxwvu nonsensical query with zero token overlap"
+
+    eid = knowledge_store.make_entity_id("person", "Elliot")
+    knowledge_store.append_entity(
+        "relational", id=eid, type="person", name="Elliot", origin="she",
+    )
+    knowledge_store.append_relation(
+        "relational",
+        id=knowledge_store.make_relation_id(
+            "person:elliot", "grew_up_in", "a low-income neighborhood",
+        ),
+        subject_id="person:elliot",
+        predicate="grew_up_in",
+        object_value="a low-income neighborhood",
+        object_kind="literal",
+        provenance=["user_personal_semantic"],
+        confidence=0.9,
+        origin="she",
+        locked=False,
+    )
+
+    view = knowledge_reconcile.reconcile_notebook("relational")
+    fact_id = next(
+        rid for rid, rel in view["relations"].items()
+        if rel.get("predicate") == "grew_up_in"
+    )
+    fact_vectors = {rid: _ORTHOGONAL_EMB for rid in view["relations"]}
+    fact_vectors[fact_id] = _QUERY_EMB
+
+    selected = knowledge_surface.select_relevant_relations(
+        "relational",
+        user_input=query,
+        query_embedding=_QUERY_EMB,
+        fact_vectors=fact_vectors,
+    )
+    assert selected, "semantic selection should admit the personal fact"
+    assert selected[0]["id"] == fact_id, selected
+
+    fallback_block = knowledge_surface.build_knowledge_block(
+        "relational", user_input=query,
+    )
+    assert fallback_block is None, (
+        "lexical-only prompt path should not see the no-overlap fact; "
+        f"got:\n{fallback_block}"
+    )
+
+    directive = __import__("config.directive", fromlist=["get_directive"]).get_directive()
+    messages = build_chat_messages(
+        directive=directive,
+        user_input=query,
+        history=[],
+        recall_block=None,
+        knowledge_relations=selected,
+    )
+    system = messages[0]["content"] if messages else ""
+
+    assert "[WHAT YOU KNOW]" in system, "[WHAT YOU KNOW] missing from system prompt"
+    assert "low-income neighborhood" in system, (
+        "semantically selected personal fact missing from system prompt"
+    )
+
+    print("  OVERLAP (semantic selection → system prompt):")
+    print("    SELECTED FACT: Elliot grew up in low-income neighborhood")
+    print(f"    QUERY:         {query}")
+    print("    SURFACED:      low-income neighborhood")
+    print()
+
+    shutil.rmtree(tmp)
+
+
+# ---------------------------------------------------------------------------
+# 6.  Main
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     recall_block = test_personal_fact_beats_topical()
     test_locked_correction_wins()
     test_integrated_prompt(recall_block)
+    test_semantic_fact_reaches_prompt()
     print("═" * 60)
     print("OK Phase 4 L2 integrated felt-test")

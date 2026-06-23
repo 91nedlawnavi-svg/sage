@@ -130,6 +130,16 @@ async def _embed(
         return None
 
 
+async def embed_query(text: str, client: httpx.AsyncClient | None) -> list[float] | None:
+    """Public wrapper: embed a query string.
+
+    Exposed so the chat path can compute the query embedding **once** and
+    reuse it for both ``recall()`` and the knowledge surface's semantic
+    fact selection — guaranteeing no second embed on the chat turn.
+    """
+    return await _embed(text, client, prefix="query: ")
+
+
 def _cosine(a: list[float], b: list[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
@@ -303,6 +313,7 @@ async def recall(
     client: httpx.AsyncClient | None,
     *,
     boost_keys: set[str] | None = None,
+    query_embedding: list[float] | None = None,
 ) -> str | None:
     """Return a formatted recall block for the current message, or None.
 
@@ -324,9 +335,12 @@ async def recall(
         if not _index:
             return None
 
-        q_emb = await _embed(q, client, prefix="query: ")
-        if q_emb is None:
-            return None
+        if query_embedding is not None:
+            q_emb = query_embedding
+        else:
+            q_emb = await _embed(q, client, prefix="query: ")
+            if q_emb is None:
+                return None
 
         excluded = _excluded_keys()
         scored: list[tuple[float, dict]] = []

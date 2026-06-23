@@ -25,7 +25,7 @@ import re
 from typing import Any
 
 from memory.knowledge_store import make_entity_id, make_relation_id
-from utils.logger import warning
+from utils.logger import log, warning
 
 # Entity types we recognize; anything else collapses to "topic".
 VALID_ENTITY_TYPES = ("person", "place", "project", "org", "topic", "event")
@@ -73,6 +73,116 @@ def _norm_predicate(pred: str) -> str:
     return pred.strip("_")
 
 
+# ── controlled predicate vocabulary ───────────────────────────
+
+# Canonical predicates the extractor aims to produce. These represent durable
+# relationship types; everything else is aliased or generic-mapped.
+_CANONICAL_PREDICATES = frozenset({
+    "grew_up_in", "born_in", "lives_in",
+    "works_on", "works_at", "studied", "studied_at",
+    "knows", "friend_of", "sibling_of", "parent_of", "child_of",
+    "prefers", "likes", "dislikes", "believes", "values",
+    "speaks", "owns", "has_role",
+    "affected_by", "related_to",
+    "interested_in", "skilled_at",
+})
+
+# Exact predicate normalizations (verbose model output -> canonical).
+_PREDICATE_ALIASES = {
+    "grew_up": "grew_up_in",
+    "works_as": "has_role",
+    "works_in": "works_on",
+    "lives_at": "lives_in",
+    "knows_about": "knows",
+    "knows_how_to": "skilled_at",
+    "is_friends_with": "friend_of",
+    "is_sibling_of": "sibling_of",
+    "is_parent_of": "parent_of",
+    "is_child_of": "child_of",
+    "is_good_at": "skilled_at",
+    "good_at": "skilled_at",
+    "has_skill": "skilled_at",
+    "has_experience_in": "skilled_at",
+    "interested_in": "interested_in",
+    "is_interested_in": "interested_in",
+    "cares_about": "values",
+    "enjoys": "likes",
+    "loves": "likes",
+    "hates": "dislikes",
+    "thinks": "believes",
+    "studies": "studied",
+    "has_role_as": "has_role",
+}
+
+# Generic fallback for overly long predicates (>3 tokens) that match no alias.
+_GENERIC_CATCHALL = "related_to"
+
+# Max underscore-separated tokens before a predicate is considered "overly long".
+_MAX_PREDICATE_TOKENS = 3
+
+
+def _alias_by_pattern(pred: str) -> str | None:
+    """Check pattern-based aliases against a normalized predicate.
+
+    Patterns cover the model's most common multi-word verbosity patterns
+    that would otherwise produce freeform (>3 token) predicates.
+    """
+    # *_due_to -> affected_by  (e.g. had_unpleasant_experiences_due_to)
+    if pred.endswith("_due_to"):
+        return "affected_by"
+    # due_to_* -> affected_by
+    if pred.startswith("due_to_"):
+        return "affected_by"
+    # affected_by_* -> affected_by
+    if pred.startswith("affected_by_"):
+        return "affected_by"
+    # had_*_experiences -> affected_by
+    if pred.startswith("had_") and pred.endswith("_experiences"):
+        return "affected_by"
+    return None
+
+
+def _normalize_predicate(raw: str) -> str:
+    """Full predicate normalization: normalize, alias-map, then enforce length limit.
+
+    Steps:
+      1. Apply ``_norm_predicate`` (lowercase, snake_case, strip junk).
+      2. Check exact alias map (``_PREDICATE_ALIASES``).
+      3. Check pattern-based aliases (``_alias_by_pattern``).
+      4. If still unmapped and >3 underscore-separated tokens, map to the
+         generic catchall (``_GENERIC_CATCHALL`` — ``related_to``).
+
+    Logs every normalization that changes the predicate from its normalized form.
+
+    Callers should use this instead of ``_norm_predicate`` directly.
+    """
+    original = (raw or "").strip()
+    pred = _norm_predicate(original)
+    if not pred:
+        return pred
+
+    # --- exact alias ---
+    canonical = _PREDICATE_ALIASES.get(pred)
+    if canonical is None:
+        canonical = _alias_by_pattern(pred)
+
+    if canonical:
+        if pred != canonical:
+            log("knowledge_extraction", "predicate-normalized",
+                original=original, normalized=pred, canonical=canonical)
+        return canonical
+
+    # --- length guard: overly long predicates with no alias -> generic ---
+    tokens = pred.split("_")
+    if len(tokens) > _MAX_PREDICATE_TOKENS:
+        log("knowledge_extraction", "predicate-generic-mapped",
+            original=original, normalized=pred, tokens=len(tokens),
+            canonical=_GENERIC_CATCHALL)
+        return _GENERIC_CATCHALL
+
+    return pred
+
+
 def _norm_type(t: str) -> str:
     t = (t or "").strip().lower()
     return t if t in VALID_ENTITY_TYPES else "topic"
@@ -108,6 +218,7 @@ _TRANSIENT_PRED_TOKENS = frozenset({
     "watch", "watches", "watched", "watching",
     "need", "needs", "needed",
     "worry", "worries", "worried",
+    "concern", "concerns", "concerned",
 })
 
 # Trailing object tokens that signal a truncated / dangling fragment.
@@ -318,7 +429,7 @@ def candidates_from_parsed(
         if not isinstance(r, dict):
             continue
         subj = _as_text(r.get("subject"))
-        pred = _norm_predicate(r.get("predicate"))
+        pred = _normalize_predicate(r.get("predicate"))
         obj = _as_text(r.get("object"))
         if not subj or not pred or not obj:
             continue
@@ -487,6 +598,42 @@ if __name__ == "__main__":
     assert _norm_type("weather") == "topic"
     assert _clamp_conf("1.7") == 1.0 and _clamp_conf(None) == 0.5 and _clamp_conf(-3) == 0.0
 
+    # 2b) predicate normalization (Task B: controlled vocabulary)
+    # -- exact aliases
+    assert _normalize_predicate("grew_up") == "grew_up_in"
+    assert _normalize_predicate("loves") == "likes"
+    assert _normalize_predicate("hates") == "dislikes"
+    assert _normalize_predicate("cares_about") == "values"
+    assert _normalize_predicate("knows_about") == "knows"
+    assert _normalize_predicate("studies") == "studied"
+    assert _normalize_predicate("is_good_at") == "skilled_at"
+    # -- already canonical (unchanged)
+    assert _normalize_predicate("grew_up_in") == "grew_up_in"
+    assert _normalize_predicate("likes") == "likes"
+    assert _normalize_predicate("knows") == "knows"
+    assert _normalize_predicate("studied") == "studied"
+    # -- pattern aliases
+    assert _normalize_predicate("had_unpleasant_experiences_due_to") == "affected_by", \
+        "*_due_to suffix must map to affected_by"
+    assert _normalize_predicate("affected_by_circumstances") == "affected_by", \
+        "affected_by_* prefix must collapse to affected_by"
+    assert _normalize_predicate("had_traumatic_experiences") == "affected_by", \
+        "had_*_experiences pattern must map to affected_by"
+    assert _normalize_predicate("due_to_poverty") == "affected_by", \
+        "due_to_* prefix must map to affected_by"
+    # -- length guard: >3 tokens with no alias -> generic related_to
+    assert _normalize_predicate("a_very_long_freeform_phrase") == "related_to", \
+        ">3 tokens with no alias must map to related_to"
+    assert _normalize_predicate("something_related_to_all_things") == "related_to", \
+        "5 tokens with no alias must map to related_to"
+    assert _normalize_predicate("grew_up_in") == "grew_up_in", \
+        "3-token canonical predicate must NOT map to generic"
+    assert _normalize_predicate("loves_good_jazz") == "loves_good_jazz", \
+        "3-token predicate with no alias must be kept as-is (not >3 tokens)"
+    # -- empty/missing input
+    assert _normalize_predicate("") == ""
+    assert _normalize_predicate(None) == ""
+
     # 3) candidate shaping from a canned model reply (the L1-miss scenario)
     parsed = {
         "entities": [
@@ -559,6 +706,31 @@ if __name__ == "__main__":
     assert "place:lincoln-high" in sent_ids, "clean place entity must survive"
     assert all("elliot-s-old-school" not in str(r["object_value"]) for r in srels), "relation to self-ref entity must be dropped"
     assert any(r["object_value"] == "place:lincoln-high" for r in srels), "clean attended relation must survive"
+
+    # 3d) predicate normalization through full pipeline (Task B): freeform
+    # predicates like had_unpleasant_experiences_due_to get canonicalized.
+    freeform = {
+        "entities": [],
+        "relations": [
+            {"subject": "Elliot", "predicate": "had_unpleasant_experiences_due_to", "object": "poverty", "object_type": "literal", "confidence": 0.9},
+            {"subject": "Elliot", "predicate": "grew up in", "object": "a poor area", "object_type": "literal", "confidence": 0.8},
+            {"subject": "Elliot", "predicate": "loves", "object": "music theory", "object_type": "literal", "confidence": 0.7},
+            {"subject": "Elliot", "predicate": "a_very_long_freeform_predicate_here", "object": "something vague", "object_type": "literal", "confidence": 0.6},
+        ],
+    }
+    _, frels = candidates_from_parsed(freeform, ["user_15"])
+    fpreds = {r["predicate"] for r in frels}
+    assert "affected_by" in fpreds, \
+        f"had_unpleasant_experiences_due_to must canonicalize to affected_by, got {fpreds}"
+    assert "grew_up_in" in fpreds, f"grew up in must normalize to grew_up_in, got {fpreds}"
+    assert "likes" in fpreds, f"loves must normalize to likes, got {fpreds}"
+    assert "related_to" in fpreds, \
+        f"long unmapped predicate must generic-map to related_to, got {fpreds}"
+    assert "had_unpleasant_experiences_due_to" not in fpreds, \
+        "freeform predicate must NOT survive as-is"
+    assert "a_very_long_freeform_predicate_here" not in fpreds, \
+        "long unmapped predicate must NOT survive as-is"
+    assert len(frels) == 4, f"expected all 4 to survive normalization, got {len(frels)}"
 
     # 4) persist round-trip into a temp 'interior' notebook, then load back
     tmp = Path(tempfile.mkdtemp())

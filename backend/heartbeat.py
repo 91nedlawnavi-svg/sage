@@ -18,7 +18,7 @@ from cognition.curiosity import extract_query
 from cognition.novelty_gate import gate as novelty_gate
 from memory.reflection_log import append_reflection
 from memory.findings_log import append_finding
-from memory import semantic_recall
+from memory import semantic_recall, knowledge_recall
 from cognition import knowledge_builder
 from backend.session import session
 from utils.logger import info, warning, log
@@ -85,7 +85,14 @@ class Heartbeat:
             info("Heartbeat stopped")
 
     async def aclose(self):
-        """Close the dedicated e5 client. Called from app shutdown."""
+        """Close background resources. Called from app shutdown."""
+        if self._task:
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            finally:
+                self._task = None
         if self._e5_client:
             await self._e5_client.aclose()
 
@@ -130,12 +137,25 @@ class Heartbeat:
             if not session.chat_active():
                 try:
                     await asyncio.wait_for(
-                        knowledge_builder.run(self._client), timeout=45
+                        knowledge_builder.run(self._client), timeout=25
                     )
                 except asyncio.TimeoutError:
-                    warning("Knowledge build error: builder timed out (45s)")
+                    warning("Knowledge build error: builder timed out (25s)")
                 except Exception as e:
                     warning(f"Knowledge build error: {e}")
+
+            # ── Phase 4 L2: fact-embedding cache (e5 only) ─────────
+            # Off the chat path.  Only embeds new/changed facts, so it is
+            # self-limiting after the first full pass.
+            if not session.chat_active():
+                try:
+                    await asyncio.wait_for(
+                        knowledge_recall.reindex_facts(self._e5_client), timeout=45
+                    )
+                except asyncio.TimeoutError:
+                    warning("Knowledge recall index: reindex_facts timed out (45s)")
+                except Exception as e:
+                    warning(f"Knowledge recall index: {e}")
 
             await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
 

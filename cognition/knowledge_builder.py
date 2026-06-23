@@ -33,6 +33,7 @@ from config.settings import (
     FINDINGS_PATH,
 )
 from cognition.knowledge_extraction import extract_from_turns, persist_candidates
+from backend.session import session
 from utils.logger import log, warning
 
 
@@ -195,6 +196,11 @@ async def _run_one(notebook: str, client, batch: int) -> int:
         processed.add(item["key"])
     _save_cursor(notebook, processed)
 
+    # If a chat arrived while this extraction was in flight, bail before
+    # the next notebook to avoid contending for the NIM endpoint.
+    if session.chat_active():
+        return len(chunk)
+
     log(
         "knowledge_builder", "built",
         notebook=notebook, batch=len(chunk),
@@ -220,6 +226,10 @@ async def run(client, *, notebook: str | None = None, batch: int | None = None) 
             total += await _run_one(nb, client, limit)
         except Exception as exc:
             warning(f"knowledge_builder/run[{nb}]: {type(exc).__name__}: {exc}")
+        # A chat started while we were processing this notebook; don't start
+        # another NIM call for the next notebook.
+        if session.chat_active():
+            break
     return total
 
 

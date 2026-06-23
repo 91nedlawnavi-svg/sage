@@ -21,7 +21,13 @@ CHAT_COMPORTMENT = (
 )
 
 
-def build_chat_messages(directive: str, user_input: str, history: list[dict], recall_block: str | None = None) -> list[dict]:
+def build_chat_messages(
+    directive: str,
+    user_input: str,
+    history: list[dict],
+    recall_block: str | None = None,
+    knowledge_relations: list[dict] | None = None,
+) -> list[dict]:
     """Build messages for chat completion with directive-first system prompt."""
     # Time context
     time_context = f"[Current date and time: {datetime.now():%A, %B %d, %Y at %I:%M %p}]"
@@ -50,7 +56,10 @@ def build_chat_messages(directive: str, user_input: str, history: list[dict], re
     # KNOWLEDGE_ENABLED; pure disk read, no NIM/embeddings; None when off/empty.
     # Targeted to the current user message so only relevant facts surface.
     parts.append("\n\n")
-    knowledge_block = build_knowledge_block(user_input=user_input)
+    knowledge_block = build_knowledge_block(
+        user_input=user_input,
+        relations=knowledge_relations,
+    )
     if knowledge_block:
         parts.append(knowledge_block)
     else:

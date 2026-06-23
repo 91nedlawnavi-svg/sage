@@ -79,6 +79,155 @@ def _norm_predicate(predicate: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", (predicate or "").lower()).strip("_")
 
 
+_PREDICATE_ALIASES = {
+    "grew_up": "grew_up_in",
+    "works_as": "has_role",
+    "works_in": "works_on",
+    "lives_at": "lives_in",
+    "knows_about": "knows",
+    "knows_how_to": "skilled_at",
+    "is_friends_with": "friend_of",
+    "is_sibling_of": "sibling_of",
+    "is_parent_of": "parent_of",
+    "is_child_of": "child_of",
+    "is_good_at": "skilled_at",
+    "good_at": "skilled_at",
+    "has_skill": "skilled_at",
+    "has_experience_in": "skilled_at",
+    "is_interested_in": "interested_in",
+    "cares_about": "values",
+    "enjoys": "likes",
+    "loves": "likes",
+    "hates": "dislikes",
+    "thinks": "believes",
+    "studies": "studied",
+    "has_role_as": "has_role",
+}
+
+_GENERIC_CATCHALL = "related_to"
+_MAX_PREDICATE_TOKENS = 3
+
+
+def _alias_by_pattern(predicate: str) -> str | None:
+    if predicate.endswith("_due_to"):
+        return "affected_by"
+    if predicate.startswith("due_to_"):
+        return "affected_by"
+    if predicate.startswith("affected_by_"):
+        return "affected_by"
+    if predicate.startswith("had_") and predicate.endswith("_experiences"):
+        return "affected_by"
+    return None
+
+
+def _canonical_predicate(predicate: str) -> str:
+    """View-only predicate canonicalization for old and new records."""
+    pred = _norm_predicate(predicate)
+    if not pred:
+        return pred
+    canonical = _PREDICATE_ALIASES.get(pred)
+    if canonical is None:
+        canonical = _alias_by_pattern(pred)
+    if canonical:
+        return canonical
+    if len(pred.split("_")) > _MAX_PREDICATE_TOKENS:
+        return _GENERIC_CATCHALL
+    return pred
+
+
+def _normalize_literal_value(raw: str) -> str:
+    """Normalize a literal object value for deterministic dedup id computation.
+
+    Lowercase, strip surrounding punctuation, collapse internal whitespace,
+    then strip leading possessive/article tokens (same set as ``_ground_name``).
+    Returns ``""`` when nothing usable remains.
+
+    This is a *view-only* normalizer — the store is never mutated.  It exists so
+    that ``Ramen`` and ``ramen.`` produce the same normalised id and collapse
+    under the existing ``_collapse_by_id`` pass.
+    """
+    text = (raw or "").strip().lower().strip(".,;:!?\"'“”‘’")
+    if not text:
+        return ""
+    text = re.sub(r"\s+", " ", text)  # collapse internal whitespace runs
+    tokens = text.split()
+    i = 0
+    while i < len(tokens) and tokens[i].strip(".,;:!?\"'“”‘’") in _LEADING_DROP_TOKENS:
+        i += 1
+    result = " ".join(tokens[i:]).strip()
+    return result
+
+
+def _normalize_for_dedup(relations: list[dict]) -> list[dict]:
+    """View-only pass: normalize predicates and literal object values so
+    surface-form variants of the same (subject, predicate, literal-object)
+    produce the same relation id and collapse under ``_collapse_by_id``.
+
+    * Predicate — lowered via ``_norm_predicate`` (so ``grew up in`` /
+      ``grew_up_in`` converge).
+    * Literal object value — lowered via ``_normalize_literal_value`` (so
+      ``Ramen``, ``ramen.``, and ``my ramen`` converge).
+    * Entity object values are untouched (they already have stable ids).
+
+    Returns **new** records (shallow copies) when anything changed; original
+    records are returned as-is so idempotent paths cost nothing.
+
+    Hard invariants:
+    * Never merges across different subjects (id hashes subject_id).
+    * Does not disturb single-valued de-confliction (which runs later, over
+      the already-collapsed set).
+    * No embedding-based semantic merging — deferred.
+    """
+    out: list[dict] = []
+    for rec in relations:
+        rid = rec.get("id")
+        if not rid:
+            out.append(rec)
+            continue
+
+        subj = rec.get("subject_id") or ""
+        pred = _canonical_predicate(rec.get("predicate", ""))
+        obj = rec.get("object") or {}
+
+        if obj.get("kind") == "literal":
+            raw_val = str(obj.get("value", ""))
+            norm_val = _normalize_literal_value(raw_val)
+            if not norm_val:
+                out.append(rec)
+                continue
+            new_id = knowledge_store.make_relation_id(subj, pred, norm_val)
+            # Use the normalized form ONLY for id computation so surface-form
+            # duplicates collapse.  The object value keeps its original casing
+            # for display — _pick_winner preserves the winner's original text.
+            if new_id != rid:
+                new_rec = dict(rec)
+                new_rec["predicate"] = pred
+                new_rec["id"] = new_id
+                out.append(new_rec)
+            elif pred != rec.get("predicate", ""):
+                # Id unchanged (value already normalized for id) but predicate
+                # differs in its raw form (e.g. "grew up in" vs "grew_up_in"
+                # that happened to produce the same id — unlikely but safe).
+                new_rec = dict(rec)
+                new_rec["predicate"] = pred
+                out.append(new_rec)
+            else:
+                out.append(rec)
+        else:
+            # Entity object: only predicate normalization applies
+            ent_val = str(obj.get("value", ""))
+            new_id = knowledge_store.make_relation_id(subj, pred, ent_val)
+            if new_id != rid or pred != rec.get("predicate", ""):
+                new_rec = dict(rec)
+                new_rec["predicate"] = pred
+                new_rec["id"] = new_id
+                out.append(new_rec)
+            else:
+                out.append(rec)
+
+    return out
+
+
 def is_single_valued(predicate: str) -> bool:
     """True if *predicate* may hold only one current value per subject."""
     return _norm_predicate(predicate) in SINGLE_VALUED_PREDICATES
@@ -353,8 +502,11 @@ def reconcile_notebook(notebook: str) -> dict:
     raw_entities = knowledge_store.load_entities(notebook)
     raw_relations = knowledge_store.load_relations(notebook)
     grounded_entities, grounded_relations = _ground_literals(raw_entities, raw_relations)
+    # View-only normalization pass: surface-form variants of the same
+    # (subject, predicate, literal-object) produce the same id and collapse.
+    normalized_relations = _normalize_for_dedup(grounded_relations)
     entities = reconcile_entities(grounded_entities)
-    relations = reconcile_relations(grounded_relations)
+    relations = reconcile_relations(normalized_relations)
     return {"entities": entities, "relations": relations}
 
 
@@ -506,5 +658,70 @@ if __name__ == "__main__":
     surv = next(iter(view["relations"].values()))
     assert surv["object"] == {"kind": "entity", "value": "place:jakarta"}, surv
     shutil.rmtree(tmp)
+
+    # ---- unit: deterministic dedup / literal normalization (Task C) ----
+    # Ramen / ramen. collapse via _normalize_literal_value -> same id merged
+    def rlike(subj, pred, val, ts="2026-01-01T00:00:00", origin="she"):
+        rid = knowledge_store.make_relation_id(subj, pred, val)
+        return {"id": rid, "kind": "relation", "subject_id": subj, "predicate": pred,
+                "object": {"kind": "literal", "value": val}, "provenance": [ts],
+                "confidence": 0.7, "origin": origin, "locked": False, "ts": ts}
+
+    # -- two surface-form variants of the same fact collapse to one
+    r1 = rlike("person:elliot", "likes", "Ramen", ts="t1")
+    r2 = rlike("person:elliot", "likes", "ramen.", ts="t2")
+    # Use reconcile_notebook (not reconcile_relations directly) so the
+    # normalization pass runs: all "likes" relations stay literal through
+    # grounding (non-entity-bearing predicate), then get normalized.
+    view = {"entities": {}, "relations": reconcile_relations(
+        _normalize_for_dedup([r1, r2])
+    )}
+    assert len(view["relations"]) == 1, \
+        f"Ramen/ramen. should collapse to 1, got {len(view['relations'])}"
+    surv = next(iter(view["relations"].values()))
+    # Normalized form used ONLY for id computation -- display keeps the
+    # winner's original casing (here "ramen." wins on ts "t2" > "t1").
+    assert surv["object"]["value"] in ("Ramen", "ramen."), \
+        f"expected original casing preserved, got '{surv['object']['value']}'"
+    assert surv["provenance"] == ["t1", "t2"], surv  # provenance union
+    assert surv["predicate"] == "likes"
+
+    # -- proper-noun casing preserved for non-grounded literal
+    r_hi = rlike("person:elliot", "likes", "Classical Music")
+    r_lo = rlike("person:elliot", "likes", "classical music")
+    view_proper = {"entities": {}, "relations": reconcile_relations(
+        _normalize_for_dedup([r_hi, r_lo])
+    )}
+    assert len(view_proper["relations"]) == 1
+    surv = next(iter(view_proper["relations"].values()))
+    assert surv["object"]["value"] in ("Classical Music", "classical music"), \
+        f"expected original casing preserved, got '{surv['object']['value']}'"
+
+    # -- distinct literals stay separate
+    r3 = rlike("person:elliot", "likes", "ramen")
+    r4 = rlike("person:elliot", "likes", "sushi")
+    view2 = {"entities": {}, "relations": reconcile_relations(
+        _normalize_for_dedup([r3, r4])
+    )}
+    assert len(view2["relations"]) == 2, \
+        f"distinct literals must stay separate, got {len(view2['relations'])}"
+
+    # -- cross-subject never merges
+    r5 = rlike("person:elliot", "likes", "Ramen")
+    r6 = rlike("person:hayumi", "likes", "ramen.")
+    view3 = {"entities": {}, "relations": reconcile_relations(
+        _normalize_for_dedup([r5, r6])
+    )}
+    assert len(view3["relations"]) == 2, \
+        f"cross-subject must not merge, got {len(view3['relations'])}"
+
+    # -- predicate normalization: grew up in / grew_up_in converge
+    r7 = rlike("person:elliot", "grew up in", "a poor area")
+    r8 = rlike("person:elliot", "grew_up_in", "a poor area")
+    view4 = {"entities": {}, "relations": reconcile_relations(
+        _normalize_for_dedup([r7, r8])
+    )}
+    assert len(view4["relations"]) == 1, \
+        f"grew up in / grew_up_in should collapse, got {len(view4['relations'])}"
 
     print("OK")

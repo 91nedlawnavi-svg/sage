@@ -11,11 +11,9 @@ from pathlib import Path
 
 import httpx
 
-# Add repo root to path so config/settings works
+# Add repo root to path so project imports work after .env is loaded.
 REPO_ROOT = Path(__file__).parent
 sys.path.insert(0, str(REPO_ROOT))
-
-from config.settings import PORT
 
 
 def load_dotenv():
@@ -27,7 +25,15 @@ def load_dotenv():
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     key, value = line.split("=", 1)
-                    os.environ.setdefault(key.strip(), value.strip())
+                    key = key.strip()
+                    value = value.strip()
+                    if (
+                        len(value) >= 2
+                        and value[0] == value[-1]
+                        and value[0] in ("'", '"')
+                    ):
+                        value = value[1:-1]
+                    os.environ.setdefault(key, value)
 
 
 def check_worker():
@@ -46,6 +52,10 @@ def check_worker():
 def main():
     # 1. Load .env
     load_dotenv()
+
+    # Import settings only after .env is loaded. Some modules snapshot
+    # environment-backed settings at import time.
+    from config.settings import PORT
 
     # 2. FAIL FAST if NVIDIA_API_KEY missing
     if not os.environ.get("NVIDIA_API_KEY"):

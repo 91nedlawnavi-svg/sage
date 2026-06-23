@@ -48,6 +48,11 @@ RELATIONAL_RELATIONS_PATH = KNOWLEDGE_DIR / "relational_relations.jsonl"
 INTERIOR_ENTITIES_PATH = KNOWLEDGE_DIR / "interior_entities.jsonl"
 INTERIOR_RELATIONS_PATH = KNOWLEDGE_DIR / "interior_relations.jsonl"
 
+# Knowledge recall / fact embedding (Phase 4 Layer 2, semantic selection)
+KNOWLEDGE_FACT_MIN_SIM = float(os.environ.get("SAGE_KNOWLEDGE_FACT_MIN_SIM", "0.80"))
+FACT_INDEX_PATH = KNOWLEDGE_DIR / "fact_embeddings.jsonl"
+FACT_INDEX_BATCH = int(os.environ.get("SAGE_FACT_INDEX_BATCH", "16"))
+
 # Semantic recall (Phase 4 Layer 1) — relevance-based memory of older
 # conversation turns + reflections that have scrolled out of the context window.
 RECALL_ENABLED = os.environ.get("SAGE_RECALL_ENABLED", "1").lower() in ("1", "true", "yes")

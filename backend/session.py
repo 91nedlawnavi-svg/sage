@@ -22,6 +22,14 @@ class ConversationSession:
         """Append a turn to the conversation."""
         self._turns.append({"role": role, "content": content})
 
+    def replace_history(self, turns: list[dict]):
+        """Replace in-memory history with persisted turns."""
+        self._turns = [
+            {"role": t.get("role", ""), "content": t.get("content", "")}
+            for t in turns
+            if t.get("role") in ("user", "assistant") and (t.get("content") or "").strip()
+        ]
+
     def begin_chat(self):
         """Record the start of an active chat request.
 
