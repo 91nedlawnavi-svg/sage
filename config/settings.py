@@ -49,7 +49,9 @@ INTERIOR_ENTITIES_PATH = KNOWLEDGE_DIR / "interior_entities.jsonl"
 INTERIOR_RELATIONS_PATH = KNOWLEDGE_DIR / "interior_relations.jsonl"
 
 # Knowledge recall / fact embedding (Phase 4 Layer 2, semantic selection)
-KNOWLEDGE_FACT_MIN_SIM = float(os.environ.get("SAGE_KNOWLEDGE_FACT_MIN_SIM", "0.80"))
+# Calibrated 25 Jun 2026 (clean valley: noise traps <= ~0.705, relevant 0.74-0.80).
+# Override per-deploy via SAGE_KNOWLEDGE_FACT_MIN_SIM. Recalibrate as the fact base grows.
+KNOWLEDGE_FACT_MIN_SIM = float(os.environ.get("SAGE_KNOWLEDGE_FACT_MIN_SIM", "0.73"))
 FACT_INDEX_PATH = KNOWLEDGE_DIR / "fact_embeddings.jsonl"
 FACT_INDEX_BATCH = int(os.environ.get("SAGE_FACT_INDEX_BATCH", "16"))
 
