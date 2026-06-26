@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 from config.settings import PORT, CHAT_MODEL, TIMELAPSE, HEARTBEAT_INTERVAL_SECONDS, AUTONOMOUS_SEARCH_COOLDOWN_SECONDS, AUTONOMOUS_SEARCH_MAX_PER_DAY
 from backend.api.chat import router as chat_router
+from backend.api.graph import router as graph_router
 from backend.heartbeat import Heartbeat
 from config.directive import get_directive
 from utils.logger import info, error
@@ -79,6 +80,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Sage v2", lifespan=lifespan)
 app.include_router(chat_router)
+app.include_router(graph_router)
 
 
 @app.get("/health")
