@@ -13,8 +13,9 @@ This is a personal project. Architecture (the "brain") and implementation (the "
 - **Memory** — conversation, reflections, and findings persist as append-only JSONL (atomic writes) and survive restarts.
 - **Semantic recall** — a local e5-large-v2 embedder indexes the full conversation + reflection archive (1024-dim vectors); relevant past moments are retrieved by similarity and surfaced into chat as a `[RECALLED FROM EARLIER]` block.
 - **Knowledge layer (Phase 4 L2)** — structured entity/relation store, LLM-driven extraction, fact embeddings, targeted `[WHAT YOU KNOW]` surfacing, and provenance-boosted recall. The offline felt-test passes, but it is still **gated off** by default for live activation (`SAGE_KNOWLEDGE_ENABLED=0`).
+- **People-graph (Phase 5)** — the structured knowledge store is projected into a relationship graph. A relationship-extraction pass maps predicates to relationship categories (family, friend, romantic, colleague, acquaintance, creator, other) and exposes the result read-only over `GET /api/graph`. The frontend renders it as a force-directed graph inside the inner-life drawer: category-colored edges, entity-shaped nodes (people, places, projects), an ego ring on the self-node, category filters, zoom/pan, and fit-to-view. This is a **view layer only** — it reads the existing store and never writes to it.
 - **Web search** — via a local SearXNG instance, with a Wikipedia/Wikidata fallback for when the public engines rate-limit.
-- **Frontend** — a single-file web UI: chat plus a slide-in drawer showing her reflections and findings.
+- **Frontend** — a single-file web UI: chat plus a slide-in drawer showing her reflections, findings, and an interactive relationship graph.
 
 ## Architecture
 
@@ -26,9 +27,9 @@ This is a personal project. Architecture (the "brain") and implementation (the "
 - `backend/app.py` — FastAPI app (port 6969), shared HTTP client, session hydration on boot.
 - `backend/api/chat.py`, `backend/session.py` — chat endpoint + session.
 - `backend/heartbeat.py` — idle reflection + cooldown-gated autonomous search.
-- `cognition/` — `reflection.py`, `curiosity.py`, `novelty_gate.py`, `inner_context.py` (Membrane), `web_search.py`.
+- `cognition/` — `reflection.py`, `curiosity.py`, `novelty_gate.py`, `inner_context.py` (Membrane), `web_search.py`, `knowledge_extraction.py` (entity/relation extraction + predicate→relationship-category mapping that backs the people-graph).
 - `memory/` — `conversation_log.py`, `reflection_log.py`, `findings_log.py`, `semantic_recall.py` (JSONL at `~/sage_data/`; recall index at `recall_index.jsonl`).
-- `frontend/index.html` — chat UI + inner-life drawer.
+- `frontend/index.html` — chat UI + inner-life drawer (reflections, findings, and the force-directed people-graph).
 
 ## Endpoints
 
@@ -38,6 +39,7 @@ This is a personal project. Architecture (the "brain") and implementation (the "
 - `GET /findings?n=` — recent autonomous search findings.
 - `GET /heartbeat` — heartbeat / idle / reflection state.
 - `GET /api/history` — full persisted conversation.
+- `GET /api/graph` — read-only people-graph: nodes (entities) and categorized relationship edges.
 - `GET /` — serves the frontend.
 
 ## Requirements
@@ -46,6 +48,7 @@ This is a personal project. Architecture (the "brain") and implementation (the "
 - `NVIDIA_API_KEY` for NIM inference.
 - A local **SearXNG** instance on `:8080` with JSON format enabled (autonomous search).
 - A local **e5-large-v2 embedder** on `:8081` (`llama-embedder.service`, llama.cpp / Vulkan) — 1024-dim, used for semantic recall.
+- The people-graph frontend loads **D3 v7** from a CDN at runtime, so the browser viewing the UI needs network access for the graph tab to render.
 
 ## Run
 
@@ -70,4 +73,8 @@ journalctl --user -u sage -f     # logs
 
 ## Status
 
-Phases 0–3 and Phase 4 Layers 0–2 are implemented: spine, autonomous reflection, self-originated curiosity + search, novelty gate, the Membrane, durable memory, semantic recall, and the structured knowledge layer. **Phase 4 Layer 2** passes the offline integrated felt-test for targeted personal facts, provenance-boosted recall, and locked corrections, but remains **gated off** by default (`SAGE_KNOWLEDGE_ENABLED=0`) for live sign-off. See `CLAUDE.md` for the full phase log and build conventions.
+Phases 0–3 and Phase 4 Layers 0–2 are implemented: spine, autonomous reflection, self-originated curiosity + search, novelty gate, the Membrane, durable memory, semantic recall, and the structured knowledge layer. **Phase 4 Layer 2** passes the offline integrated felt-test for targeted personal facts, provenance-boosted recall, and locked corrections, but remains **gated off** by default (`SAGE_KNOWLEDGE_ENABLED=0`) for live sign-off.
+
+**Phase 5 (people-graph)** is underway. The relationship-extraction engine and a read-only graph API (`GET /api/graph`) are live, and the force-directed graph drawer UI now ships in the frontend. Remaining: in-graph editing with a review queue (reusing the Layer 2 locks) and a live felt-test.
+
+See `CLAUDE.md` for the full phase log and build conventions.
