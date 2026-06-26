@@ -151,6 +151,7 @@ _PREDICATE_CATEGORIES: dict[str, str] = {
     "friend_of": "colleague",
     "works_with": "colleague",
     "knows": "colleague",
+    "built_by": "creator",
 }
 
 # Predicates where the model's natural output direction is the inverse of the

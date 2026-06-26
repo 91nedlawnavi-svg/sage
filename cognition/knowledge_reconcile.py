@@ -102,6 +102,7 @@ _PREDICATE_ALIASES = {
     "thinks": "believes",
     "studies": "studied",
     "has_role_as": "has_role",
+    "prefers_to_be_seen_as": "prefers_to_be_seen_as",
 }
 
 _GENERIC_CATCHALL = "related_to"
@@ -146,13 +147,13 @@ def _normalize_literal_value(raw: str) -> str:
     that ``Ramen`` and ``ramen.`` produce the same normalised id and collapse
     under the existing ``_collapse_by_id`` pass.
     """
-    text = (raw or "").strip().lower().strip(".,;:!?\"'“”‘’")
+    text = (raw or "").strip().lower().strip(".,;:!?\"'""''")
     if not text:
         return ""
     text = re.sub(r"\s+", " ", text)  # collapse internal whitespace runs
     tokens = text.split()
     i = 0
-    while i < len(tokens) and tokens[i].strip(".,;:!?\"'“”‘’") in _LEADING_DROP_TOKENS:
+    while i < len(tokens) and tokens[i].strip(".,;:!?\"'""''") in _LEADING_DROP_TOKENS:
         i += 1
     result = " ".join(tokens[i:]).strip()
     return result
@@ -270,6 +271,8 @@ _GROUNDING_PREDICATE_TYPES: dict[str, str] = {
     "partner": "person",
     "colleague_of": "person",
     "mentored_by": "person",
+    # Phase 5 Brick 4.5 — view-layer grounding refinements
+    "built_by": "person",
 }
 
 # Leading possessive / article tokens stripped before a literal is turned into
@@ -277,7 +280,7 @@ _GROUNDING_PREDICATE_TYPES: dict[str, str] = {
 # all converge on the same node.
 _LEADING_DROP_TOKENS: frozenset[str] = frozenset(
     {
-        "elliot's", "elliots", "elliot’s",
+        "elliot's", "elliots", "elliot's",
         "his", "her", "their", "my", "our", "your", "its",
         "the", "a", "an",
     }
@@ -296,15 +299,39 @@ def _ground_name(raw: str) -> str:
     school") and surrounding punctuation/whitespace. Returns "" when nothing
     usable remains (e.g. the literal was only articles).
     """
-    text = (raw or "").strip().strip(".,;:!?\"'“”‘’")
+    text = (raw or "").strip().strip(".,;:!?\"'""''")
     if not text:
         return ""
     tokens = text.split()
     i = 0
-    while i < len(tokens) and tokens[i].lower().strip(".,;:!?\"'“”‘’") in _LEADING_DROP_TOKENS:
+    while i < len(tokens) and tokens[i].lower().strip(".,;:!?\"'""''") in _LEADING_DROP_TOKENS:
         i += 1
     name = " ".join(tokens[i:]).strip()
     return name
+
+
+def _is_groundable_literal(value: str) -> bool:
+    """Return True if a literal value should be grounded into an entity.
+
+    Heuristic: if the literal, after possessive/article stripping, has more
+    than 3 space-separated tokens and every token is fully lowercase (no
+    proper-noun capitalization), treat it as an abstract descriptive phrase
+    rather than a named entity.  Such phrases describe circumstances, not
+    places or orgs, and minting a node for them pollutes the graph.
+
+    Examples:
+      "socioeconomically challenging circumstances" -> False (abstract)
+      "old-school"                                  -> True  (short)
+      "old school"                                  -> True  (short)
+      "Lincoln High"                                -> True  (proper noun)
+    """
+    cleaned = _ground_name(value)
+    if not cleaned:
+        return False
+    tokens = cleaned.split()
+    if len(tokens) >= 3 and all(t == t.lower() for t in tokens):
+        return False
+    return True
 
 
 def _ground_literals(
@@ -317,11 +344,13 @@ def _ground_literals(
     grounded relation's id is recomputed over the new object so grounded
     duplicates collapse together in the id pass that follows.
     """
-    # Index existing entities by slug(name) and slug(alias) → record.
+    # Index existing entities by id, slug(name), and slug(alias).
     by_slug: dict[str, dict] = {}
+    by_id: dict[str, dict] = {}
     for ent in entities:
         if not ent.get("id"):
             continue
+        by_id[ent["id"]] = ent
         nm = ent.get("name") or ""
         if nm:
             by_slug.setdefault(_slug(nm), ent)
@@ -342,6 +371,13 @@ def _ground_literals(
             grounded.append(rec)
             continue
 
+        # Abstract-literal guard: skip descriptive phrases that are not
+        # proper entity names (e.g. "socioeconomically challenging
+        # circumstances" -> stays as literal fact, no place: minted).
+        if not _is_groundable_literal(str(obj.get("value", ""))):
+            grounded.append(rec)
+            continue
+
         name = _ground_name(str(obj.get("value", "")))
         slug = _slug(name)
         if not name or not slug:
@@ -352,7 +388,12 @@ def _ground_literals(
         if match is not None:
             target_id = match["id"]
         else:
-            target_id = knowledge_store.make_entity_id(etype, name)
+            # Entity-id match: the literal value may itself be an existing
+            # entity id (e.g. built_by -> "person:elliot"). Check by_id.
+            if ":" in name and name in by_id:
+                target_id = name
+            else:
+                target_id = knowledge_store.make_entity_id(etype, name)
             if target_id not in minted:
                 ts = rec.get("ts") or rec.get("last_seen") or rec.get("first_seen") or ""
                 minted[target_id] = {
@@ -369,6 +410,7 @@ def _ground_literals(
                     "grounded": True,  # provenance marker: minted by grounding
                 }
                 by_slug[slug] = minted[target_id]
+                by_id[target_id] = minted[target_id]
 
         new_rec = dict(rec)
         new_rec["object"] = {"kind": "entity", "value": target_id}
