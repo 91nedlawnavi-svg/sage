@@ -509,8 +509,18 @@ def reconcile_relations(records: list[dict]) -> dict[str, dict]:
     After per-id collapse, single-valued predicates are de-conflicted across
     ids: for each (subject_id, predicate) that is single-valued, only the
     highest-precedence record survives; contradicting values are suppressed.
+
+    Any per-id winner carrying a truthy ``deleted`` flag is dropped *before*
+    the single-valued contest runs.  Tombstones (locked + origin="elliot" +
+    deleted=True) outrank their original counterparts in ``_pick_winner``, so
+    a dismissed id collapses to the tombstone here.  Filtering tombstones up
+    front prevents one from suppressing a *different* id's legitimate
+    correction within the same (subject, single-valued-predicate) slot.
     """
     by_id = _collapse_by_id(records, kind="relation")
+
+    # Strip tombstoned ids first so they can't compete in single-valued slots.
+    by_id = {rid: rec for rid, rec in by_id.items() if not rec.get("deleted")}
 
     sv_groups: dict[tuple[str, str], list[str]] = {}
     survivors: dict[str, dict] = {}
@@ -765,5 +775,76 @@ if __name__ == "__main__":
     )}
     assert len(view4["relations"]) == 1, \
         f"grew up in / grew_up_in should collapse, got {len(view4['relations'])}"
+
+    # ---- unit: tombstone drops a multi-valued relation (Brick 6) ----
+    # Same id, locked + deleted appended later -> reconcile drops it.
+    pizza_id = knowledge_store.make_relation_id("person:elliot", "likes", "pizza")
+    pizza_rec = {
+        "id": pizza_id, "kind": "relation", "subject_id": "person:elliot",
+        "predicate": "likes",
+        "object": {"kind": "literal", "value": "pizza"},
+        "provenance": ["u1"], "confidence": 0.7,
+        "origin": "she", "locked": False, "ts": "2026-01-01T00:00:00",
+    }
+    pizza_tomb = {
+        "id": pizza_id, "kind": "relation", "subject_id": "person:elliot",
+        "predicate": "likes",
+        "object": {"kind": "literal", "value": "pizza"},
+        "provenance": [], "confidence": 1.0,
+        "origin": "elliot", "locked": True, "deleted": True,
+        "ts": "2026-01-02T00:00:00",
+    }
+    re_tomb = reconcile_relations([pizza_rec, pizza_tomb])
+    assert pizza_id not in re_tomb, (
+        f"tombstoned id should be dropped, still present: {list(re_tomb)}"
+    )
+
+    # Tombstone alone (no original) also drops.
+    re_tomb_only = reconcile_relations([pizza_tomb])
+    assert pizza_id not in re_tomb_only, "lone tombstone should still drop"
+
+    # Tombstone persists across re-runs (same input -> still gone).
+    re_tomb_again = reconcile_relations([pizza_rec, pizza_tomb])
+    assert pizza_id not in re_tomb_again, "tombstone must stay gone on re-reconcile"
+
+    # Sibling multi-valued sibling on the same subject is unaffected.
+    sushi = rlike("person:elliot", "likes", "sushi")
+    re_mixed = reconcile_relations([pizza_rec, pizza_tomb, sushi])
+    assert sushi["id"] in re_mixed and pizza_id not in re_mixed, re_mixed
+
+    # ---- unit: tombstone + single-valued correction coexist (Brick 6) ----
+    # Tombstoning the OLD works_at must not suppress a NEW locked works_at
+    # for the same subject (single-valued slot).
+    nimbus_id = knowledge_store.make_relation_id("person:leo", "works_at", "org:nimbus-labs")
+    nimbus_rec = {
+        "id": nimbus_id, "kind": "relation", "subject_id": "person:leo",
+        "predicate": "works_at",
+        "object": {"kind": "entity", "value": "org:nimbus-labs"},
+        "provenance": [], "confidence": 0.5,
+        "origin": "she", "locked": False, "ts": "2026-01-01T00:00:00",
+    }
+    aether_id = knowledge_store.make_relation_id("person:leo", "works_at", "org:aether-systems")
+    aether_rec = {
+        "id": aether_id, "kind": "relation", "subject_id": "person:leo",
+        "predicate": "works_at",
+        "object": {"kind": "entity", "value": "org:aether-systems"},
+        "provenance": [], "confidence": 1.0,
+        "origin": "elliot", "locked": True, "ts": "2026-01-02T00:00:00",
+    }
+    nimbus_tomb = {
+        "id": nimbus_id, "kind": "relation", "subject_id": "person:leo",
+        "predicate": "works_at",
+        "object": {"kind": "entity", "value": "org:nimbus-labs"},
+        "provenance": [], "confidence": 1.0,
+        "origin": "elliot", "locked": True, "deleted": True,
+        "ts": "2026-01-03T00:00:00",
+    }
+    re_fix = reconcile_relations([nimbus_rec, aether_rec, nimbus_tomb])
+    assert aether_id in re_fix, (
+        f"locked correction must survive after tombstoning the original, "
+        f"got {list(re_fix)}"
+    )
+    assert nimbus_id not in re_fix, "tombstoned id must be dropped"
+    assert re_fix[aether_id]["object"]["value"] == "org:aether-systems"
 
     print("OK")

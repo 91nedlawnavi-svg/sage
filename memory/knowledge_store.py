@@ -217,6 +217,54 @@ def correct_relation(
         return None
 
 
+# ── Elliot dismissal (tombstone) helper ─────────────────────────────
+
+def dismiss_relation(
+    notebook: str,
+    *,
+    relation_id: str,
+    subject_id: str,
+    predicate: str,
+    object_value: str,
+    object_kind: str = "literal",
+) -> str | None:
+    """Append a tombstone for *relation_id* in *notebook*.
+
+    The tombstone is an append-only record that shares the SAME relation id
+    as the target edge, carries ``origin="elliot"``, ``locked=True``, and
+    ``deleted=True``.  Reconcile's ``_pick_winner`` ranks it above the original
+    (locked beats unlocked / she), so on collapse the deleted flag is honored
+    and the id is removed from the view.  The store itself is never mutated.
+
+    Mirrors ``append_relation``'s atomic-write pattern exactly (tmp file then
+    ``os.replace``).  Degrades silently to ``None`` on any failure.
+    """
+    if object_kind not in ("entity", "literal"):
+        return None
+    try:
+        _, relation_path = _resolve_notebook(notebook)
+    except ValueError:
+        return None
+    now = datetime.now().isoformat()
+    entry = {
+        "id": relation_id,
+        "kind": "relation",
+        "subject_id": subject_id,
+        "predicate": predicate,
+        "object": {"kind": object_kind, "value": object_value},
+        "provenance": [],
+        "confidence": 1.0,
+        "origin": "elliot",
+        "locked": True,
+        "deleted": True,
+        "first_seen": now,
+        "last_seen": now,
+        "ts": now,
+    }
+    _append_line(relation_path, entry)
+    return relation_id
+
+
 # ── Load functions (safe, return [] on failure) ────────────────────
 
 def _read_jsonl_safe(path: Path) -> list[dict]:
@@ -345,6 +393,32 @@ if __name__ == "__main__":
     # Assert no .tmp file left behind
     tmp_files = list(tmp.glob("*.tmp"))
     assert len(tmp_files) == 0, f"Leftover .tmp files: {tmp_files}"
+
+    # ── dismiss_relation tombstone ────────────────────────────────────
+    # Append a tombstone for the existing relation id; raw store should now
+    # carry both the original record and a locked/elliot/deleted clone.
+    tomb_id = dismiss_relation(
+        "interior",
+        relation_id=r_id,
+        subject_id=e1_id,
+        predicate="designed",
+        object_value=e2_id,
+        object_kind="entity",
+    )
+    assert tomb_id == r_id, f"expected dismiss_relation to return {r_id}, got {tomb_id}"
+    relations_after = load_relations("interior")
+    assert len(relations_after) == 2, (
+        f"Expected 2 records after dismiss, got {len(relations_after)}"
+    )
+    tombstone = relations_after[-1]
+    assert tombstone["id"] == r_id
+    assert tombstone["origin"] == "elliot"
+    assert tombstone["locked"] is True
+    assert tombstone["deleted"] is True
+    assert tombstone["object"] == {"kind": "entity", "value": e2_id}
+
+    tmp_files = list(tmp.glob("*.tmp"))
+    assert len(tmp_files) == 0, f"Leftover .tmp files after dismiss: {tmp_files}"
 
     # Clean up
     shutil.rmtree(tmp)
