@@ -106,15 +106,67 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
   .msg.user .bubble{max-width:88%;}
 }
 /* Graph tab (brain-authored, warm monochrome) */
-#sg-inner-graph{display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden;padding:14px 18px 20px;}
+#sg-inner-graph{display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden;padding:14px 18px 20px;position:relative;}
 #sg-graph-top{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;flex:0 0 auto;}
 #sg-graph-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1;}
+#sg-graph-actions{display:flex;gap:6px;align-items:center;flex-shrink:0;}
 #sg-graph-svg{width:100%;flex:1 1 auto;min-height:0;display:block;cursor:grab;}
 #sg-graph-svg:active{cursor:grabbing;}
-#sg-graph-refresh{background:none;border:1px solid var(--border2);color:var(--muted);border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;line-height:1;transition:all .15s;}
-#sg-graph-refresh:hover{color:var(--soft);border-color:var(--accent-dim);}
+#sg-graph-refresh,#sg-review-toggle{background:none;border:1px solid var(--border2);color:var(--muted);border-radius:8px;height:28px;cursor:pointer;font:inherit;font-size:11.5px;display:flex;align-items:center;gap:5px;justify-content:center;flex-shrink:0;line-height:1;transition:all .15s;}
+#sg-graph-refresh{width:28px;font-size:14px;}
+#sg-review-toggle{padding:0 10px;}
+#sg-graph-refresh:hover,#sg-review-toggle:hover{color:var(--soft);border-color:var(--accent-dim);}
+#sg-review-toggle .sg-rev-badge{background:var(--accent-dim);color:var(--bg);border-radius:999px;font-size:10px;padding:1px 6px;line-height:1.25;min-width:18px;text-align:center;}
+#sg-review-toggle.on{color:var(--text);border-color:var(--accent-dim);background:var(--bg3);}
 #sg-graph-error{display:none;flex:1;align-items:center;justify-content:center;color:var(--muted);font-size:13px;text-align:center;padding:0 20px;}
 #sg-graph-error a{color:var(--accent);text-decoration:none;}
+/* Inspector (click-to-curate) */
+#sg-inspector{display:none;border-top:1px solid var(--border);background:var(--bg2);padding:10px 14px 12px;flex:0 0 auto;}
+#sg-inspector.open{display:block;}
+.sg-insp-head{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;}
+.sg-insp-head .sg-insp-close{margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;}
+.sg-insp-head .sg-insp-kind{font-weight:400;font-size:11px;color:var(--muted);}
+.sg-insp-body{font-size:11.5px;color:var(--soft);line-height:1.55;}
+.sg-insp-row{margin-top:1px;}
+.sg-insp-row span{color:var(--muted);display:inline-block;min-width:70px;}
+.sg-insp-actions{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap;}
+.sg-insp-actions button{background:var(--bg3);border:1px solid var(--border2);color:var(--soft);font:inherit;font-size:11px;padding:4px 11px;border-radius:7px;cursor:pointer;transition:all .15s;}
+.sg-insp-actions button:hover:not(:disabled){border-color:var(--accent-dim);color:var(--text);}
+.sg-insp-actions button:disabled{opacity:.4;cursor:default;}
+.sg-insp-actions button.sg-danger:hover:not(:disabled){border-color:var(--err);color:var(--err);}
+.sg-insp-fix{display:none;margin-top:8px;gap:5px;flex-wrap:wrap;align-items:center;font-size:11px;}
+.sg-insp-fix.show{display:flex;}
+.sg-insp-fix input,.sg-insp-fix select{background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;font:inherit;font-size:11px;padding:4px 7px;}
+.sg-insp-fix input{flex:1;min-width:130px;}
+.sg-insp-status{margin-top:6px;font-size:10.5px;color:var(--muted);min-height:14px;}
+.sg-insp-status.err{color:var(--err);}
+/* Review queue panel */
+#sg-review{display:none;position:absolute;top:48px;right:14px;width:320px;max-width:92%;max-height:calc(100% - 70px);background:var(--bg2);border:1px solid var(--border2);border-radius:10px;flex-direction:column;z-index:6;box-shadow:0 14px 32px rgba(0,0,0,.45);overflow:hidden;}
+#sg-review.open{display:flex;}
+#sg-review-head{padding:9px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-shrink:0;}
+#sg-review-tabs{display:flex;gap:4px;}
+.sg-rev-tab{background:none;border:1px solid var(--border2);color:var(--muted);font:inherit;font-size:10.5px;padding:3px 9px;border-radius:999px;cursor:pointer;transition:all .15s;}
+.sg-rev-tab.active{color:var(--text);border-color:var(--accent-dim);background:var(--bg3);}
+#sg-review-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;}
+#sg-review-filters{padding:7px 12px;border-bottom:1px solid var(--border);display:flex;gap:5px;align-items:center;flex-wrap:wrap;font-size:10.5px;color:var(--muted);flex-shrink:0;}
+#sg-review-filters select,#sg-review-filters input{background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;font:inherit;font-size:10.5px;padding:3px 6px;}
+#sg-review-filters input{width:62px;}
+#sg-review-list{overflow-y:auto;padding:4px 0;flex:1;}
+#sg-review-list::-webkit-scrollbar{width:5px;}
+#sg-review-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+.sg-rev-item{padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;}
+.sg-rev-item:last-child{border-bottom:none;}
+.sg-rev-item:hover{background:var(--bg3);}
+.sg-rev-edge{font-size:12px;line-height:1.45;color:var(--soft);word-break:break-word;}
+.sg-rev-edge .sg-rev-pred{color:var(--text);}
+.sg-rev-meta{margin-top:3px;font-size:10px;color:var(--muted);display:flex;gap:8px;align-items:center;}
+.sg-rev-meta .sg-rev-cat{width:6px;height:6px;border-radius:50%;display:inline-block;}
+.sg-rev-actions{display:flex;gap:5px;margin-top:6px;}
+.sg-rev-actions button{background:var(--bg3);border:1px solid var(--border2);color:var(--soft);font:inherit;font-size:10.5px;padding:3px 9px;border-radius:6px;cursor:pointer;transition:all .15s;}
+.sg-rev-actions button:hover:not(:disabled){border-color:var(--accent-dim);color:var(--text);}
+.sg-rev-actions button:disabled{opacity:.45;cursor:default;}
+.sg-rev-actions button.sg-danger:hover:not(:disabled){border-color:var(--err);color:var(--err);}
+.sg-rev-empty{padding:18px 12px;color:var(--faint);font-size:12px;text-align:center;}
 .sg-shape{fill:var(--bg3);stroke:var(--soft);stroke-width:1.5px;cursor:pointer;transition:stroke .15s;}
 .sg-node:hover .sg-shape{stroke:var(--accent);}
 .sg-ego-ring{fill:none;stroke:var(--accent);stroke-width:1.4px;opacity:.7;}
@@ -182,10 +234,31 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
   <div id="sg-inner-graph">
     <div id="sg-graph-top">
       <div id="sg-graph-chips"></div>
-      <button id="sg-graph-refresh" title="Refresh">&#8635;</button>
+      <div id="sg-graph-actions">
+        <button id="sg-review-toggle" type="button" title="Review queue">Review <span class="sg-rev-badge" id="sg-review-badge">0</span></button>
+        <button id="sg-graph-refresh" title="Refresh">&#8635;</button>
+      </div>
     </div>
     <svg id="sg-graph-svg"></svg>
     <div id="sg-graph-error"></div>
+    <div id="sg-inspector"></div>
+    <div id="sg-review">
+      <div id="sg-review-head">
+        <div id="sg-review-tabs">
+          <button class="sg-rev-tab active" data-state="pending" type="button">Pending</button>
+          <button class="sg-rev-tab" data-state="confirmed" type="button">Confirmed</button>
+          <button class="sg-rev-tab" data-state="dismissed" type="button">Dismissed</button>
+        </div>
+        <button id="sg-review-close" title="Close" type="button">&#10005;</button>
+      </div>
+      <div id="sg-review-filters">
+        <select id="sg-review-cat"><option value="">all cats</option></select>
+        <input id="sg-review-min" type="text" placeholder="min" inputmode="decimal">
+        <input id="sg-review-max" type="text" placeholder="max" inputmode="decimal">
+        <input id="sg-review-endp" type="text" placeholder="endpoint id" style="width:auto;flex:1;min-width:90px;">
+      </div>
+      <div id="sg-review-list"><div class="sg-rev-empty">Loading…</div></div>
+    </div>
   </div>
 </aside>
 
@@ -224,6 +297,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
     var tooltipEl = opts.tooltip;
     var getData = opts.getData;
     var egoId = opts.egoId || "person:elliot";
+    var onSelect = typeof opts.onSelect === "function" ? opts.onSelect : null;
 
     var svg = d3.select(svgEl);
     svg.selectAll("*").remove();
@@ -431,9 +505,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
         .attr("stroke-width", function (l) { return l.locked ? 2.25 : 1.4; })
         .attr("marker-end", function (l) { return "url(#sg-arrow-" + l.category + ")"; })
         .attr("fill", "none")
+        .style("cursor", onSelect ? "pointer" : null)
         .on("mouseover", function (ev, l) { showTip(tooltipHtml("edge", l), ev); var k = {}; k[l.source.id] = true; k[l.target.id] = true; dimExcept(k, function (x) { return x === l; }); })
         .on("mousemove", function (ev) { moveTip(ev); })
-        .on("mouseout", function () { hideTip(); undim(); });
+        .on("mouseout", function () { hideTip(); undim(); })
+        .on("click", function (ev, l) { if (onSelect) { ev.stopPropagation(); onSelect("edge", l); } });
 
       lockSel = lockLayer.selectAll("text").data(links.filter(function (l) { return l.locked; })).join("text")
         .attr("class", "sg-lock").attr("text-anchor", "middle").attr("dy", "0.32em").text("\uD83D\uDD12");
@@ -452,6 +528,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
       nodeSel.on("mouseover", function (ev, d) { showTip(tooltipHtml("node", d), ev); var nb = neighborsOf(d.id); dimExcept(nb, function (l) { return (l.source.id || l.source) === d.id || (l.target.id || l.target) === d.id; }); })
         .on("mousemove", function (ev) { moveTip(ev); })
         .on("mouseout", function () { hideTip(); undim(); })
+        .on("click", function (ev, d) { if (onSelect) { ev.stopPropagation(); onSelect("node", d); } })
         .on("dblclick", function (ev, d) { d.fx = null; d.fy = null; if (simulation) simulation.alpha(0.3).restart(); });
 
       simulation = d3.forceSimulation(nodes)
@@ -501,7 +578,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
       reload: load,
       refit: fitToView,
       stop: function () { if (simulation) simulation.stop(); },
-      resume: function () { if (simulation && simulation.alpha() < 0.02) { simulation.alpha(0.05).restart(); } }
+      resume: function () { if (simulation && simulation.alpha() < 0.02) { simulation.alpha(0.05).restart(); } },
+      getNodes: function () { return nodes; },
+      getLinks: function () { return links; }
     };
   }
 
@@ -626,10 +705,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
   inputEl.focus();
 
   // ── Graph tab ──
+  var REVIEW_CAT_COLORS={family:"#c98a6f",friend:"#8ca37e",romantic:"#c08aa0",colleague:"#7f93a8",acquaintance:"#9a8d86",creator:"#c2a15e",other:"#857c73"};
+  var reviewState={state:'pending',category:'',min:'',max:'',endpoint:'',items:[]};
+  var reviewOpen=false;
   function showGraphTab(){
     var gc=$('sg-inner-graph'),dc=$('drawer-content'),note=$('drawer-note'),ge=$('sg-graph-error');
     if(dc)dc.style.display='none';
-    if(note)note.textContent='Entity graph of people, places, and projects. Read-only.';
+    if(note)note.textContent='Entity graph of people, places, and projects. Click a node or edge to curate.';
     if(ge)ge.style.display='none';
     if(gc)gc.style.display='flex';
     if(!sageGraphCtl){
@@ -637,13 +719,20 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
       sageGraphCtl=window.initSageGraph({
         svg:$('sg-graph-svg'),chips:$('sg-graph-chips'),tooltip:$('sg-graph-tooltip'),
         getData:function(){return fetch('/api/graph').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();});},
-        egoId:'person:elliot'
+        egoId:'person:elliot',
+        onSelect:onGraphSelect
       });
       if(!sageGraphCtl){if(ge){ge.style.display='flex';ge.textContent='Graph needs D3 (offline?).';}return;}
-      if(!sageGraphRefreshWired){var rb=$('sg-graph-refresh');if(rb){rb.addEventListener('click',function(){if(sageGraphCtl)sageGraphCtl.reload();});}sageGraphRefreshWired=true;}
+      if(!sageGraphRefreshWired){
+        var rb=$('sg-graph-refresh');if(rb){rb.addEventListener('click',function(){if(sageGraphCtl)sageGraphCtl.reload();refreshReview();});}
+        wireReviewUI();
+        sageGraphRefreshWired=true;
+      }
       sageGraphCtl.reload().then(null,function(e){if(ge){ge.style.display='flex';ge.textContent='Cannot load graph: '+e.message;}});
+      refreshReview();
     }else{
       sageGraphCtl.resume();sageGraphCtl.refit();
+      refreshReview();
     }
   }
   function hideGraphTab(){
@@ -651,7 +740,214 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
     if(gc)gc.style.display='none';
     if(dc)dc.style.display='';
     if(sageGraphCtl)sageGraphCtl.stop();
+    closeInspector();
+    closeReview();
   }
+
+  // ── Click-to-curate inspector ──
+  var inspectorTarget=null; // {kind:'edge'|'node', data:..., links:[link...]}
+  function onGraphSelect(kind,d){
+    if(kind==='edge'){inspectorTarget={kind:'edge',data:d};}
+    else{inspectorTarget={kind:'node',data:d};}
+    renderInspector();
+  }
+  function renderInspector(){
+    var el=$('sg-inspector');if(!el){return;}
+    if(!inspectorTarget){closeInspector();return;}
+    el.classList.add('open');
+    if(inspectorTarget.kind==='edge'){renderInspectorEdge(el,inspectorTarget.data);}
+    else{renderInspectorNode(el,inspectorTarget.data);}
+  }
+  function nameOf(n){return (n&&(n.name||n.id))||'';}
+  function renderInspectorEdge(el,l){
+    var srcName=nameOf(l.source);var tgtName=nameOf(l.target);
+    var srcId=(l.source&&(l.source.id||l.source))||'';
+    var tgtId=(l.target&&(l.target.id||l.target))||'';
+    var rid=l.id||l.relation_id||'';
+    var locked=l.locked?' <span style="color:var(--accent);">locked</span>':'';
+    el.innerHTML=
+      '<div class="sg-insp-head">Edge <span class="sg-insp-kind">'+escapeHtml(l.predicate||'')+'</span>'+
+      '<button class="sg-insp-close" type="button" aria-label="Close">&#10005;</button></div>'+
+      '<div class="sg-insp-body">'+
+      '<div class="sg-insp-row"><span>from</span>'+escapeHtml(srcName)+'</div>'+
+      '<div class="sg-insp-row"><span>to</span>'+escapeHtml(tgtName)+'</div>'+
+      '<div class="sg-insp-row"><span>predicate</span>'+escapeHtml(l.predicate||'')+'</div>'+
+      '<div class="sg-insp-row"><span>category</span>'+escapeHtml(l.category||'other')+'</div>'+
+      '<div class="sg-insp-row"><span>confidence</span>'+(l.confidence!=null?Number(l.confidence).toFixed(2):'-')+locked+'</div>'+
+      '<div class="sg-insp-row"><span>id</span><code style="font-size:10.5px;">'+escapeHtml(rid||'(none)')+'</code></div>'+
+      '</div>'+
+      '<div class="sg-insp-actions">'+
+        '<button data-act="confirm"'+(rid?'':' disabled')+'>Confirm</button>'+
+        '<button data-act="fix"'+(rid?'':' disabled')+'>Fix…</button>'+
+        '<button class="sg-danger" data-act="delete"'+(rid?'':' disabled')+'>Delete</button>'+
+      '</div>'+
+      '<div class="sg-insp-fix" data-fix>'+
+        '<input data-fix-pred placeholder="predicate" value="'+escapeAttr(l.predicate||'')+'">'+
+        '<select data-fix-kind>'+
+          '<option value="entity">entity</option>'+
+          '<option value="literal">literal</option>'+
+        '</select>'+
+        '<input data-fix-val placeholder="object id or value" value="'+escapeAttr(tgtId)+'">'+
+        '<button data-act="fix-go">Save</button>'+
+        '<button data-act="fix-cancel">Cancel</button>'+
+      '</div>'+
+      '<div class="sg-insp-status" data-status></div>';
+    bindInspector(el,{kind:'edge',id:rid,subject_id:srcId,predicate:l.predicate,object_value:tgtId,object_kind:'entity'});
+  }
+  function renderInspectorNode(el,d){
+    var facts=d.facts||[];
+    var factRows=facts.map(function(f){
+      var rid=f.relation_id||'';
+      return '<div class="sg-insp-row" data-fact-row data-rid="'+escapeAttr(rid)+'" data-pred="'+escapeAttr(f.predicate||'')+'" data-val="'+escapeAttr(String(f.value==null?'':f.value))+'">'+
+        '<span>'+escapeHtml(f.predicate||'')+'</span>'+escapeHtml(String(f.value==null?'':f.value))+
+        (f.locked?' <span style="color:var(--accent);font-size:10px;">locked</span>':'')+
+        ' &middot; <a href="#" data-act="fact-confirm" data-rid="'+escapeAttr(rid)+'" style="color:var(--muted);">confirm</a>'+
+        ' &middot; <a href="#" data-act="fact-delete" data-rid="'+escapeAttr(rid)+'" style="color:var(--muted);">delete</a>'+
+        '</div>';
+    }).join('');
+    el.innerHTML=
+      '<div class="sg-insp-head">'+escapeHtml(d.name||d.id||'')+' <span class="sg-insp-kind">'+escapeHtml(d.type||'')+'</span>'+
+      '<button class="sg-insp-close" type="button" aria-label="Close">&#10005;</button></div>'+
+      '<div class="sg-insp-body">'+
+      '<div class="sg-insp-row"><span>id</span><code style="font-size:10.5px;">'+escapeHtml(d.id||'')+'</code></div>'+
+      (factRows||'<div class="sg-insp-row" style="color:var(--faint);">no literal facts</div>')+
+      '</div>'+
+      '<div class="sg-insp-status" data-status>Node deletion is out of scope. Use edge actions or the fact links above.</div>';
+    bindInspectorNode(el);
+  }
+  function bindInspector(el,ctx){
+    var close=el.querySelector('.sg-insp-close');if(close)close.addEventListener('click',closeInspector);
+    var status=el.querySelector('[data-status]');
+    function setStatus(txt,err){if(!status)return;status.textContent=txt||'';status.classList.toggle('err',!!err);}
+    function disableAll(v){var bs=el.querySelectorAll('button');for(var i=0;i<bs.length;i++)bs[i].disabled=v;}
+    el.querySelectorAll('.sg-insp-actions button').forEach(function(b){
+      b.addEventListener('click',function(){
+        var act=b.getAttribute('data-act');
+        if(act==='confirm'){
+          disableAll(true);setStatus('Confirming…');
+          postWrite('/api/graph/confirm',{relation_id:ctx.id,subject_id:ctx.subject_id,predicate:ctx.predicate,object_value:ctx.object_value,object_kind:ctx.object_kind})
+            .then(function(j){if(j&&j.ok){setStatus('Confirmed.');refreshAll();closeInspector();}else{setStatus((j&&j.error)||'Failed.',true);disableAll(false);}})
+            .catch(function(e){setStatus(e.message,true);disableAll(false);});
+        }else if(act==='delete'){
+          disableAll(true);setStatus('Deleting…');
+          postWrite('/api/graph/delete',{relation_id:ctx.id})
+            .then(function(j){if(j&&j.ok){setStatus('Deleted.');refreshAll();closeInspector();}else{setStatus((j&&j.error)||'Failed.',true);disableAll(false);}})
+            .catch(function(e){setStatus(e.message,true);disableAll(false);});
+        }else if(act==='fix'){
+          var fix=el.querySelector('[data-fix]');if(fix)fix.classList.add('show');
+        }
+      });
+    });
+    var fixGo=el.querySelector('[data-act="fix-go"]');
+    if(fixGo){fixGo.addEventListener('click',function(){
+      var pred=el.querySelector('[data-fix-pred]').value.trim();
+      var kind=el.querySelector('[data-fix-kind]').value;
+      var val=el.querySelector('[data-fix-val]').value.trim();
+      if(!val){setStatus('object_value required',true);return;}
+      disableAll(true);setStatus('Saving fix…');
+      postWrite('/api/graph/fix',{relation_id:ctx.id,new_predicate:pred||null,new_object_value:val,new_object_kind:kind})
+        .then(function(j){if(j&&j.ok){setStatus('Fixed.');refreshAll();closeInspector();}else{setStatus((j&&j.error)||'Failed.',true);disableAll(false);}})
+        .catch(function(e){setStatus(e.message,true);disableAll(false);});
+    });}
+    var fixCancel=el.querySelector('[data-act="fix-cancel"]');
+    if(fixCancel){fixCancel.addEventListener('click',function(){var fix=el.querySelector('[data-fix]');if(fix)fix.classList.remove('show');});}
+  }
+  function bindInspectorNode(el){
+    var close=el.querySelector('.sg-insp-close');if(close)close.addEventListener('click',closeInspector);
+    el.querySelectorAll('[data-act="fact-confirm"],[data-act="fact-delete"]').forEach(function(a){
+      a.addEventListener('click',function(ev){
+        ev.preventDefault();
+        var act=a.getAttribute('data-act');
+        var rid=a.getAttribute('data-rid');
+        if(!rid)return;
+        var url=act==='fact-confirm'?'/api/graph/confirm':'/api/graph/delete';
+        postWrite(url,{relation_id:rid}).then(function(j){
+          if(j&&j.ok){refreshAll();closeInspector();}
+        }).catch(function(){});
+      });
+    });
+  }
+  function closeInspector(){var el=$('sg-inspector');if(el){el.classList.remove('open');el.innerHTML='';}inspectorTarget=null;}
+
+  // ── Review queue ──
+  function wireReviewUI(){
+    var toggle=$('sg-review-toggle');if(toggle){toggle.addEventListener('click',function(){if(reviewOpen)closeReview();else openReview();});}
+    var close=$('sg-review-close');if(close){close.addEventListener('click',closeReview);}
+    var tabs=document.querySelectorAll('.sg-rev-tab');for(var i=0;i<tabs.length;i++){(function(t){t.addEventListener('click',function(){reviewState.state=t.getAttribute('data-state');for(var k=0;k<tabs.length;k++)tabs[k].classList.toggle('active',tabs[k]===t);refreshReview();});})(tabs[i]);}
+    var cat=$('sg-review-cat'),min=$('sg-review-min'),max=$('sg-review-max'),end=$('sg-review-endp');
+    [cat,min,max,end].forEach(function(inp){if(!inp)return;inp.addEventListener('change',readFilters);inp.addEventListener('input',function(){clearTimeout(inp._t);inp._t=setTimeout(readFilters,260);});});
+  }
+  function readFilters(){
+    reviewState.category=($('sg-review-cat')||{}).value||'';
+    reviewState.min=($('sg-review-min')||{}).value||'';
+    reviewState.max=($('sg-review-max')||{}).value||'';
+    reviewState.endpoint=($('sg-review-endp')||{}).value||'';
+    refreshReview();
+  }
+  function openReview(){reviewOpen=true;$('sg-review').classList.add('open');$('sg-review-toggle').classList.add('on');refreshReview();}
+  function closeReview(){reviewOpen=false;var rv=$('sg-review'),tg=$('sg-review-toggle');if(rv)rv.classList.remove('open');if(tg)tg.classList.remove('on');}
+  function buildReviewUrl(){
+    var q=['state='+encodeURIComponent(reviewState.state||'pending')];
+    if(reviewState.category)q.push('category='+encodeURIComponent(reviewState.category));
+    var mn=parseFloat(reviewState.min);if(!isNaN(mn))q.push('min_confidence='+mn);
+    var mx=parseFloat(reviewState.max);if(!isNaN(mx))q.push('max_confidence='+mx);
+    if(reviewState.endpoint)q.push('endpoint='+encodeURIComponent(reviewState.endpoint));
+    return '/api/graph/review?'+q.join('&');
+  }
+  function refreshReview(){
+    fetch(buildReviewUrl()).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(data){
+      var items=(data&&data.items)||[];reviewState.items=items;
+      populateCategorySelect(items);
+      var badge=$('sg-review-badge');if(badge)badge.textContent=String(items.length);
+      var list=$('sg-review-list');if(!list)return;
+      if(!items.length){list.innerHTML='<div class="sg-rev-empty">Nothing '+escapeHtml(reviewState.state||'pending')+' right now.</div>';return;}
+      list.innerHTML=items.map(function(it){
+        var color=REVIEW_CAT_COLORS[it.category]||REVIEW_CAT_COLORS.other;
+        var conf=(it.confidence!=null?Number(it.confidence).toFixed(2):'-');
+        var pendingState=(reviewState.state==='pending');
+        return '<div class="sg-rev-item" data-rid="'+escapeAttr(it.id||'')+'">'+
+          '<div class="sg-rev-edge"><strong>'+escapeHtml(it.subject_name||it.source||'')+'</strong> <span class="sg-rev-pred">'+escapeHtml(it.predicate||'')+'</span> '+escapeHtml(it.object_name||it.object_value||'')+'</div>'+
+          '<div class="sg-rev-meta"><span class="sg-rev-cat" style="background:'+color+'"></span>'+escapeHtml(it.category||'other')+' &middot; conf '+conf+' &middot; '+escapeHtml(it.origin||'')+'</div>'+
+          (pendingState?'<div class="sg-rev-actions">'+
+            '<button data-act="rev-confirm" data-rid="'+escapeAttr(it.id||'')+'">Confirm</button>'+
+            '<button class="sg-danger" data-act="rev-dismiss" data-rid="'+escapeAttr(it.id||'')+'">Dismiss</button>'+
+          '</div>':'')+
+        '</div>';
+      }).join('');
+      list.querySelectorAll('.sg-rev-item').forEach(function(row){
+        row.addEventListener('click',function(ev){
+          if(ev.target.closest('button'))return;
+          // Open the inspector for this id by faking a selected edge from the item.
+          var rid=row.getAttribute('data-rid');var it=null;for(var k=0;k<items.length;k++)if(items[k].id===rid){it=items[k];break;}
+          if(!it)return;
+          inspectorTarget={kind:'edge',data:{
+            id:it.id,
+            source:{id:it.source,name:it.subject_name},
+            target:{id:it.target,name:it.object_name},
+            predicate:it.predicate,category:it.category,confidence:it.confidence,locked:false
+          }};
+          renderInspector();
+        });
+      });
+      list.querySelectorAll('[data-act="rev-confirm"]').forEach(function(b){
+        b.addEventListener('click',function(ev){ev.stopPropagation();var rid=b.getAttribute('data-rid');b.disabled=true;postWrite('/api/graph/confirm',{relation_id:rid}).then(function(j){if(j&&j.ok)refreshAll();else b.disabled=false;}).catch(function(){b.disabled=false;});});
+      });
+      list.querySelectorAll('[data-act="rev-dismiss"]').forEach(function(b){
+        b.addEventListener('click',function(ev){ev.stopPropagation();var rid=b.getAttribute('data-rid');b.disabled=true;postWrite('/api/graph/delete',{relation_id:rid}).then(function(j){if(j&&j.ok)refreshAll();else b.disabled=false;}).catch(function(){b.disabled=false;});});
+      });
+    }).catch(function(e){var list=$('sg-review-list');if(list)list.innerHTML='<div class="sg-rev-empty">Cannot load review queue ('+escapeHtml(e.message)+').</div>';});
+  }
+  function populateCategorySelect(items){
+    var sel=$('sg-review-cat');if(!sel)return;
+    var seen={};items.forEach(function(it){if(it.category)seen[it.category]=true;});
+    var cats=Object.keys(seen).sort();
+    var current=sel.value;
+    sel.innerHTML='<option value="">all cats</option>'+cats.map(function(c){return '<option value="'+escapeAttr(c)+'"'+(c===current?' selected':'')+'>'+escapeHtml(c)+'</option>';}).join('');
+  }
+  function postWrite(url,body){
+    return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})}).then(function(r){return r.json();});
+  }
+  function refreshAll(){if(sageGraphCtl){sageGraphCtl.reload();}refreshReview();}
 })();
 </script>
 </body>
