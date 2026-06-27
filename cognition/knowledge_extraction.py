@@ -148,10 +148,15 @@ _PREDICATE_CATEGORIES: dict[str, str] = {
     "mentored": "colleague",
     "partner_of": "romantic",
     "visits": "acquaintance",
-    "friend_of": "colleague",
+    "friend_of": "friend",
     "works_with": "colleague",
     "knows": "colleague",
     "built_by": "creator",
+    "sibling_of": "family",
+    "parent_of": "family",
+    "child_of": "family",
+    "works_at": "colleague",
+    "works_on": "colleague",
 }
 
 # Predicates where the model's natural output direction is the inverse of the
