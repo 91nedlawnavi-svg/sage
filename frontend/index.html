@@ -54,6 +54,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
 .bubble pre{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:13px 15px;margin:10px 0;overflow-x:auto;}
 .bubble pre code{background:none;border:none;padding:0;color:var(--soft);font-size:12.5px;line-height:1.6;}
 .bubble.streaming::after{content:'';display:inline-block;width:6px;height:1em;margin-left:3px;background:var(--accent);border-radius:1px;vertical-align:-0.12em;opacity:.65;animation:caret 1.05s steps(1) infinite;}
+.searching{display:flex;align-items:center;gap:9px;padding:10px 15px;}
+.searching .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none;animation:searchpulse 1.2s ease-in-out infinite;}
+.searching .label{font-size:14px;color:var(--soft);font-style:italic;animation:searchpulse 1.2s ease-in-out infinite;}
+@keyframes searchpulse{0%,100%{opacity:.3;}50%{opacity:1;}}
 @keyframes caret{0%,50%{opacity:.65;}50.01%,100%{opacity:0;}}
 .thinking{display:flex;gap:5px;align-items:center;padding:4px 1px;}
 .thinking span{width:5px;height:5px;border-radius:50%;background:var(--muted);animation:tdot 1.5s ease-in-out infinite;}
@@ -626,6 +630,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
   function addAi(){hideEmpty();var m=document.createElement('div');m.className='msg ai';var b=document.createElement('div');b.className='bubble';m.appendChild(b);messagesEl.appendChild(m);scrollBottom();return b;}
   function addThinking(){hideEmpty();var m=document.createElement('div');m.className='msg ai';m.id='thinking';var t=document.createElement('div');t.className='thinking';t.innerHTML='<span></span><span></span><span></span>';m.appendChild(t);messagesEl.appendChild(m);scrollBottom();}
   function rmThinking(){var e=$('thinking');if(e)e.remove();}
+  function addSearching(){if($('searching'))return;hideEmpty();var m=document.createElement('div');m.className='msg ai';m.id='searching';var t=document.createElement('div');t.className='searching';t.innerHTML='<span class="dot"></span><span class="label">Searching the web…</span>';m.appendChild(t);messagesEl.appendChild(m);scrollBottom();}
+  function rmSearching(){var e=$('searching');if(e)e.remove();}
   function setSending(v){sending=v;sendBtn.disabled=v;}
 
   function msgNumId(id){var m=String(id||'').match(/_(\d+)$/);return m?parseInt(m[1],10):0;}
@@ -634,23 +640,25 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
   function send(){
     var text=inputEl.value.trim();
     if(!text||sending)return;
-    addUser(text);inputEl.value='';autoResize();addThinking();setSending(true);
-    var bubble=null,acc='';
-    function ensureBubble(){if(!bubble){rmThinking();bubble=addAi();bubble.classList.add('streaming');}}
+    addUser(text);inputEl.value='';autoResize();setSending(true);var isSearch=/^\/search(\s|$)/i.test(text);if(isSearch){addSearching();}else{addThinking();}
+    var bubble=null,acc='';var RS=String.fromCharCode(30),sbuf='',inFrame=false;
+    function ensureBubble(){if(!bubble){rmThinking();rmSearching();bubble=addAi();bubble.classList.add('streaming');}}
     fetch(CFG.CHAT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})})
       .then(function(r){
         if(!r.ok)throw new Error('HTTP '+r.status);
-        if(!r.body||!r.body.getReader)return r.text().then(function(t){acc=t;ensureBubble();bubble.innerHTML=renderMarkdown(acc);});
+        if(!r.body||!r.body.getReader)return r.text().then(function(t){acc=t.split(RS).filter(function(_,i){return i%2===0;}).join('');ensureBubble();bubble.innerHTML=renderMarkdown(acc);});
         var reader=r.body.getReader(),decoder=new TextDecoder();
+        function onFrame(js){try{var ev=JSON.parse(js);if(ev&&ev.event==='search_started'){addSearching();}else if(ev&&ev.event==='search_done'){rmSearching();if(!bubble)addThinking();}}catch(e){}}
+        function feed(chunk){sbuf+=chunk;var out='';while(true){var i=sbuf.indexOf(RS);if(i===-1){if(!inFrame){out+=sbuf;sbuf='';}break;}if(!inFrame){out+=sbuf.slice(0,i);sbuf=sbuf.slice(i+1);inFrame=true;}else{onFrame(sbuf.slice(0,i));sbuf=sbuf.slice(i+1);inFrame=false;}}return out;}
         return (function pump(){return reader.read().then(function(res){
           if(res.done)return;
-          var chunk=decoder.decode(res.value,{stream:true});
-          if(chunk){var stick=nearBottom();ensureBubble();acc+=chunk;bubble.innerHTML=renderMarkdown(acc);if(stick)scrollNow();}
+          var text=feed(decoder.decode(res.value,{stream:true}));
+          if(text){var stick=nearBottom();ensureBubble();acc+=text;bubble.innerHTML=renderMarkdown(acc);if(stick)scrollNow();}
           return pump();
         });})();
       })
-      .then(function(){rmThinking();if(!bubble){bubble=addAi();}bubble.classList.remove('streaming');if(acc&&acc.trim())bubble.innerHTML=renderMarkdown(acc);else bubble.textContent='(she went quiet)';})
-      .catch(function(e){rmThinking();var b=bubble||addAi();b.className='bubble error';b.textContent='Could not reach Sage: '+e.message;})
+      .then(function(){rmThinking();rmSearching();if(!bubble){bubble=addAi();}bubble.classList.remove('streaming');if(acc&&acc.trim())bubble.innerHTML=renderMarkdown(acc);else bubble.textContent='(she went quiet)';})
+      .catch(function(e){rmThinking();rmSearching();var b=bubble||addAi();b.className='bubble error';b.textContent='Could not reach Sage: '+e.message;})
       .then(function(){setSending(false);inputEl.focus();if(nearBottom())scrollBottom();refreshInnerHint();});
   }
 

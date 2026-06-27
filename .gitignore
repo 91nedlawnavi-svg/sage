@@ -12,3 +12,7 @@ sage_data/
 *.swo
 .claude/
 .qoder/
+dummy_world_data.py
+seed_relational_dummy.py
+patch_predicate_categories.py
+*.bak-*
