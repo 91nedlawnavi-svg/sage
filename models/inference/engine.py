@@ -11,19 +11,16 @@ from config.settings import (
 
 
 async def chat_stream(messages: list[dict], client: httpx.AsyncClient):
-    """Stream chat completion from NVIDIA NIM."""
-    if not NVIDIA_API_KEY:
-        yield "⚠️ NVIDIA_API_KEY not set"
-        return
-
+    """Stream chat completion from the local router (Omniroute)."""
     try:
+        headers = {"Accept": "text/event-stream"}
+        if NVIDIA_API_KEY and NVIDIA_API_KEY.strip():
+            headers["Authorization"] = f"Bearer {NVIDIA_API_KEY.strip()}"
+
         async with client.stream(
             "POST",
             CHAT_API_URL,
-            headers={
-                "Authorization": f"Bearer {NVIDIA_API_KEY}",
-                "Accept": "text/event-stream",
-            },
+            headers=headers,
             json={
                 "model": CHAT_MODEL,
                 "messages": messages,
@@ -45,7 +42,10 @@ async def chat_stream(messages: list[dict], client: httpx.AsyncClient):
                     break
                 try:
                     chunk = json.loads(data)
-                    content = chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    content = choices[0].get("delta", {}).get("content")
                     if content:
                         yield content
                 except json.JSONDecodeError:
@@ -67,13 +67,14 @@ async def nim_complete(
     max_tokens: int = 512,
 ) -> str | None:
     """Non-streaming completion for reflection/synthesis (future phase)."""
-    if not NVIDIA_API_KEY:
-        return None
-
     try:
+        headers = {}
+        if NVIDIA_API_KEY and NVIDIA_API_KEY.strip():
+            headers["Authorization"] = f"Bearer {NVIDIA_API_KEY.strip()}"
+
         response = await client.post(
             CHAT_API_URL,
-            headers={"Authorization": f"Bearer {NVIDIA_API_KEY}"},
+            headers=headers,
             json={
                 "model": model,
                 "messages": [
@@ -82,6 +83,8 @@ async def nim_complete(
                 ],
                 "temperature": temperature,
                 "max_tokens": max_tokens,
+                # Omniroute defaults to streaming when omitted
+                "stream": False,
             },
             timeout=httpx.Timeout(connect=10.0, read=180.0, write=10.0, pool=5.0),
         )
