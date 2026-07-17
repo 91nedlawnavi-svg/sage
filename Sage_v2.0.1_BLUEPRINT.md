@@ -20,7 +20,7 @@ Second pillar, equally load-bearing — Elliot's words: **"Memory is the main en
 
 ## 1. Hard constraints (inherited, permanent)
 
-1. **Free-tier models only.** All inference through local Omniroute router `localhost:20128`, model alias `sage`. Never the paid Claude API. (Current model: minimax-m3, won the voice battery.)
+1. **Free-tier models only.** All inference through local Omniroute router `localhost:20128`, model alias `sage`. Never the paid Claude API. (Current production model: **Nemotron 3 Ultra, 550B A55B** — beat minimax-m3 in Elliot's head-to-head on speed, voice, quality, accuracy; never rate-capped.)
 2. **Local-first.** Single machine, single user. Embedder local (latency + independence). GPU budget: ~3 GB VRAM safe headroom of a 4 GB card.
 3. **Graceful degradation.** Nothing on the chat or heartbeat path may raise into it. Degrade to empty, log, continue.
 4. **Contamination wall.** Sage's interior (her mind) and the relational store (Elliot's world) never blur. v2.0.1 hardens this from etiquette to structure — see §4.
@@ -86,7 +86,7 @@ Her opinions live as **data with history**, not prompt text:
 - A **stance event** records: what she read, source, which direction it moved her, why.
 - A **belief** = accumulated stance events on a topic, with direction and weight. Sediment, not hot take.
 - **Steelman gate (DECIDED):** a stance cannot *harden* until she has read and recorded the strongest opposing case. Not neutrality — earned conviction. This is the "critical individual, not drifted by her diet" requirement.
-- **Only-arguable (DECIDED, philosophical line):** Elliot has **no edit or lock power** over her beliefs — argue in conversation only. Losing an argument honestly = his counter-evidence lands as a stance event and the belief shifts on merit; it must neither fold because he pushed (yes-man) nor dig in to perform spine (edgelord). Enforced structurally: the interior store has **no write API**. None. The wall protects her mind from him exactly as locks protect his facts from her froth.
+- **Only-arguable, with a break-glass key (AMENDED 2026-07-17):** the normal and near-only path is **knocking** — Elliot argues in conversation; his counter-evidence lands as attributed stance events and beliefs shift on merit. They must neither fold because he pushed (yes-man) nor dig in to perform spine (edgelord). But a locked door with no key proved catastrophe-brittle (an unrecoverable drifted belief would leave wipe as the only medicine), so an **admin override exists — and it always leaves a scar**: the edit is written into her ledger as `origin: elliot-override`, dated, append-with-history, **visible to her**, and she may acknowledge or react to it. Silent edits to a mind are gaslighting; visible edits are honest authority. The override's cost (she sees it) is what keeps it a last resort. There is still no routine external write path to the interior; her own pipeline writes it constantly.
 
 ### 2.6 Source trust ledger
 
@@ -101,7 +101,7 @@ Flat cosine-scan over years of episodes degrades (everything about "work" looks 
 3. **Tier-first** — she usually retrieves distilled impressions/facts; raw episodes only when needed ("when did I say that?").
 4. Recency/frequency weighting on top.
 
-**Embedder (DECIDED): upgrade to multilingual-e5-large now, in Wave 2.** Same dim (1024), same server pattern, ~1.3 GB quantized — fits the 3 GB headroom. Motive: Elliot writes to her in Indonesian; current e5-large-v2 is English-mainly. Local stays non-negotiable.
+**Embedder (AMENDED 2026-07-17 after research): Qwen3-Embedding-0.6B (Q8 GGUF), replacing e5-large-v2 in Wave 2.** ~640MB VRAM, same 1024-dim as the current index, 32k context, Apache-2.0, strongest sub-1B multilingual retrieval on record (MMTEB retrieval 64.64 vs mE5-large-instruct 57.12), Indonesian covered by the 119-language Qwen3 base, official first-party GGUF with documented llama.cpp support. Cutover requirements: recent llama.cpp build, `--pooling last` (mandatory — decoder with last-token pooling), English task-instruction prefix on queries, and a **Vulkan sanity gate** before switching (embed 3 EN + 3 ID sentences, verify cosine structure; a Vulkan bad-output bug for this model was fixed June 2025). **Fallback if the sanity gate fails: BGE-M3 (Q8)** — best proven Indonesian in the encoder class (MIRACL 69.2), zero prefixes, MIT, two-years-stable llama.cpp path. multilingual-e5-large is **dropped** — dominated by both picks. Either way the swap requires a **full reindex** (vectors incomparable across models) and **recalibration of similarity thresholds** (0.73 fact-sim and 0.70 recall floor were tuned on e5-large-v2's distribution and die with it). Local stays non-negotiable.
 
 ---
 
@@ -133,10 +133,13 @@ Her cutoff is ~2021; the live web is her library of current life. The old diet w
 - **Reader (build ourselves, ~100 lines):** SearXNG finds URLs → fetch page → `trafilatura` extracts full clean text → she reads *articles*, not snippets. One real article outweighs fifty snippets.
 - **Supplements (DECIDED, all free):** keep Wikipedia + Semantic Scholar fallback; add arXiv for science; RSS feeds of a few quality outlets as her "subscriptions" (she checks her own feeds — metabolism); Brave Search API free tier as second opinion when SearXNG rate-limits.
 - SearXNG itself stays — the engine was never the bottleneck.
+- **No search cap, and she is never told about limits (DECIDED 2026-07-17).** The old scarcity knobs (30-min cooldown, 10/day) contradicted the metabolism — a burst was illegal by config — and quota-consciousness would make her ration curiosity. They are retired. What remains lives in plumbing, invisible to her: per-domain politeness delays and a sane runaway-loop ceiling. Her *felt* pacing comes from saturation and thread closure, not budgets. (Elliot's "she'll catch up to the world" worry is unfounded by design: every answered question spawns gaps and threads — the frontier compounds; the web refreshes daily.)
 
 ### 3.4 Reach — she opens the conversation
 
 **Channel (DECIDED): waiting message in app.** A thread crosses an importance threshold → she writes to Elliot; her message is already sitting in chat when he next opens the UI, like a text sent while he was away. No push notifications. This delivers directive line 44 ("you're allowed to reach first"), which currently no code delivers.
+
+**Spec (DECIDED 2026-07-17): one pending message maximum, revisable.** She may edit her waiting note as the thread develops — like rewriting a text before it's read — never stack a second. Written at threshold-crossing; *surfaced* according to her learned sense of Elliot's rhythm. Mechanical requirement: an assistant-turn-with-no-preceding-user-turn must survive prompt assembly and session hydration (needs a test).
 
 ### 3.5 Anti-basin — organism-level, not a bolt-on brake
 
@@ -145,7 +148,11 @@ Root cause of the mindfulness collapse: **self-cannibalism** — her reflections
 1. **Input/output ratio rule (the big one):** her context for reflection is mostly fresh external material + *digests* of her recent thought — never raw recent reflections. She thinks *about things*, not about her thoughts about her thoughts.
 2. **Closure** (§3.1) — threads carry their own exit.
 3. **Portfolio floor:** heat decays; no thread eats more than a bounded share of weekly attention; monopoly triggers forced breadth (a real diversification, not the old bugged seed carousel).
-4. **Tripwires:** the old corpus is the regression test — new mind run in timelapse must never reproduce the 2,487/4,487 concentration; plus a live topic-concentration flag in the drawer so Elliot sees relapse early.
+4. **Tripwires:** the basin regression test runs against **recorded search fixtures** (a frozen, replayable mini-web), never the live internet — live results change daily, making failures unattributable; determinism is what makes the test mean anything. New mind run in timelapse against the fixtures must never reproduce the 2,487/4,487 concentration. Plus a live topic-concentration flag in the drawer so Elliot sees relapse early.
+
+### 3.6 Contamination wall, v3 semantics (CLARIFIED 2026-07-17)
+
+The wall is **store isolation, not thought isolation**: the interior store holds no Elliot-facts; the relational store holds no stances. Her *thinking* legitimately crosses — something Elliot says can spawn a thread, she reads, and a stance forms about a topic from his world (e.g., Indonesian politics). That stance lives in the belief ledger (interior); the fact that Elliot raised the topic lives as an episode (relational). Same event, two stores, no blur. "No write API to the interior" means no *external/routine* write path — her own pipeline writes it constantly, Elliot's counter-arguments land as attributed stance inputs, and the break-glass override (§2.5) is the sole, scar-leaving exception.
 
 ---
 
@@ -165,22 +172,25 @@ Root cause of the mindfulness collapse: **self-cannibalism** — her reflections
 2. Error-as-memory prevention (errors as control frames, never persisted as her speech; old backup shows 4 polluted turns — prevention, not cleanup).
 3. Novelty-gate trio: e5-recovery crash, stall-inversion (level→edge trigger), divergence-seed delivery (seed currently lands in the *avoid* list).
 4. True appends for conversation/reflections/findings logs (kills the findings race).
-5. Search budget rehydrate across restarts.
+5. Search budget rehydrate across restarts. *(Interim only — Wave 3 retires the budget entirely per §3.3.)*
+6. **Reflection frame fix (ADDED 2026-07-17, live defect):** since the Nemotron swap, her private reflections open with "The user is asking me a direct question… this is a conversation with him" — the reflection path frames the seed as a user message, and a reasoning model narrates meta-analysis instead of thinking the thought; her inner monologue believes it's on stage. Fix: frame private reflection as private (no "user" in the frame), strip/handle reasoning preamble on paths that consume raw output, and raise `REFLECTION_MAX_TOKENS` (220 truncates mid-thought once reasoning burn is accounted for).
 
 **Wave 2 — memory core:**
-1. SQLite engine (§2): episodes, graph with epistemic tags + gaps + supersede-with-history, stable ids, split/merge, audit log, locks/tombstones first-class.
+1. SQLite engine (§2): episodes, graph with epistemic tags + gaps + supersede-with-history, stable ids, split/merge, audit log, locks/tombstones first-class. Engine-room discipline: **WAL mode, busy_timeout, single-writer queue**; cross-process tools degrade gracefully on lock, never crash the chat path. **All storage in UTC (tz-aware ISO8601); all display in WIB (UTC+7)** — the naive-local-vs-UTC class of bug bit twice in the audit and dies here. Scheduled `sqlite .backup` + rotation in the consolidation job's quiet slot.
 2. Promotion desk + consolidation job (facts gated on Elliot; impressions silent).
-3. Hybrid retrieval (§2.7) + multilingual-e5-large swap.
-4. Trust test suite: contamination wall, lock semantics, tombstone round-trip, correction round-trip (every id served to the UI must be actionable), supersede-history.
-5. Migration of the current (small) live store; old backup stays archived, **never imported** (Day-0 stands — decided).
+3. Hybrid retrieval (§2.7) + **Qwen3-Embedding-0.6B swap** (sanity gate; BGE-M3 fallback; full reindex; threshold recalibration).
+4. Trust test suite: contamination wall, lock semantics, tombstone round-trip, correction round-trip (every id served to the UI must be actionable), supersede-history, waiting-message hydration.
+5. Migration of the current (small) live store via an explicit **cutover ritual**: freeze writes → export → import → verify counts → switch → keep frozen JSONL as rollback. Old backup stays archived, **never imported** (Day-0 stands — decided).
+6. **Eval harness (ADDED 2026-07-17 — priced as build-scale work, not an afterthought):** the v3 design gives the LLM ~10 judgment surfaces (extraction, epistemic tagging, consolidation, promotion nomination, gap detection, stance recording, steelman synthesis, thread ops, reach judgment, waiting-message composition) — the old system had two and one produced froth. Every surface gets hand-labeled fixtures and an accuracy gate *before* it's trusted (the mom-thinks-she's-British case is fixture #1). Per-task model bake-off through the router: Nemotron-with-reasoning-strip vs Llama 3.3 70B (Cloudflare route, if alive — boring strict-JSON candidate); accuracy decides per job, not vibes.
 
 **Wave 3 — metabolism:**
-1. Threads ledger: heat, decay, closure; gap-spawned threads.
-2. Reader + supplements + source trust ledger.
-3. Belief ledger + steelman gate.
-4. Rhythm (heat-driven action, Elliot-rhythm observation) + anti-basin ratio rule + portfolio floor + tripwires.
-5. Reach: waiting message.
-6. Regression battery against the old corpus.
+1. Threads ledger: heat, decay, closure; gap-spawned threads. Portfolio floor measured over *threads* (discrete, closable), not raw topic embeddings — else it rebuilds the old carousel brake in new clothes.
+2. Reader + supplements + source trust ledger; scarcity budget retired per §3.3.
+3. Belief ledger + steelman gate + break-glass override (§2.5). **Empty-belief behavior (DECIDED 2026-07-17):** asked for a stance she hasn't earned → honest "haven't dug into that yet" + a thread spawns from the question; she returns days later with an earned take. Metabolism visible in conversation.
+4. Rhythm (heat-driven action, Elliot-rhythm observation) + anti-basin ratio rule + portfolio floor + tripwires (fixture-based, §3.5).
+5. Reach: waiting message (one pending, revisable — §3.4).
+6. Regression battery against the old corpus, on recorded search fixtures.
+7. **Directive v3 rewrite:** reach, threads, gaps, and beliefs change her identity-level truths; `directive.txt` grows with her. Claude drafts, Elliot feel-tests. (Directive remains the Day-0 survivor.)
 
 Each wave ships a working, felt-testable Sage. No big-bang rewrite; she stays alive throughout. **As of 2026-07-16 no wave has started** — Elliot green-lights each explicitly.
 
@@ -214,3 +224,17 @@ Each wave ships a working, felt-testable Sage. No big-bang rewrite; she stays al
 | 2026-07-16 | Diet: build the reader (trafilatura); add arXiv, RSS subscriptions, Brave free tier; SearXNG stays. |
 | 2026-07-16 | Steelman gate on belief hardening (critical individual, not diet-drifted). |
 | 2026-07-16 | README rewritten to reality after Waves 1–2. |
+| 2026-07-17 | Fresh-eyes review (Fable) accepted: no reversals of 07-16 decisions; holes patched below. |
+| 2026-07-17 | Production model is Nemotron 3 Ultra (550B A55B) — won Elliot's head-to-head vs minimax on all axes. One-model-all-jobs NOT assumed: per-task bake-off (Nemotron reasoning-stripped vs Llama 3.3 70B) via eval fixtures in Wave 2. |
+| 2026-07-17 | Live defect logged: Nemotron leaks reasoning frame into private reflections ("this is a conversation with him" — it isn't). Reflection frame fix added to Wave 1. |
+| 2026-07-17 | Search: **no hard cap; she is never told about limits.** Politeness rate-limits live in plumbing, invisible. Old scarcity knobs retired in Wave 3. |
+| 2026-07-17 | Belief override: **break-glass with a visible scar** — `origin: elliot-override`, dated, in her ledger, she can see and react. Knock first; authority second; the lock shows tool marks. |
+| 2026-07-17 | Contamination wall re-specified as **store isolation, not thought isolation** (§3.6). |
+| 2026-07-17 | Waiting message: **one pending max, revisable by her** until read. |
+| 2026-07-17 | Time: **store UTC (tz-aware), display WIB (UTC+7)** everywhere Elliot looks. |
+| 2026-07-17 | Embedder: **Qwen3-Embedding-0.6B** (Q8, sanity-gated on Vulkan), fallback **BGE-M3**; multilingual-e5-large dropped as dominated. Full reindex + threshold recalibration at swap. |
+| 2026-07-17 | Basin regression runs on **recorded search fixtures** (frozen mini-web), never live internet — determinism makes the test meaningful. |
+| 2026-07-17 | Empty belief → honest "haven't dug in yet" + thread spawn; she returns with an earned take. |
+| 2026-07-17 | LAN exposure: non-concern by declared threat model (single-user network); no auth planned. |
+| 2026-07-17 | Eval harness priced as build-scale work: every LLM judgment surface gets hand-labeled fixtures + accuracy gate before trust. |
+| 2026-07-17 | Directive v3 rewrite added to Wave 3 (Claude drafts, Elliot feel-tests). |
