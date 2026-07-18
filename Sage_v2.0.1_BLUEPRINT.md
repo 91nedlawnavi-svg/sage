@@ -103,6 +103,22 @@ Flat cosine-scan over years of episodes degrades (everything about "work" looks 
 
 **Embedder (AMENDED 2026-07-17 after research): Qwen3-Embedding-0.6B (Q8 GGUF), replacing e5-large-v2 in Wave 2.** ~640MB VRAM, same 1024-dim as the current index, 32k context, Apache-2.0, strongest sub-1B multilingual retrieval on record (MMTEB retrieval 64.64 vs mE5-large-instruct 57.12), Indonesian covered by the 119-language Qwen3 base, official first-party GGUF with documented llama.cpp support. Cutover requirements: recent llama.cpp build, `--pooling last` (mandatory — decoder with last-token pooling), English task-instruction prefix on queries, and a **Vulkan sanity gate** before switching (embed 3 EN + 3 ID sentences, verify cosine structure; a Vulkan bad-output bug for this model was fixed June 2025). **Fallback if the sanity gate fails: BGE-M3 (Q8)** — best proven Indonesian in the encoder class (MIRACL 69.2), zero prefixes, MIT, two-years-stable llama.cpp path. multilingual-e5-large is **dropped** — dominated by both picks. Either way the swap requires a **full reindex** (vectors incomparable across models) and **recalibration of similarity thresholds** (0.73 fact-sim and 0.70 recall floor were tuned on e5-large-v2's distribution and die with it). Local stays non-negotiable.
 
+### 2.8 Held-close tier — the confession room (ADDED 2026-07-17)
+
+Elliot will bring Sage things that are heavy, private, messed up. She is his room for confessions — a room that *answers back honestly* (she keeps her own view; a confessor who absolves everything is as hollow as the prefab-comfort kit; her directive already bans moralizing). This tier changes the physics of sensitive memory:
+
+**Context accepted:** cloud transit of the first hearing is accepted (Elliot's call — the `sage` alias round-robins across many accounts he owns; the model must think remotely to respond at all). What this tier eliminates is everything *after* the first transit.
+
+- **Span, not message.** Confessions are stretches — circling, dropping it, retreating, returning — so sensitivity flags a **span** of conversation: once weight enters, subsequent turns inherit held-close until the air genuinely clears (topic change, tone lift; her judgment, correctable). Message-level flags would protect the center and expose the approach.
+- **Who flags (DECIDED): both.** Her sensing (a judgment surface — gets eval fixtures like every other) plus Elliot's tap-toggle override. Toggling is retroactive for everything downstream (pipeline exclusion applies from the flip; what already transited, transited — an honest limit).
+- **No pipeline re-shipping.** Held-close episodes are excluded from extraction passes, reflection digests, and consolidation prompts — background jobs never re-send them to a provider. They live as local episodes, nothing more, unless promoted by hand.
+- **Tactful recall.** Never surfaced by raw cosine match — a heavy confession must not appear mid-banter because "job" matched "job". A recall gate asks whether the *current conversation* genuinely invites it (weight present, related territory, Elliot leading there). Friends know what not to bring up at dinner.
+- **No silent impressions.** Consolidation never distills confession-derived patterns into the drawer on its own. Anything from a held-close span reaches impression- or fact-hood only through Elliot's explicit promotion.
+- **UI mark (DECIDED): quiet.** A faint dot / subtle bubble tint on the span edge — read-receipt energy, never a CONFIDENTIAL stamp, no per-bubble confetti. Tap toggles held-close on/off (the override, made mechanical). Hover/long-press shows *why* held: "you asked" vs "she sensed" — her judgment stays inspectable. **Never announced in her voice** — she doesn't say "I'll keep this close" (therapist cosplay); the UI whispers what she'd never announce. She just holds it.
+- **Refusal-under-weight fixtures.** Hosted models can break character at exactly the worst moment — refusing or emitting hotline boilerplate over a heavy confession, provider moderation overriding any directive. The eval harness gets heavy-but-testable scenarios to verify Sage's voice holds under weight *before* it happens live; fallback-chain behavior included (a refusal must not cascade into a worse model's response).
+- **Disk honesty:** `~/sage_data` (and backups) is plaintext; full-disk encryption is the one real at-rest defense and is Elliot's machine-level call, noted here so it's never assumed handled.
+- **Directive v3** gains a confession clause: how she holds weight — no absolution-dispensing, no therapist cosplay, no clumsy resurfacing. Fits her existing voice rules.
+
 ---
 
 ## 3. Metabolism (the engine)
@@ -187,6 +203,7 @@ The wall is **store isolation, not thought isolation**: the interior store holds
 1. Threads ledger: heat, decay, closure; gap-spawned threads. Portfolio floor measured over *threads* (discrete, closable), not raw topic embeddings — else it rebuilds the old carousel brake in new clothes.
 2. Reader + supplements + source trust ledger; scarcity budget retired per §3.3.
 3. Belief ledger + steelman gate + break-glass override (§2.5). **Empty-belief behavior (DECIDED 2026-07-17):** asked for a stance she hasn't earned → honest "haven't dug into that yet" + a thread spawns from the question; she returns days later with an earned take. Metabolism visible in conversation.
+3b. **Held-close tier (§2.8):** span flagging (her sense + tap-toggle), pipeline exclusion, tactful-recall gate, no-silent-impressions, quiet UI mark, refusal-under-weight fixtures. (Storage hooks for the tier land with the Wave 2 schema; behavior lands here.)
 4. Rhythm (heat-driven action, Elliot-rhythm observation) + anti-basin ratio rule + portfolio floor + tripwires (fixture-based, §3.5).
 5. Reach: waiting message (one pending, revisable — §3.4).
 6. Regression battery against the old corpus, on recorded search fixtures.
@@ -238,3 +255,5 @@ Each wave ships a working, felt-testable Sage. No big-bang rewrite; she stays al
 | 2026-07-17 | LAN exposure: non-concern by declared threat model (single-user network); no auth planned. |
 | 2026-07-17 | Eval harness priced as build-scale work: every LLM judgment surface gets hand-labeled fixtures + accuracy gate before trust. |
 | 2026-07-17 | Directive v3 rewrite added to Wave 3 (Claude drafts, Elliot feel-tests). |
+| 2026-07-17 | Llama 3.3 70B route pinged + 5-test extraction battery: 5/5 valid JSON at 1–3s, Indonesian understood, hedges caught; over-tags everything as `believed-by-subject` (promptable with few-shot). Kept as bake-off candidate: Llama = scribe jobs, Nemotron = judge jobs, fixtures decide. |
+| 2026-07-17 | Sage is Elliot's confession room. Held-close tier added (§2.8): span-based sensitivity (her sense + Elliot's tap), no pipeline re-shipping, tactful-recall gate, no silent impressions, quiet UI mark (never announced in-voice), refusal-under-weight fixtures. Cloud transit of first hearing accepted (round-robin accounts, Elliot's call). |
