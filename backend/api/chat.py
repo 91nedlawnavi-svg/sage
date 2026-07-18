@@ -130,19 +130,26 @@ async def chat_endpoint(request: ChatRequest):
                 )
                 messages[-1]["content"] = search_block
 
-                # 6) Stream the reply in Sage's voice
+                # 6) Stream the reply in Sage's voice. Error control frames
+                #    (\x1e-framed) pass through to the UI but are never
+                #    persisted as her speech.
+                errored = False
                 async for token in chat_stream(messages, http_client):
+                    if token.startswith("\x1e"):
+                        errored = True
+                        yield token
+                        continue
                     full_reply += token
                     yield token
 
                 # 7) Deterministic Sources footer (model never generates URLs)
                 sources = _build_sources_footer(top)
-                if sources:
+                if sources and not errored:
                     full_reply += sources
                     yield sources
 
                 search_results = results
-                completed = True
+                completed = not errored
 
             finally:
                 # 8) Persist only a COMPLETE turn. Mirrors the normal path: if the
@@ -225,11 +232,18 @@ async def chat_endpoint(request: ChatRequest):
     async def token_stream():
         full_reply = ""
         completed = False
+        errored = False
         try:
             async for token in chat_stream(messages, http_client):
+                # Error control frames (\x1e-framed) reach the UI but are
+                # never persisted as Sage's speech.
+                if token.startswith("\x1e"):
+                    errored = True
+                    yield token
+                    continue
                 full_reply += token
                 yield token
-            completed = True
+            completed = not errored
         finally:
             # Persist assistant only after a complete generation. If the client
             # disconnects mid-stream, GeneratorExit is raised inside the try
