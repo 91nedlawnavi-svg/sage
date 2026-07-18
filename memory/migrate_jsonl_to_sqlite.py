@@ -89,7 +89,8 @@ def service_active() -> bool:
 
 async def migrate(*, dry_run: bool = False, check_service: bool = True) -> dict:
     """Run the ritual. Returns the verify report; raises on any mismatch."""
-    if check_service and service_active():
+    # dry-run only counts sources — safe while the unit is live
+    if check_service and not dry_run and service_active():
         raise SystemExit("REFUSING: sage unit is active. Stop it first "
                          "(systemctl --user stop sage) — writes must freeze.")
 
