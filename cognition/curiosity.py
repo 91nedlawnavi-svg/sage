@@ -50,7 +50,10 @@ async def extract_query(reflection_text: str, client: httpx.AsyncClient,
             client=client,
             model=CHAT_MODEL,
             temperature=0.3,
-            max_tokens=64,
+            # Reasoning models burn 100-250+ tokens thinking before the
+            # query; 64 always died mid-reasoning (nim_complete then drops
+            # the output), which silently killed autonomous search entirely.
+            max_tokens=768,
         )
         if text:
             text = text.strip()

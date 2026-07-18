@@ -36,10 +36,13 @@ class Heartbeat:
         self._last_beat_ts: float = 0.0
         self._reflecting = False
 
-        # Search tracking
+        # Search tracking — rehydrated from findings.jsonl so a restart can't
+        # reset the daily budget/cooldown (blueprint Wave 1 #5; interim only,
+        # Wave 3 retires the budget).
         self._last_search_ts: float = 0.0
         self._searches_today: int = 0
         self._search_day: str = datetime.now().date().isoformat()
+        self._rehydrate_search_budget()
 
         # Dedicated e5 embedder client (localhost :8081) with tight timeouts
         # and its own connection pool so a dead/hung e5 cannot contaminate the
@@ -48,6 +51,32 @@ class Heartbeat:
             timeout=httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=2.0),
             limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
         )
+
+    def _rehydrate_search_budget(self) -> None:
+        """Rebuild today's autonomous-search count + cooldown from findings.jsonl.
+
+        Only entries tagged source="autonomous" count — /search findings are
+        budget-exempt. Never raises (best-effort; worst case the budget
+        resets, which is the old behavior).
+        """
+        try:
+            from memory.findings_log import read_recent
+            today = datetime.now().date()
+            for f in read_recent(AUTONOMOUS_SEARCH_MAX_PER_DAY * 3):
+                if f.get("source") != "autonomous":
+                    continue
+                try:
+                    ts = datetime.fromisoformat(f["ts"])
+                except (KeyError, ValueError):
+                    continue
+                if ts.date() == today:
+                    self._searches_today += 1
+                self._last_search_ts = max(self._last_search_ts, ts.timestamp())
+            if self._searches_today:
+                info("Heartbeat: rehydrated search budget",
+                     searches_today=self._searches_today)
+        except Exception as e:
+            warning(f"Heartbeat: search-budget rehydrate failed: {e}")
 
     @property
     def last_beat_ts(self) -> float:
@@ -233,20 +262,20 @@ class Heartbeat:
                                                      retry=True)
 
         if result["action"] == "diverge":
-            # Streak exhausted: force a divergence seed as the query
-            divergence_text = result["final_text"]
-            # Embed and push the divergence seed
-            embedding = result.get("embedding")
-            if embedding is None:
-                embedding = await novelty_gate.embed(divergence_text, self._e5_client)
-            # Push to ring buffer so it counts as a topic
-            novelty_gate.push(divergence_text, embedding)
-            log("novelty_gate", "divergence-issued", query=divergence_text[:80])
-            return  # Don't actually search — the divergence is shown, not searched
+            # Streak exhausted: stash the seed so the NEXT reflection opens
+            # with it. The old code pushed the seed into the ring buffer —
+            # which fed it into the anti-repeat AVOID list instead of ever
+            # delivering it (blueprint Wave 1 #3, divergence-seed delivery).
+            novelty_gate.stash_seed(result["final_text"])
+            log("novelty_gate", "divergence-stashed", query=result["final_text"][:80])
+            return  # Don't search — the seed steers the next reflection
 
         if result["action"] == "reject":
-            # Still circling after retry — skip this beat
-            log("novelty_gate", "skip-search", query=query[:80])
+            # Still circling after retry — skip this beat. query is None when
+            # the steered retry extractor came up empty (audit m1: [:80] on
+            # None raised here, silently killing the beat via the upstream
+            # catch-all).
+            log("novelty_gate", "skip-search", query=(query or "")[:80])
             return
 
         # ── action == "accept" — proceed to search ────────────────
@@ -260,8 +289,9 @@ class Heartbeat:
         except Exception:
             results = []
 
-        # Log finding (even if empty results)
-        append_finding(query, results)
+        # Log finding (even if empty results); tagged so budget rehydrate can
+        # tell autonomous searches from budget-exempt /search ones.
+        append_finding(query, results, source="autonomous")
         self._last_search_ts = time.time()
         self._searches_today += 1
 

@@ -56,7 +56,13 @@ class NoveltyGate:
         # Phase 2.2b — basin-drift detection
         self._centroid_buffer: list[list[float]] = []  # rolling accepted embeddings
         self._basin_streak: int = 0  # consecutive accepts IN THE BASIN (not reset by accept)
-        self._last_novel_accept_time: float = 0.0  # time of last out-of-basin accept
+        # Initialized to boot time (not 0.0) so a fresh process can stall:
+        # at 0.0 the stalled property short-circuits False forever until the
+        # first novel accept — a process that never escapes the basin would
+        # never get the inward nudge (audit m3).
+        self._last_novel_accept_time: float = time.time()
+        self._stall_fired: bool = False  # edge-trigger latch for stall (one fire per episode)
+        self._pending_seed: str | None = None  # diverge seed awaiting delivery to reflection
 
         # fix #5 (Phase 2.2c) — reflection-stream basin detection
         self._reflection_buffer: list[list[float]] = []
@@ -106,7 +112,10 @@ class NoveltyGate:
     def _max_sim_vs_buffer(self, embedding: list[float]) -> float:
         if not self._buffer or not embedding:
             return 0.0
-        return max(self._cosine_sim(embedding, e) for _, e in self._buffer if e)
+        # Buffer may hold only None-embeddings (accumulated while e5 was
+        # down) — max() on an empty generator crashed here on e5 recovery.
+        sims = [self._cosine_sim(embedding, e) for _, e in self._buffer if e]
+        return max(sims) if sims else 0.0
 
     @staticmethod
     def _lex_overlap(a: str, b: str) -> float:
@@ -212,6 +221,31 @@ class NoveltyGate:
             return None
         elapsed = time.time() - self._last_novel_accept_time
         return int(elapsed / HEARTBEAT_INTERVAL_SECONDS)
+
+    def consume_stall(self) -> bool:
+        """Edge-triggered stall check: True exactly once per stall episode.
+
+        The raw `stalled` level stays True until a novel accept — consuming
+        it here latches `_stall_fired` so one stall forces ONE inward
+        reflection, not every reflection until the stall clears (the old
+        level-trigger inversion).
+        """
+        if self.stalled and not self._stall_fired:
+            self._stall_fired = True
+            return True
+        return False
+
+    def stash_seed(self, seed: str) -> None:
+        """Hold a divergence seed for the next reflection to consume as its
+        opener — delivery path for diverge verdicts (the old code pushed the
+        seed into the ring buffer instead, which fed it into the anti-repeat
+        AVOID list: the exact opposite of delivering it)."""
+        self._pending_seed = seed
+
+    def take_pending_seed(self) -> str | None:
+        seed = self._pending_seed
+        self._pending_seed = None
+        return seed
 
     def consume_divergence_seed(self) -> str:
         """Public: consume the next rotating divergence seed. Used by stall / reflection path."""
@@ -330,7 +364,13 @@ class NoveltyGate:
                 if sim_centroid is not None and sim_centroid >= BASIN_SIM_THRESHOLD:
                     # Still lateral drifting in basin — diverge, don't accept
                     return self._force_basin_diverge()
-                # Genuinely escaped — accept
+                # Genuinely escaped — accept, with the same out-of-basin
+                # bookkeeping as the first-try path (audit M5: without this,
+                # a retry-accept left the stall clock running and the streak
+                # uncleared, so escapes via retry never counted as escapes)
+                self._basin_streak = 0
+                self._last_novel_accept_time = time.time()
+                self._stall_fired = False  # stall episode over; re-arm edge trigger
                 self._push(text, embedding)
                 return result
 
@@ -354,6 +394,7 @@ class NoveltyGate:
                     # Genuine escape from the basin
                     self._basin_streak = 0
                     self._last_novel_accept_time = time.time()
+                    self._stall_fired = False  # stall episode over; re-arm edge trigger
 
                 self._push(text, embedding)
                 return result
@@ -415,6 +456,7 @@ class NoveltyGate:
                 if jaccard is not None and jaccard < 0.50:
                     self._basin_streak = 0
                     self._last_novel_accept_time = time.time()
+                    self._stall_fired = False  # stall episode over; re-arm edge trigger
 
         self._push(text, None)
         return result

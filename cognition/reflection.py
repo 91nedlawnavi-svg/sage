@@ -43,21 +43,27 @@ async def run_reflection(client) -> str | None:
         fresh_findings = select_fresh_findings(recent_findings, recent_reflections)
         novelty_themes = novelty_gate.recent_themes()
 
-        # Forced-divergence triggers:
-        #  - stalled: time-based, driven by the search-query gate (Phase 2.2b)
-        #  - reflection-basin: drift detected directly in the reflection stream
-        #    (fix #5 / Phase 2.2c); holds the seed for several reflections.
-        forced_seed = None
-        trigger = None
-        if novelty_gate.stalled:
-            trigger = "stall-inward"
-        elif novelty_gate.reflection_diverge_pending:
-            trigger = "reflection-basin-inward"
+        # Forced-divergence triggers (priority order):
+        #  - pending seed: a diverge verdict stashed by the search gate —
+        #    actual delivery of the divergence seed (Wave 1 #3)
+        #  - stall: EDGE-triggered via consume_stall() — one stall forces ONE
+        #    inward reflection, not every reflection until the stall clears
+        #    (the old level-trigger inversion)
+        #  - reflection-basin: drift detected directly in the reflection
+        #    stream (fix #5 / Phase 2.2c); holds the seed for several beats
+        forced_seed = novelty_gate.take_pending_seed()
+        trigger = "pending-seed" if forced_seed else None
+        if not trigger:
+            if novelty_gate.consume_stall():
+                trigger = "stall-inward"
+            elif novelty_gate.reflection_diverge_pending:
+                trigger = "reflection-basin-inward"
+            if trigger:
+                forced_seed = novelty_gate.consume_divergence_seed()
+                if trigger == "reflection-basin-inward":
+                    novelty_gate.consume_reflection_hold()
 
         if trigger:
-            forced_seed = novelty_gate.consume_divergence_seed()
-            if trigger == "reflection-basin-inward":
-                novelty_gate.consume_reflection_hold()
             log("novelty_gate", trigger,
                 seed=forced_seed[:60],
                 ticks_since_novel=novelty_gate.ticks_since_novel)
