@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from datetime import datetime
 from config.settings import REFLECTIONS_PATH
+from utils.logger import warning
 
 
 def _ensure_parent_dir():
@@ -18,38 +19,14 @@ def append_reflection(text: str, idle_seconds: float) -> None:
         "idle_seconds": round(idle_seconds, 1),
         "text": text,
     }
-    # Atomic write: write to temp then rename
-    tmp_path = REFLECTIONS_PATH.with_suffix(".tmp")
+    # True append (O_APPEND): one JSONL line per call. The old read-all/
+    # rewrite-all pattern raced concurrent writers — blueprint Wave 1 #4.
     try:
-        # Read existing content
-        existing = []
-        if REFLECTIONS_PATH.exists():
-            with open(REFLECTIONS_PATH, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        try:
-                            existing.append(json.loads(line))
-                        except json.JSONDecodeError:
-                            pass
-
-        # Append new entry
-        existing.append(entry)
-
-        # Write all to temp
-        with open(tmp_path, "w") as f:
-            for e in existing:
-                f.write(json.dumps(e, ensure_ascii=False) + "\n")
-
-        # Atomic rename
-        os.replace(tmp_path, REFLECTIONS_PATH)
-    except Exception:
-        # Best effort cleanup
-        if tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except Exception:
-                pass
+        with open(REFLECTIONS_PATH, "a") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as e:
+        # never raise into the heartbeat path — but never fail silently either
+        warning(f"reflection_log/append failed: {e}")
 
 
 def read_recent(n: int = 20) -> list[dict]:

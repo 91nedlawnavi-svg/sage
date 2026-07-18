@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from datetime import datetime
 from config.settings import FINDINGS_PATH
+from utils.logger import warning
 
 
 def _ensure_parent_dir():
@@ -10,46 +11,28 @@ def _ensure_parent_dir():
     FINDINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
-def append_finding(query: str, results: list[dict]) -> None:
-    """Append a finding entry to the JSONL log."""
+def append_finding(query: str, results: list[dict], source: str = "search") -> None:
+    """Append a finding entry to the JSONL log.
+
+    source: "autonomous" (heartbeat, counts against the daily budget) or
+    "search" (Elliot's /search command, budget-exempt).
+    """
     _ensure_parent_dir()
     entry = {
         "ts": datetime.now().isoformat(),
         "query": query,
         "results": results,
+        "source": source,
     }
-    # Atomic write: write to temp then rename
-    tmp_path = FINDINGS_PATH.with_suffix(".tmp")
+    # True append (O_APPEND): one JSONL line per call. The old read-all/
+    # rewrite-all pattern raced concurrent writers (heartbeat + /search) and
+    # dropped findings — blueprint Wave 1 #4, "the findings race".
     try:
-        # Read existing content
-        existing = []
-        if FINDINGS_PATH.exists():
-            with open(FINDINGS_PATH, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        try:
-                            existing.append(json.loads(line))
-                        except json.JSONDecodeError:
-                            pass
-
-        # Append new entry
-        existing.append(entry)
-
-        # Write all to temp
-        with open(tmp_path, "w") as f:
-            for e in existing:
-                f.write(json.dumps(e, ensure_ascii=False) + "\n")
-
-        # Atomic rename
-        os.replace(tmp_path, FINDINGS_PATH)
-    except Exception:
-        # Best effort cleanup
-        if tmp_path.exists():
-            try:
-                tmp_path.unlink()
-            except Exception:
-                pass
+        with open(FINDINGS_PATH, "a") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as e:
+        # never raise into the heartbeat/chat path — but never silently either
+        warning(f"findings_log/append failed: {e}")
 
 
 def read_recent(n: int = 20) -> list[dict]:
