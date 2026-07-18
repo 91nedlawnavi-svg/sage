@@ -33,7 +33,12 @@ VALID_ENTITY_TYPES = ("person", "place", "project", "org", "topic", "event")
 # Extraction model settings -- deliberately low temperature for stable,
 # factual extraction over a transcript.
 EXTRACTION_TEMPERATURE = 0.2
-EXTRACTION_MAX_TOKENS = 1024
+# 3072, not 1024: post-Wave-1 reflections run ~1400 chars and entity-dense;
+# a 3-reflection interior batch produces JSON that cannot fit in 1024 output
+# tokens, so every pass truncated mid-string -> "malformed; will retry"
+# forever (observed 19:50-20:07 on 18 Jul: 12 consecutive truncations, zero
+# builds). Fourth instance of the reasoning-burn/token-cap failure class.
+EXTRACTION_MAX_TOKENS = 3072
 
 # How much of each turn to feed the model, and how many turns per batch.
 MAX_CHARS_PER_TURN = 600
