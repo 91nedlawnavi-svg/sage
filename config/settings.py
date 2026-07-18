@@ -18,7 +18,11 @@ REFLECTION_MIN_IDLE_SECONDS = 90
 REFLECTION_COOLDOWN_SECONDS = 300
 REFLECTION_MODEL = CHAT_MODEL
 REFLECTION_TEMPERATURE = 0.7
-REFLECTION_MAX_TOKENS = 220
+# Reasoning models burn hundreds of tokens thinking before the reflection —
+# 220 truncated mid-thought (the router then returns raw reasoning as
+# content). Ceiling covers reasoning burn + a full reflection; at 1024 about
+# 1-in-8 still ended mid-sentence.
+REFLECTION_MAX_TOKENS = 1536
 REFLECTIONS_PATH = BASE_DIR / "reflections.jsonl"
 
 # Web Search / Curiosity config

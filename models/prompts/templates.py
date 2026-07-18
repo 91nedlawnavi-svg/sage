@@ -263,7 +263,10 @@ def build_reflection_messages(
     else:
         opener = random.choice(_REFLECTION_OPENERS)
 
-    # Build messages: system + (optional findings as synthetic user turn) + user prompt
+    # Build messages: system + (optional findings as synthetic user turn) + opener.
+    # The opener is framed as her OWN surfacing thought, never as someone
+    # asking — a bare question in the user slot made reasoning models narrate
+    # "the user is asking me..." inside private reflections (Wave 1 #6).
     messages = [
         {"role": "system", "content": system_content},
     ]
@@ -274,6 +277,14 @@ def build_reflection_messages(
         if findings_block:
             messages.append({"role": "user", "content": findings_block})
 
-    messages.append({"role": "user", "content": opener})
+    messages.append({
+        "role": "user",
+        "content": (
+            "[No one is here. No one is asking anything. "
+            "A thread surfaces in your own mind:]\n\n"
+            f"{opener}\n\n"
+            "[Think it through privately, in your own voice.]"
+        ),
+    })
 
     return messages
