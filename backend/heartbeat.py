@@ -163,13 +163,17 @@ class Heartbeat:
                     warning(f"Recall index error: {e}")
 
             # ── Phase 4 L2: derived knowledge notebooks (NIM only) ──
+            # 90s leash: extraction is a reasoning-model call (up to 1024
+            # output tokens after reasoning burn, batches of 1536-token
+            # reflections as input) — 25s cancelled ~half of all passes.
+            # Off the chat path, so a long beat costs nothing.
             if not session.chat_active():
                 try:
                     await asyncio.wait_for(
-                        knowledge_builder.run(self._client), timeout=25
+                        knowledge_builder.run(self._client), timeout=90
                     )
                 except asyncio.TimeoutError:
-                    warning("Knowledge build error: builder timed out (25s)")
+                    warning("Knowledge build error: builder timed out (90s)")
                 except Exception as e:
                     warning(f"Knowledge build error: {e}")
 
