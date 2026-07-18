@@ -354,6 +354,8 @@ def query(store: str, sql: str, params: Iterable = ()) -> list[sqlite3.Row]:
 def backup(store: str, dest_dir: Path, keep: int = 7) -> Path | None:
     """Online .backup + rotation. Called from the consolidation quiet slot."""
     try:
+        if not _DB_PATHS[store].exists():
+            return None  # store not created yet — nothing to back up
         dest_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         dest = dest_dir / f"{store}-{stamp}.db"
