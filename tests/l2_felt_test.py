@@ -45,13 +45,13 @@ knowledge_surface.KNOWLEDGE_ENABLED = True
 
 # Controlled 3-D vectors for deterministic cosine.
 #   query q = [1, 0, 0]
-#   generic g = [0.85, 0.527, 0]    cos(q,g) = 0.85  (clears RECALL_MIN_SIM=0.70)
-#   personal p = [0.55, 0, 0.835]   cos(q,p) = 0.55  (below floor without boost)
-#   With +0.15 boost: effective = 0.70  -> passes because
+#   generic g = [0.85, 0.527, 0]    cos(q,g) = 0.85  (clears RECALL_MIN_SIM=0.33)
+#   personal p = [0.25, 0, 0.968]   cos(q,p) = 0.25  (below floor without boost)
+#   With +0.15 boost: effective = 0.40  → passes because
 #     (boost > 0 and key in boost_keys)  bypasses the similarity floor.
 _QUERY_EMB = [1.0, 0.0, 0.0]
 _GENERIC_EMB = [0.85, 0.527, 0.0]
-_PERSONAL_EMB = [0.55, 0.0, 0.835]
+_PERSONAL_EMB = [0.25, 0.0, 0.968]
 _ORTHOGONAL_EMB = [0.0, 1.0, 0.0]
 
 
