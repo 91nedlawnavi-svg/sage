@@ -48,18 +48,18 @@ CONVERSATION_PATH = BASE_DIR / "conversation.jsonl"
 # Flipped on at cutover (after migration verify OK), never before.
 MEMORY_CORE_SQLITE = os.environ.get("SAGE_MEMORY_CORE", "0").lower() in ("1", "true", "yes")
 # Scribe model for claim extraction — won the 12/12 bake-off (eval_harness,
-# commit 7a1dfdc). No fallback by design: on failure/malformed output the
-# extraction pass stops and retries next heartbeat (claim_extraction.run),
-# so a rate-capped scribe freezes memory formation until it recovers rather
-# than silently substituting a model that extracts differently. A router
-# failover combo ('sage-scribe', 3 x 70B) was evaluated 2026-07-19 and
-# REJECTED: individually all three route models score 12/12, but under burst
-# load the combo fails over mid-run and the fallbacks diverge from the
-# labeled-correct extraction on some fixtures (fx06/fx08), scoring 10-11/12 —
-# worse than CF 3.3 alone (stable 12/12). Divergence-under-failover is a
-# quieter, worse failure than an honest freeze. Single stable scribe kept.
+# commit 7a1dfdc). Routed via the 'sage-scribe' Omniroute combo: CF
+# Llama-3.3-70b ONLY, spread across 5 accounts for rate-limit headroom —
+# single-model, so account failover can't change extraction behavior.
+# KNOWN JITTER (measured 2026-07-19): this model at temp 0.1 is not
+# deterministic on the eval battery — runs score 10-12/12, occasionally
+# emitting a forbidden claim (fx07/fx08) or malformed JSON. The promotion
+# desk gates all claims, so worst case is a junk nomination Elliot rejects.
+# An earlier multi-model combo (3x70B) was rejected partly on this jitter
+# being misread as fallback divergence; single-model is still the right call
+# (no cross-model variation stacked on top of the base jitter).
 EXTRACTION_SCRIBE_MODEL = os.environ.get(
-    "SAGE_EXTRACTION_SCRIBE", "cf/@cf/meta/llama-3.3-70b-instruct-fp8-fast")
+    "SAGE_EXTRACTION_SCRIBE", "sage-scribe")
 
 # Knowledge store (Phase 4 Layer 2 — derived notebooks)
 KNOWLEDGE_ENABLED = os.environ.get("SAGE_KNOWLEDGE_ENABLED", "0").lower() in ("1", "true", "yes")
