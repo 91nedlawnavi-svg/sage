@@ -48,7 +48,16 @@ CONVERSATION_PATH = BASE_DIR / "conversation.jsonl"
 # Flipped on at cutover (after migration verify OK), never before.
 MEMORY_CORE_SQLITE = os.environ.get("SAGE_MEMORY_CORE", "0").lower() in ("1", "true", "yes")
 # Scribe model for claim extraction — won the 12/12 bake-off (eval_harness,
-# commit 7a1dfdc). Falls back to CHAT_MODEL via router on failure.
+# commit 7a1dfdc). No fallback by design: on failure/malformed output the
+# extraction pass stops and retries next heartbeat (claim_extraction.run),
+# so a rate-capped scribe freezes memory formation until it recovers rather
+# than silently substituting a model that extracts differently. A router
+# failover combo ('sage-scribe', 3 x 70B) was evaluated 2026-07-19 and
+# REJECTED: individually all three route models score 12/12, but under burst
+# load the combo fails over mid-run and the fallbacks diverge from the
+# labeled-correct extraction on some fixtures (fx06/fx08), scoring 10-11/12 —
+# worse than CF 3.3 alone (stable 12/12). Divergence-under-failover is a
+# quieter, worse failure than an honest freeze. Single stable scribe kept.
 EXTRACTION_SCRIBE_MODEL = os.environ.get(
     "SAGE_EXTRACTION_SCRIBE", "cf/@cf/meta/llama-3.3-70b-instruct-fp8-fast")
 
