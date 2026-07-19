@@ -119,18 +119,28 @@ async def get_findings(n: int = 20):
 async def get_history():
     """Return full chat history for UI rehydration on page load (Phase 4 L0).
 
-    When SQLite core is on, annotates each message with held_close flag so
-    the UI can render the quiet dot (§2.8).
+    When SQLite core is on:
+    - Annotates each message with held_close flag (§2.8 quiet dot)
+    - Prepends any unread waiting message as a leading assistant turn (§3.4 reach)
     """
     messages = load_all()
     if MEMORY_CORE_SQLITE:
         try:
-            from memory.relational_api import held_close_source_keys
+            from memory.relational_api import held_close_source_keys, get_waiting_message
             hc = held_close_source_keys()
             if hc:
                 for m in messages:
                     if m.get("id") in hc:
                         m["held_close"] = True
+            wm = get_waiting_message()
+            if wm:
+                messages = [{
+                    "id": "waiting_message",
+                    "role": "assistant",
+                    "content": wm["content"],
+                    "ts": wm.get("written_ts") or wm.get("revised_ts"),
+                    "kind": "waiting",
+                }] + messages
         except Exception:
             pass
     return {"messages": messages}

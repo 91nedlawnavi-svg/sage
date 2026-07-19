@@ -74,6 +74,14 @@ async def chat_endpoint(request: ChatRequest):
     # active while they run.
     session.begin_chat()
 
+    # Mark the waiting message read on Elliot's first reply (§3.4)
+    if MEMORY_CORE_SQLITE:
+        try:
+            from memory.relational_api import mark_waiting_message_read
+            await mark_waiting_message_read(actor="elliot")
+        except Exception:
+            pass
+
     # ── /search command: on-demand web search (budget-exempt) ──────
     # Match "/search" only as a complete token (followed by whitespace or end of
     # message) so things like "/searching..." fall through to the normal path.

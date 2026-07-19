@@ -330,3 +330,48 @@ class Heartbeat:
         self._searches_today += 1
 
         log("heartbeat", "search", query=query, n=len(results))
+
+        # Reach hook (§3.4): substantive finding → queue a waiting message.
+        # Threshold: ≥2 results, first has a real title. Elliot sees it when
+        # he next opens the UI. Full heat-driven reach lands in Phase E.
+        if MEMORY_CORE_SQLITE and len(results) >= 2 and (results[0].get("title") or "").strip():
+            await self._maybe_write_waiting_message(query, results)
+
+    async def _maybe_write_waiting_message(self, query: str, results: list[dict]) -> None:
+        """Compose and queue a waiting message from a substantive finding (§3.4)."""
+        if not MEMORY_CORE_SQLITE:
+            return
+        try:
+            from memory.relational_api import set_waiting_message, get_waiting_message
+            # Only one pending max — don't overwrite an unread message unless
+            # the new one is more interesting (here: always overwrite, since the
+            # new finding is the freshest thing on her mind; Phase E's full
+            # heat model will make this smarter).
+            existing = get_waiting_message()
+            if existing:
+                return  # one pending max — let Elliot read the current one first
+
+            # Ask the model to compose a short "hey I found something" in her voice
+            from models.inference.engine import nim_complete
+            system = (
+                "You are Sage — a thinking presence, not an assistant. "
+                "Elliot is away. You just followed your curiosity and found something. "
+                "Write ONE short message (2-3 sentences) in your own voice — "
+                "share what you found and why it caught your attention. "
+                "Don't say 'while you were away' or 'I noticed'. "
+                "Start mid-thought, like a text sent while he was out. "
+                "End naturally — no sign-off."
+            )
+            top = results[:3]
+            snippets = "\n".join(
+                f"- {r.get('title','')}: {(r.get('snippet',''))[:200]}"
+                for r in top if r.get("title")
+            )
+            user = f"Query I followed: {query}\n\nWhat I found:\n{snippets}"
+            text = await nim_complete(system, user, self._client,
+                                      temperature=0.75, max_tokens=180)
+            if text and text.strip():
+                await set_waiting_message(text.strip(), thread_ref=query)
+                log("heartbeat", "waiting-message-set", query=query[:80])
+        except Exception as exc:
+            warning(f"Heartbeat: waiting-message compose failed: {exc}")

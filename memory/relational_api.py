@@ -415,6 +415,55 @@ async def set_held_close_by_source_key(source_key: str, held: bool,
     return await writer(STORE).submit(_m, actor=actor, action="toggle-held-close")
 
 
+# ── waiting message (§3.4) ────────────────────────────────────────────────
+async def set_waiting_message(content: str, thread_ref: str | None = None,
+                              *, actor: str = "she") -> None:
+    """Write or revise the one pending waiting message (§3.4: one max, revisable).
+
+    Uses id=1 with ON CONFLICT REPLACE so only one row ever exists.
+    """
+    from memory.sqlite_core import now_utc as _now
+    def _m(conn, audit):
+        ts = _now()
+        existing = conn.execute("SELECT id FROM waiting_message WHERE id=1").fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE waiting_message SET content=?, thread_ref=?, revised_ts=?, "
+                "surfaced=0, read_ts=NULL WHERE id=1",
+                (content, thread_ref, ts))
+            audit("waiting_message", "1", {"action": "revised"})
+        else:
+            conn.execute(
+                "INSERT INTO waiting_message (id, content, thread_ref, written_ts) "
+                "VALUES (1,?,?,?)", (content, thread_ref, ts))
+            audit("waiting_message", "1", {"action": "created"})
+    await writer(STORE).submit(_m, actor=actor, action="set-waiting-message")
+
+
+def get_waiting_message() -> dict | None:
+    """Return the pending waiting message (unread only), or None."""
+    rows = query(STORE,
+        "SELECT * FROM waiting_message WHERE id=1 AND surfaced=0 AND read_ts IS NULL")
+    return dict(rows[0]) if rows else None
+
+
+async def mark_waiting_message_surfaced(*, actor: str = "she") -> None:
+    """Mark the waiting message as surfaced (shown to Elliot)."""
+    def _m(conn, audit):
+        conn.execute("UPDATE waiting_message SET surfaced=1 WHERE id=1")
+        audit("waiting_message", "1", None, _action="surfaced")
+    await writer(STORE).submit(_m, actor=actor, action="surface-waiting-message")
+
+
+async def mark_waiting_message_read(*, actor: str = "elliot") -> None:
+    """Mark the waiting message as read (Elliot replied)."""
+    from memory.sqlite_core import now_utc as _now
+    def _m(conn, audit):
+        conn.execute("UPDATE waiting_message SET read_ts=? WHERE id=1", (_now(),))
+        audit("waiting_message", "1", None, _action="read")
+    await writer(STORE).submit(_m, actor=actor, action="read-waiting-message")
+
+
 # ── offline self-test ─────────────────────────────────────────────────────
 if __name__ == "__main__":
     import asyncio
