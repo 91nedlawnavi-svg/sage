@@ -27,7 +27,9 @@ from pydantic import BaseModel
 
 from cognition.knowledge_extraction import _PREDICATE_CATEGORIES
 from cognition.knowledge_reconcile import reconcile_notebook
+from config.settings import MEMORY_CORE_SQLITE
 from memory import knowledge_store
+from utils.logger import warning
 
 
 router = APIRouter()
@@ -503,6 +505,12 @@ def _base_meta(min_confidence: float) -> dict:
 
 @router.get("/api/graph")
 async def get_graph(min_confidence: float = _DEFAULT_MIN_CONFIDENCE):
+    if MEMORY_CORE_SQLITE:
+        try:
+            return _sqlite_graph(min_confidence)
+        except Exception as exc:
+            warning(f"graph/sqlite get_graph: {exc}")
+            return {"nodes": [], "edges": [], "meta": {"notebook": _NOTEBOOK, "error": str(exc)}}
     try:
         built = _build_graph(min_confidence)
         nodes = built["nodes"]
@@ -554,6 +562,21 @@ async def get_graph_review(
 
     Sorted by confidence ascending (worst first).
     """
+    if MEMORY_CORE_SQLITE:
+        # Review hygiene is a legacy-notebook concept; SQLite mode has no
+        # below-floor queue. Return empty so the drawer stays functional.
+        warning("graph/review: skipped in SQLite mode (legacy-notebook concept)")
+        return {
+            "items": [],
+            "meta": {
+                "notebook": _NOTEBOOK,
+                "state": state,
+                "count": 0,
+                "min_confidence_floor": _DEFAULT_MIN_CONFIDENCE,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "mode": "sqlite",
+            },
+        }
     try:
         built = _build_graph(_DEFAULT_MIN_CONFIDENCE)
         drop_ledger = built["drop_ledger"]
@@ -677,6 +700,8 @@ def _err(msg: str) -> dict:
 @router.post("/api/graph/confirm")
 async def post_graph_confirm(body: _ConfirmBody):
     """Confirm an edge: re-emit it via ``correct_relation`` (locked/elliot)."""
+    if MEMORY_CORE_SQLITE:
+        return await _sqlite_confirm(body)
     try:
         subj = body.subject_id
         pred = body.predicate
@@ -720,6 +745,8 @@ async def post_graph_confirm(body: _ConfirmBody):
 @router.post("/api/graph/fix")
 async def post_graph_fix(body: _FixBody):
     """Fix an edge: tombstone the old id and emit a corrected, locked edge."""
+    if MEMORY_CORE_SQLITE:
+        return await _sqlite_fix(body)
     try:
         rec = _find_relation_by_id(body.relation_id)
         if not rec:
@@ -789,6 +816,8 @@ async def post_graph_fix(body: _FixBody):
 @router.post("/api/graph/delete")
 async def post_graph_delete(body: _DeleteBody):
     """Delete an edge: append a tombstone for its id."""
+    if MEMORY_CORE_SQLITE:
+        return await _sqlite_delete(body)
     try:
         rec = _find_relation_by_id(body.relation_id)
         if not rec:
@@ -806,5 +835,189 @@ async def post_graph_delete(body: _DeleteBody):
             return _err("dismiss_relation failed")
         reconcile_notebook(_NOTEBOOK)
         return _ok({"tombstoned": tomb_id, "action": "delete"})
+    except Exception as exc:
+        return _err(str(exc))
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SQLite mode — flag-gated (MEMORY_CORE_SQLITE=True)
+# ═══════════════════════════════════════════════════════════════════
+# Only the relational store is exposed here (contamination wall).
+# Every fact id served by _sqlite_graph is the real facts.id from the
+# DB — never synthetic — so confirm/fix/delete are always actionable.
+
+
+def _sqlite_graph(min_confidence: float) -> dict:
+    """Build nodes+edges from the SQLite relational store.
+
+    Current facts = superseded_by IS NULL AND tombstoned=0.
+    Entities with tombstoned=1 OR merged_into NOT NULL are excluded.
+    Entity-object facts become edges; literal/date facts attach to the
+    node's ``facts`` list.  Same JSON shape as the legacy path.
+    """
+    from memory.sqlite_core import query
+
+    entity_rows = query(
+        "relational",
+        "SELECT id, type, display_name FROM entities "
+        "WHERE tombstoned=0 AND merged_into IS NULL",
+    )
+    entity_ids = {r["id"] for r in entity_rows}
+
+    nodes_by_id: dict[str, dict] = {}
+    for r in entity_rows:
+        nodes_by_id[r["id"]] = {
+            "id": r["id"],
+            "type": r["type"],
+            "name": r["display_name"],
+            "aliases": [],
+            "origin": None,
+            "locked": False,
+            "facts": [],
+        }
+
+    # Attach aliases
+    alias_rows = query("relational", "SELECT entity_id, alias FROM entity_aliases")
+    for a in alias_rows:
+        node = nodes_by_id.get(a["entity_id"])
+        if node:
+            node["aliases"].append(a["alias"])
+
+    fact_rows = query(
+        "relational",
+        "SELECT id, subject_entity, predicate, object_kind, object_value, "
+        "locked, origin, confidence "
+        "FROM facts WHERE superseded_by IS NULL AND tombstoned=0",
+    )
+
+    edges: list[dict] = []
+    fact_count = 0
+
+    for f in fact_rows:
+        subj = f["subject_entity"]
+        if subj not in entity_ids:
+            continue
+        kind = f["object_kind"]
+        locked = bool(f["locked"])
+        origin = f["origin"]
+        conf = f["confidence"] if f["confidence"] is not None else 1.0
+        pred = f["predicate"]
+        category = _PREDICATE_CATEGORIES.get(pred, "other")
+        is_protected = locked or origin == "elliot"
+
+        if kind == "entity":
+            tgt = f["object_value"]
+            if tgt not in entity_ids:
+                continue
+            edges.append({
+                "id": f["id"],
+                "source": subj,
+                "target": tgt,
+                "predicate": pred,
+                "category": category,
+                "confidence": conf,
+                "origin": origin,
+                "locked": locked,
+                "provenance_count": 0,
+            })
+        else:
+            if not is_protected and conf < min_confidence:
+                continue
+            node = nodes_by_id.get(subj)
+            if not node:
+                continue
+            node["facts"].append({
+                "predicate": pred,
+                "value": f["object_value"],
+                "category": category,
+                "confidence": conf,
+                "origin": origin,
+                "locked": locked,
+                "provenance_count": 0,
+                "relation_id": f["id"],
+            })
+            fact_count += 1
+
+    # Confidence floor on edges (locked/elliot pass through)
+    edges = [
+        e for e in edges
+        if e.get("locked") or e.get("origin") == "elliot"
+        or (e.get("confidence") or 0.0) >= min_confidence
+    ]
+
+    # Orphan prune: keep nodes with edges or literal facts
+    connected = {e["source"] for e in edges} | {e["target"] for e in edges}
+    nodes = [
+        n for n in nodes_by_id.values()
+        if n["id"] in connected or n.get("facts")
+    ]
+
+    meta = {
+        "notebook": _NOTEBOOK,
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "fact_count": fact_count,
+        "dropped_edges": 0,
+        "dropped_nodes": [],
+        "min_confidence": min_confidence,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "sqlite",
+    }
+    return {"nodes": nodes, "edges": edges, "meta": meta}
+
+
+async def _sqlite_confirm(body: _ConfirmBody) -> dict:
+    try:
+        from memory import relational_api as rel
+        fid = body.relation_id
+        if not fid:
+            return _err("relation_id required in SQLite mode")
+        ok_flag = await rel.lock_fact(fid, actor="elliot")
+        if not ok_flag:
+            return _err(f"fact {fid} not found or already locked")
+        return _ok({"id": fid, "action": "confirm"})
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def _sqlite_fix(body: _FixBody) -> dict:
+    try:
+        from memory import relational_api as rel
+        from memory.sqlite_core import query
+        rows = query(
+            "relational",
+            "SELECT * FROM facts WHERE id=?",
+            (body.relation_id,),
+        )
+        if not rows:
+            return _err(f"fact {body.relation_id} not found")
+        old = dict(rows[0])
+        new_val = body.new_object_value if body.new_object_value is not None else old["object_value"]
+        new_kind = body.new_object_kind or old["object_kind"]
+        if new_kind not in ("entity", "literal", "date"):
+            new_kind = "literal"
+        new_id = await rel.supersede_fact(
+            body.relation_id,
+            object_value=new_val,
+            object_kind=new_kind,
+            origin="elliot",
+            locked=True,
+            actor="elliot",
+        )
+        if new_id is None:
+            return _err("supersede_fact failed")
+        # locked=True already applied on the new fact; old row is demoted
+        return _ok({"new_id": new_id, "tombstoned": body.relation_id, "action": "fix"})
+    except Exception as exc:
+        return _err(str(exc))
+
+
+async def _sqlite_delete(body: _DeleteBody) -> dict:
+    try:
+        from memory import relational_api as rel
+        ok_flag = await rel.tombstone_fact(body.relation_id, actor="elliot")
+        if not ok_flag:
+            return _err(f"fact {body.relation_id} not found")
+        return _ok({"tombstoned": body.relation_id, "action": "delete"})
     except Exception as exc:
         return _err(str(exc))

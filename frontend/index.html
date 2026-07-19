@@ -202,8 +202,29 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
 .sg-tip-fact{margin-top:2px;}
 .sg-tip-row{margin-top:1px;}
 .sg-tip-lock{color:var(--accent);}
-.sg-tip-empty{color:var(--faint);}
-</style>
+/* Promotion desk + impressions */
+.desk-card{padding:13px 0;border-bottom:1px solid var(--border);}
+.desk-card:last-child{border-bottom:none;}
+.desk-card .desk-fact{font-size:13px;color:var(--text);line-height:1.55;}
+.desk-card .desk-imp{margin-top:5px;font-size:12px;color:var(--soft);line-height:1.55;}
+.desk-card .desk-imp .desk-support{font-size:11px;color:var(--muted);margin-left:4px;}
+.desk-card .desk-episodes{margin-top:8px;display:none;}
+.desk-card .desk-episodes.open{display:block;}
+.desk-card .desk-ep-toggle{background:none;border:none;color:var(--muted);font:inherit;font-size:11px;cursor:pointer;padding:0;margin-top:4px;transition:color .15s;}
+.desk-card .desk-ep-toggle:hover{color:var(--soft);}
+.desk-card .desk-ep{padding:5px 0 5px 11px;border-left:2px solid var(--border2);margin-top:5px;font-size:11.5px;color:var(--muted);line-height:1.55;}
+.desk-card .desk-ep .ts{display:block;font-size:10px;color:var(--accent-dim);letter-spacing:.03em;text-transform:uppercase;margin-bottom:2px;}
+.desk-actions{display:flex;gap:6px;margin-top:9px;}
+.desk-actions button{background:var(--bg3);border:1px solid var(--border2);color:var(--soft);font:inherit;font-size:11.5px;padding:4px 13px;border-radius:7px;cursor:pointer;transition:all .15s;}
+.desk-actions button:hover:not(:disabled){border-color:var(--accent-dim);color:var(--text);}
+.desk-actions button:disabled{opacity:.4;cursor:default;}
+.desk-actions button.desk-reject:hover:not(:disabled){border-color:var(--err);color:var(--err);}
+.imp-item{padding:12px 0;border-bottom:1px solid var(--border);}
+.imp-item:last-child{border-bottom:none;}
+.imp-item.muted{opacity:.45;}
+.imp-item .imp-stmt{font-size:13px;color:var(--soft);line-height:1.6;}
+.imp-item .imp-meta{margin-top:4px;font-size:11px;color:var(--muted);}
+
 </head>
 <body>
 <div id="app">
@@ -250,6 +271,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
   <div id="drawer-tabs">
     <button class="drawer-tab active" data-tab="reflections">Reflections</button>
     <button class="drawer-tab" data-tab="findings">Findings</button>
+    <button class="drawer-tab" data-tab="desk">Desk</button>
+    <button class="drawer-tab" data-tab="impressions">Impressions</button>
     <button class="drawer-tab" data-tab="graph">Graph</button>
   </div>
   <div id="drawer-note"></div>
@@ -602,7 +625,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
 
 <script>
 (function(){
-  var CFG={CHAT:'/api/chat',HISTORY:'/api/history',REFLECTIONS:'/reflections?n=12',FINDINGS:'/findings?n=12',STATUS:'/health',REFRESH_MS:15000};
+  var CFG={CHAT:'/api/chat',HISTORY:'/api/history',REFLECTIONS:'/reflections?n=12',FINDINGS:'/findings?n=12',STATUS:'/health',DESK:'/api/desk/promotions',IMPRESSIONS:'/api/desk/impressions',REFRESH_MS:15000};
   var $=function(id){return document.getElementById(id);};
   var messagesEl=$('messages'),inputEl=$('user-input'),sendBtn=$('send-btn');
   var sending=false,activeTab='reflections';var sageGraphCtl=null,sageGraphRefreshWired=false;
@@ -684,7 +707,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
   function normalizeList(data,keys){if(Array.isArray(data))return data;for(var i=0;i<keys.length;i++){if(data&&Array.isArray(data[keys[i]]))return data[keys[i]];}return [];}
 
   function loadTab(tab){
-    var c=$('drawer-content'),note=$('drawer-note');var isRef=(tab==='reflections');
+    var c=$('drawer-content'),note=$('drawer-note');
+    if(tab==='desk'){loadDesk(c,note);return;}
+    if(tab==='impressions'){loadImpressions(c,note);return;}
+    var isRef=(tab==='reflections');
     note.textContent=isRef?'What she has turned over on her own. Read-only.':'What she went looking for, and found. Read-only.';
     fetch(isRef?CFG.REFLECTIONS:CFG.FINDINGS).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(data){
       if(tab!==activeTab)return;
@@ -706,6 +732,64 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
         c.appendChild(el);
       });
     }).catch(function(e){if(tab!==activeTab)return;c.innerHTML='<div class=\"drawer-empty\">Cannot read her '+(isRef?'reflections':'findings')+' yet ('+e.message+').</div>';});
+  }
+
+  function loadDesk(c,note){
+    note.textContent='Proposed facts waiting on you.';
+    c.innerHTML='<div class="drawer-empty">Loading…</div>';
+    fetch(CFG.DESK).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(data){
+      if(activeTab!=='desk')return;
+      var list=(data&&data.promotions)||[];
+      if(!list.length){c.innerHTML='<div class="drawer-empty">Nothing waiting on you.</div>';return;}
+      c.innerHTML='';
+      list.forEach(function(p){
+        var f=p.proposed_fact||{};
+        var factLabel=escapeHtml((f.predicate||'')+' '+((f.object_value!=null)?f.object_value:''));
+        var imp=p.impression;
+        var impHtml=imp?'<div class="desk-imp">'+escapeHtml(imp.statement||'')+' <span class="desk-support">'+escapeHtml(String(imp.support_count||0))+' supporting</span></div>':'';
+        var eps=p.supporting_episodes||[];
+        var epsHtml=eps.length?eps.map(function(e){return '<div class="desk-ep"><span class="ts">'+escapeHtml(fmtTime(e.ts))+'</span>'+escapeHtml(e.content||'')+'</div>';}).join(''):'';
+        var epToggleHtml=eps.length?'<button class="desk-ep-toggle" type="button">'+eps.length+' receipt'+(eps.length===1?'':'s')+' ▾</button>':'';
+        var card=document.createElement('div');card.className='desk-card';
+        card.innerHTML=
+          '<div class="desk-fact">'+factLabel+'</div>'+
+          impHtml+
+          epToggleHtml+
+          (epsHtml?'<div class="desk-episodes">'+epsHtml+'</div>':'')+
+          '<div class="desk-actions">'+
+            '<button class="desk-approve" data-qid="'+escapeAttr(String(p.queue_id||''))+'">Approve</button>'+
+            '<button class="desk-reject desk-actions-reject" data-qid="'+escapeAttr(String(p.queue_id||''))+'">Reject</button>'+
+          '</div>';
+        var tog=card.querySelector('.desk-ep-toggle');
+        if(tog){tog.addEventListener('click',function(){var ep=card.querySelector('.desk-episodes');if(ep){ep.classList.toggle('open');tog.textContent=ep.classList.contains('open')?(eps.length+' receipt'+(eps.length===1?'':'s')+' ▴'):(eps.length+' receipt'+(eps.length===1?'':'s')+' ▾');}});}
+        function wireDecide(btn,approve){btn.addEventListener('click',function(){btn.disabled=true;var sib=card.querySelector(approve?'.desk-actions-reject':'.desk-approve');if(sib)sib.disabled=true;fetch('/api/desk/decide',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({queue_id:p.queue_id,approve:approve})}).then(function(r){return r.json();}).then(function(){loadDesk(c,note);}).catch(function(){btn.disabled=false;if(sib)sib.disabled=false;});});}
+        wireDecide(card.querySelector('.desk-approve'),true);
+        wireDecide(card.querySelector('.desk-actions-reject'),false);
+        c.appendChild(card);
+      });
+    }).catch(function(e){if(activeTab!=='desk')return;c.innerHTML='<div class="drawer-empty">Nothing waiting on you.</div>';});
+  }
+
+  function loadImpressions(c,note){
+    note.textContent='Patterns she has noticed, weighted by evidence. Read-only.';
+    c.innerHTML='<div class="drawer-empty">Loading…</div>';
+    fetch(CFG.IMPRESSIONS).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}).then(function(data){
+      if(activeTab!=='impressions')return;
+      var list=(data&&data.impressions)||[];
+      if(!list.length){c.innerHTML='<div class="drawer-empty">No impressions formed yet.</div>';return;}
+      c.innerHTML='';
+      list.forEach(function(imp){
+        var active=(imp.status==='active'||imp.status==null);
+        var el=document.createElement('div');el.className='imp-item'+(active?'':' muted');
+        el.innerHTML=
+          '<div class="imp-stmt">'+escapeHtml(imp.statement||'')+'</div>'+
+          '<div class="imp-meta">'+escapeHtml(String(imp.support_count||0))+' supporting'+
+          (imp.status&&imp.status!=='active'?' · '+escapeHtml(imp.status):'')+
+          (imp.ts_formed?' · '+escapeHtml(fmtTime(imp.ts_formed)):'')+
+          '</div>';
+        c.appendChild(el);
+      });
+    }).catch(function(e){if(activeTab!=='impressions')return;c.innerHTML='<div class="drawer-empty">No impressions formed yet.</div>';});
   }
 
   function latestTs(list){var max=0;list.forEach(function(it){var ts=pick(it,['timestamp','created_at','created','time','ts','date']);var d=(typeof ts==='number')?(ts<1e12?ts*1000:ts):Date.parse(ts);if(d&&d>max)max=d;});return max;}
