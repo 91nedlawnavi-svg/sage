@@ -232,11 +232,14 @@ async def chat_endpoint(request: ChatRequest):
 
         # Phase 4 Layer 1: recall relevant older content by meaning.
         # Passes the pre-computed embedding so recall skips its own embed call.
+        # recent_turns feeds the tactful held-close gate (§2.8).
+        _recent_turns = [m["content"] for m in session.history()[-8:] if m.get("content")]
         recall_block = await semantic_recall.recall(
             user_message,
             http_client,
             boost_keys=_boost_keys,
             query_embedding=_q_emb,
+            recent_turns=_recent_turns,
         )
 
         # Build messages with history (+ recalled long-term memory)

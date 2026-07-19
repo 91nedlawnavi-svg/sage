@@ -25,13 +25,20 @@ async def record_chat_turn(entry: dict | None) -> None:
         return
     try:
         from memory import relational_api as rel
-        await rel.add_episode(
+        from cognition.held_close_sense import sense as _hc_sense
+        speaker = "elliot" if entry["role"] == "user" else "sage"
+        episode_id = await rel.add_episode(
             source="conversation",
-            speaker="elliot" if entry["role"] == "user" else "sage",
+            speaker=speaker,
             content=entry["content"],
             ts=entry["ts"],
             source_key=entry["id"],
         )
+        # Span sensing: only Elliot turns trigger held-close logic (§2.8)
+        if episode_id and speaker == "elliot":
+            held = _hc_sense(entry["content"])
+            if held:
+                await rel.set_held_close(episode_id, True, "she-sensed", actor="she")
     except Exception as exc:
         warning(f"intake/chat_turn: {type(exc).__name__}: {exc}")
 

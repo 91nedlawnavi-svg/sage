@@ -2,6 +2,8 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
+from fastapi.routing import APIRouter
+from pydantic import BaseModel
 from pathlib import Path
 from config.settings import PORT, CHAT_MODEL, TIMELAPSE, HEARTBEAT_INTERVAL_SECONDS, AUTONOMOUS_SEARCH_COOLDOWN_SECONDS, AUTONOMOUS_SEARCH_MAX_PER_DAY, MEMORY_CORE_SQLITE
 from backend.api.chat import router as chat_router
@@ -115,8 +117,40 @@ async def get_findings(n: int = 20):
 
 @app.get("/api/history")
 async def get_history():
-    """Return full chat history for UI rehydration on page load (Phase 4 L0)."""
-    return {"messages": load_all()}
+    """Return full chat history for UI rehydration on page load (Phase 4 L0).
+
+    When SQLite core is on, annotates each message with held_close flag so
+    the UI can render the quiet dot (§2.8).
+    """
+    messages = load_all()
+    if MEMORY_CORE_SQLITE:
+        try:
+            from memory.relational_api import held_close_source_keys
+            hc = held_close_source_keys()
+            if hc:
+                for m in messages:
+                    if m.get("id") in hc:
+                        m["held_close"] = True
+        except Exception:
+            pass
+    return {"messages": messages}
+
+
+class HeldCloseRequest(BaseModel):
+    held: bool
+
+
+@app.post("/api/episodes/{source_key}/held-close")
+async def toggle_held_close(source_key: str, req: HeldCloseRequest):
+    """Tap-toggle held-close for a conversation turn (§2.8 Elliot's override)."""
+    if not MEMORY_CORE_SQLITE:
+        return {"ok": False, "error": "SQLite core not enabled"}
+    try:
+        from memory.relational_api import set_held_close_by_source_key
+        ok = await set_held_close_by_source_key(source_key, req.held, actor="elliot")
+        return {"ok": ok}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @app.get("/heartbeat")

@@ -46,6 +46,7 @@ from config.settings import (
     REFLECTIONS_PATH,
     E5_EMBED_URL,
 )
+from config.settings import MEMORY_CORE_SQLITE
 from utils.logger import warning, log
 
 
@@ -251,6 +252,23 @@ async def reindex(client: httpx.AsyncClient | None, batch: int | None = None) ->
         return 0
 
 
+def _held_close_keys() -> set[str]:
+    """Return source_keys of held-close relational episodes (for tactful recall).
+
+    Degrades to empty set on any failure — recall still runs, held-close gate
+    simply doesn't fire. Never raises.
+    """
+    if not MEMORY_CORE_SQLITE:
+        return set()
+    try:
+        from memory.sqlite_core import query
+        rows = query("relational",
+            "SELECT source_key FROM episodes WHERE held_close=1 AND source_key IS NOT NULL")
+        return {r["source_key"] for r in rows}
+    except Exception:
+        return set()
+
+
 # ── retrieval ─────────────────────────────────────────────
 def _excluded_keys() -> set[str]:
     """Keys already visible to the model, so recall doesn't echo them: the most
@@ -319,6 +337,7 @@ async def recall(
     *,
     boost_keys: set[str] | None = None,
     query_embedding: list[float] | None = None,
+    recent_turns: list[str] | None = None,
 ) -> str | None:
     """Return a formatted recall block for the current message, or None.
 
@@ -327,6 +346,11 @@ async def recall(
     floor even when *sim* < RECALL_MIN_SIM — this lets provenance-linked
     personal facts from the knowledge layer outrank or survive alongside
     merely topical matches.
+
+    Tactful recall gate (§2.8): held-close episodes are never surfaced by raw
+    cosine match alone. They only pass if the current conversation carries
+    weight signals (*recent_turns* checked via held_close_sense). Friends know
+    what not to bring up at dinner.
 
     Never raises — degrades silently to None (no recall) on any failure.
     """
@@ -347,11 +371,22 @@ async def recall(
             if q_emb is None:
                 return None
 
+        # Tactful gate: held-close keys + conversation weight check (§2.8)
+        held_keys = _held_close_keys()
+        if held_keys and recent_turns:
+            from cognition.held_close_sense import conversation_has_weight
+            _conv_has_weight = conversation_has_weight(recent_turns)
+        else:
+            _conv_has_weight = False
+
         excluded = _excluded_keys()
         scored: list[tuple[float, dict]] = []
         for e in _index:
             key = e.get("key", "")
             if key in excluded:
+                continue
+            # Tactful recall gate: held-close episode only surfaces if conversation is heavy
+            if key in held_keys and not _conv_has_weight:
                 continue
             sim = _cosine(q_emb, e.get("embedding") or [])
             boost = 0.15 if (boost_keys and key in boost_keys) else 0.0

@@ -388,6 +388,33 @@ async def decide_promotion(queue_id: str, *, approve: bool,
     return await writer(STORE).submit(_m, actor=actor, action="decide-promotion")
 
 
+def held_close_source_keys() -> set[str]:
+    """Return source_keys of all held-close relational episodes.
+    Used by the history API to annotate chat turns and the recall gate."""
+    rows = query(STORE,
+        "SELECT source_key FROM episodes WHERE held_close=1 AND source_key IS NOT NULL")
+    return {r["source_key"] for r in rows}
+
+
+async def set_held_close_by_source_key(source_key: str, held: bool,
+                                       *, actor: str) -> bool:
+    """Toggle held-close for the episode matching source_key. Returns True if found."""
+    def _m(conn, audit):
+        row = conn.execute(
+            "SELECT id FROM episodes WHERE source_key=?", (source_key,)).fetchone()
+        if row is None:
+            return False
+        eid = row["id"]
+        origin = "elliot-tap" if actor == "elliot" else "she-sensed"
+        conn.execute(
+            "UPDATE episodes SET held_close=?, held_close_origin=? WHERE id=?",
+            (1 if held else 0, origin if held else None, eid))
+        audit("episodes", eid, {"held": held, "origin": origin},
+              _action="toggle-held-close")
+        return True
+    return await writer(STORE).submit(_m, actor=actor, action="toggle-held-close")
+
+
 # ── offline self-test ─────────────────────────────────────────────────────
 if __name__ == "__main__":
     import asyncio
