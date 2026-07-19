@@ -349,6 +349,27 @@ class Heartbeat:
         except Exception:
             results = []
 
+        # Enrich top results with full article text (§3.3 reader)
+        if results:
+            try:
+                from cognition.reader import enrich_results
+                results = await asyncio.to_thread(enrich_results, results, 2)
+                # Store reading episodes in interior store so they feed future
+                # reflections via consolidation (§3.3: she reads articles, not snippets)
+                if MEMORY_CORE_SQLITE:
+                    from memory.interior_api import add_episode as add_interior_ep
+                    for r in results:
+                        art = r.get("article_text")
+                        if art:
+                            snippet = art[:3000]  # cap for storage
+                            await add_interior_ep(
+                                source="reading",
+                                content=f"[Reading: {r.get('title', 'article')}]\n{snippet}",
+                                source_key=f"read:{r.get('url','')[:120]}",
+                            )
+            except Exception:
+                pass
+
         # Log finding (even if empty results); tagged so budget rehydrate can
         # tell autonomous searches from budget-exempt /search ones.
         entry = append_finding(query, results, source="autonomous")
