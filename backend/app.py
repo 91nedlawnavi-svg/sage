@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.routing import APIRouter
 from pydantic import BaseModel
 from pathlib import Path
@@ -96,6 +97,10 @@ app = FastAPI(title="Sage v2", lifespan=lifespan)
 app.include_router(chat_router)
 app.include_router(graph_router)
 app.include_router(desk_router)
+
+# Frontend assets (app.css, app.js, graph.js) split out of index.html so a
+# stray tag breaks one file, not the whole UI. "/" still serves the HTML.
+app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
 
 
 @app.get("/health")
