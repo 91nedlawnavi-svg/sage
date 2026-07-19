@@ -262,8 +262,16 @@ CREATE TABLE audit_log (
 );
 """
 
+# V2: claim extraction (cognition/claim_extraction.py) needs its own pending
+# flag — `processed` already belongs to consolidation, and the two jobs must
+# not starve each other by consuming the same cursor.
+_RELATIONAL_V2 = """
+ALTER TABLE episodes ADD COLUMN extracted INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX idx_episodes_unextracted ON episodes(extracted) WHERE extracted = 0;
+"""
+
 _MIGRATIONS: dict[str, list[str]] = {
-    "relational": [_RELATIONAL_V1],
+    "relational": [_RELATIONAL_V1, _RELATIONAL_V2],
     "interior": [_INTERIOR_V1],
 }
 

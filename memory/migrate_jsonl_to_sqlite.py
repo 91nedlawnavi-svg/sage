@@ -140,13 +140,17 @@ async def migrate(*, dry_run: bool = False, check_service: bool = True) -> dict:
                 text = (r.get("content") or "").strip()
                 if not key or not text:
                     continue
+                done = 1 if key in rel_cursor else 0
                 conn.execute(
                     "INSERT OR IGNORE INTO episodes "
-                    "(id, ts, source, speaker, content, processed, source_key) "
-                    "VALUES (?,?,?,?,?,?,?)",
+                    "(id, ts, source, speaker, content, processed, extracted, source_key) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
                     (new_id(), r.get("ts") or now_utc(), "conversation",
                      "elliot" if r.get("role") == "user" else "sage",
-                     text, 1 if key in rel_cursor else 0, key))
+                     # old cursor = the old extraction pipeline's cursor; those
+                     # turns' claims already live in the migrated graph, so mark
+                     # extracted too (no re-extraction storm on first beat)
+                     text, done, done, key))
                 n += 1
             audit("episodes", "bulk", {"imported": n}, _action="migrate")
             return n

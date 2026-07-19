@@ -12,15 +12,16 @@ def _ensure_parent_dir():
     CONVERSATION_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
-def append_message(role: str, content: str) -> None:
-    """Append a chat message to the conversation log.
+def append_message(role: str, content: str) -> dict | None:
+    """Append a chat message to the conversation log. Returns the entry
+    written (so the SQLite intake mirror can reuse its id/ts), None if skipped.
 
     role: "user" or "assistant"
     """
     if role not in ("user", "assistant"):
-        return
+        return None
     if not content or not content.strip():
-        return
+        return None
 
     _ensure_parent_dir()
     entry = {
@@ -39,6 +40,7 @@ def append_message(role: str, content: str) -> None:
     except Exception as e:
         # never raise into the chat path — but never fail silently either
         warning(f"conversation_log/append failed: {e}")
+    return entry
 
 
 def load_all() -> list[dict]:

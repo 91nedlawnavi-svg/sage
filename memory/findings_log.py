@@ -11,8 +11,9 @@ def _ensure_parent_dir():
     FINDINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
-def append_finding(query: str, results: list[dict], source: str = "search") -> None:
-    """Append a finding entry to the JSONL log.
+def append_finding(query: str, results: list[dict], source: str = "search") -> dict:
+    """Append a finding entry to the JSONL log. Returns the entry written
+    (the SQLite intake mirror reuses its ts as the dedup source_key).
 
     source: "autonomous" (heartbeat, counts against the daily budget) or
     "search" (Elliot's /search command, budget-exempt).
@@ -33,6 +34,7 @@ def append_finding(query: str, results: list[dict], source: str = "search") -> N
     except Exception as e:
         # never raise into the heartbeat/chat path — but never silently either
         warning(f"findings_log/append failed: {e}")
+    return entry
 
 
 def read_recent(n: int = 20) -> list[dict]:

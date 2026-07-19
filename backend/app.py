@@ -3,7 +3,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from pathlib import Path
-from config.settings import PORT, CHAT_MODEL, TIMELAPSE, HEARTBEAT_INTERVAL_SECONDS, AUTONOMOUS_SEARCH_COOLDOWN_SECONDS, AUTONOMOUS_SEARCH_MAX_PER_DAY
+from config.settings import PORT, CHAT_MODEL, TIMELAPSE, HEARTBEAT_INTERVAL_SECONDS, AUTONOMOUS_SEARCH_COOLDOWN_SECONDS, AUTONOMOUS_SEARCH_MAX_PER_DAY, MEMORY_CORE_SQLITE
 from backend.api.chat import router as chat_router
 from backend.api.graph import router as graph_router
 from backend.api.desk import router as desk_router
@@ -41,6 +41,17 @@ async def lifespan(app: FastAPI):
              interval=HEARTBEAT_INTERVAL_SECONDS,
              search_cooldown=AUTONOMOUS_SEARCH_COOLDOWN_SECONDS,
              search_budget=AUTONOMOUS_SEARCH_MAX_PER_DAY)
+
+    # Wave 2 memory core: apply any pending schema migrations before anything
+    # touches the stores (writers also ensure lazily; this front-loads it).
+    if MEMORY_CORE_SQLITE:
+        try:
+            from memory.sqlite_core import ensure_schema
+            ensure_schema("relational")
+            ensure_schema("interior")
+            info("Memory core (SQLite) schema ready")
+        except Exception as e:
+            error(f"Memory core schema check failed: {e}")
 
     # Hydrate conversation history from disk (Phase 4 Layer 0)
     try:

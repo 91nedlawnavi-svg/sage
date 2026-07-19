@@ -11,9 +11,10 @@ from models.prompts.templates import build_chat_messages
 from backend.session import session
 from cognition.knowledge_surface import select_relevant_relations
 from memory.conversation_log import append_message
-from memory import semantic_recall, knowledge_recall
+from memory import intake, semantic_recall, knowledge_recall
 from cognition.web_search import search
 from memory.findings_log import append_finding
+from config.settings import MEMORY_CORE_SQLITE
 
 router = APIRouter()
 
@@ -81,9 +82,9 @@ async def chat_endpoint(request: ChatRequest):
         if not query:
             msg = "What should I look into? Just tell me what you're curious about — a topic, a question, anything."
             try:
-                append_message("user", user_message)
+                await intake.record_chat_turn(append_message("user", user_message))
                 session.append("user", user_message)
-                append_message("assistant", msg)
+                await intake.record_chat_turn(append_message("assistant", msg))
                 session.append("assistant", msg)
             finally:
                 session.end_chat()
@@ -157,9 +158,11 @@ async def chat_endpoint(request: ChatRequest):
                 #    completed stays False, and we skip persisting a half-delivered
                 #    reply (and never await during GeneratorExit cleanup).
                 if full_reply and completed:
-                    append_message("user", user_message)
+                    # completed=True only on a clean end — never inside
+                    # GeneratorExit cleanup, so awaiting here is safe.
+                    await intake.record_chat_turn(append_message("user", user_message))
                     session.append("user", user_message)
-                    append_message("assistant", full_reply)
+                    await intake.record_chat_turn(append_message("assistant", full_reply))
                     session.append("assistant", full_reply)
 
                     # 9) Write finding (best-effort, off-loop). Only on a real
@@ -167,7 +170,10 @@ async def chat_endpoint(request: ChatRequest):
                     #    so a bad call surfaces in journalctl instead of vanishing.
                     if search_results:
                         try:
-                            await asyncio.to_thread(append_finding, query, search_results)
+                            entry = await asyncio.to_thread(
+                                append_finding, query, search_results)
+                            await intake.record_finding(
+                                entry["query"], entry["results"], entry["ts"])
                         except Exception:
                             traceback.print_exc()
 
@@ -185,19 +191,44 @@ async def chat_endpoint(request: ChatRequest):
         # knowledge surface, guaranteeing no second embed on the chat turn.
         _q_emb = await semantic_recall.embed_query(user_message, http_client)
 
-        # Phase 4 Layer 2: targeted knowledge + semantic fact selection.
-        # Reuses the query embedding; when _q_emb is None (e5 down, gate off,
-        # cache empty) fact_vectors is also None and fallback is purely lexical.
-        _fact_vectors = knowledge_recall.load_fact_vectors() if _q_emb else None
-        knowledge_relations = select_relevant_relations(
-            user_input=user_message,
-            max_facts=12,
-            query_embedding=_q_emb,
-            fact_vectors=_fact_vectors,
-        )
-        _boost_keys = {
-            k for rel in knowledge_relations for k in (rel.get("provenance") or [])
-        } or None  # None = no boost (preserves old recall behaviour)
+        # Wave 2 core on: hybrid retrieval (SQL structure → rerank) replaces
+        # the legacy notebook surface. The already-computed query embedding is
+        # reused via a query-only embed_fn (facts still embed per-call until
+        # the Qwen3 swap lands a batch endpoint; e5 down → structural mode).
+        memory_block = None
+        knowledge_relations = None
+        _boost_keys = None
+        if MEMORY_CORE_SQLITE:
+            from memory import hybrid_retrieval
+
+            async def _embed_many(texts):
+                out = []
+                for i, t in enumerate(texts):
+                    if i == 0 and _q_emb is not None:
+                        out.append(_q_emb)
+                        continue
+                    v = await semantic_recall.embed_query(t, http_client)
+                    if v is None:
+                        return None
+                    out.append(v)
+                return out
+
+            _hyb = await hybrid_retrieval.retrieve(
+                user_message, _embed_many if _q_emb else None)
+            memory_block = hybrid_retrieval.build_memory_block(_hyb)
+        else:
+            # Phase 4 Layer 2 (legacy): targeted knowledge + semantic fact
+            # selection. Reuses the query embedding; _q_emb None → lexical.
+            _fact_vectors = knowledge_recall.load_fact_vectors() if _q_emb else None
+            knowledge_relations = select_relevant_relations(
+                user_input=user_message,
+                max_facts=12,
+                query_embedding=_q_emb,
+                fact_vectors=_fact_vectors,
+            )
+            _boost_keys = {
+                k for rel in knowledge_relations for k in (rel.get("provenance") or [])
+            } or None  # None = no boost (preserves old recall behaviour)
 
         # Phase 4 Layer 1: recall relevant older content by meaning.
         # Passes the pre-computed embedding so recall skips its own embed call.
@@ -219,11 +250,12 @@ async def chat_endpoint(request: ChatRequest):
             session.history(),
             recall_block=recall_block,
             knowledge_relations=knowledge_relations,
+            memory_block=memory_block,
         )
 
         # Persist user message BEFORE streaming so it survives assistant failure.
         # session.begin_chat() already updated the activity timestamp.
-        append_message("user", user_message)
+        await intake.record_chat_turn(append_message("user", user_message))
         session.append("user", user_message)
     except Exception:
         session.end_chat()
@@ -250,7 +282,9 @@ async def chat_endpoint(request: ChatRequest):
             # block, completed stays False, and we skip persisting a
             # half-delivered turn.
             if full_reply and completed:
-                append_message("assistant", full_reply)
+                # completed=True only on a clean end — never inside
+                # GeneratorExit cleanup, so awaiting here is safe.
+                await intake.record_chat_turn(append_message("assistant", full_reply))
                 session.append("assistant", full_reply)
             # Always decrement the active-chat counter, even on disconnect
             session.end_chat()

@@ -27,6 +27,7 @@ def build_chat_messages(
     history: list[dict],
     recall_block: str | None = None,
     knowledge_relations: list[dict] | None = None,
+    memory_block: str | None = None,
 ) -> list[dict]:
     """Build messages for chat completion with directive-first system prompt."""
     # Time context
@@ -55,8 +56,10 @@ def build_chat_messages(
     # Phase 4 Layer 2: durable facts (reconciled relational notebook). Gated by
     # KNOWLEDGE_ENABLED; pure disk read, no NIM/embeddings; None when off/empty.
     # Targeted to the current user message so only relevant facts surface.
+    # Wave 2: pre-rendered block from hybrid retrieval (SQLite core) takes
+    # precedence; legacy notebook path otherwise.
     parts.append("\n\n")
-    knowledge_block = build_knowledge_block(
+    knowledge_block = memory_block or build_knowledge_block(
         user_input=user_input,
         relations=knowledge_relations,
     )

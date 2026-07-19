@@ -18,8 +18,9 @@ from cognition.curiosity import extract_query
 from cognition.novelty_gate import gate as novelty_gate
 from memory.reflection_log import append_reflection
 from memory.findings_log import append_finding
-from memory import semantic_recall, knowledge_recall
+from memory import intake, semantic_recall, knowledge_recall
 from cognition import knowledge_builder
+from config.settings import MEMORY_CORE_SQLITE
 from backend.session import session
 from utils.logger import info, warning, log
 
@@ -167,7 +168,9 @@ class Heartbeat:
             # output tokens after reasoning burn, batches of 1536-token
             # reflections as input) — 25s cancelled ~half of all passes.
             # Off the chat path, so a long beat costs nothing.
-            if not session.chat_active():
+            # Retired at cutover: claim_extraction (SQLite) replaces this
+            # pipeline; running both would double every extraction LLM call.
+            if not MEMORY_CORE_SQLITE and not session.chat_active():
                 try:
                     await asyncio.wait_for(
                         knowledge_builder.run(self._client), timeout=90
@@ -176,6 +179,31 @@ class Heartbeat:
                     warning("Knowledge build error: builder timed out (90s)")
                 except Exception as e:
                     warning(f"Knowledge build error: {e}")
+
+            # ── Wave 2 memory core: claim extraction + consolidation ──
+            # Both SQLite quiet-slot jobs; same leash discipline as the
+            # builder (extraction is a scribe call, consolidation a judge
+            # call — either can run long).
+            if MEMORY_CORE_SQLITE and not session.chat_active():
+                try:
+                    from cognition import claim_extraction
+                    await asyncio.wait_for(
+                        claim_extraction.run(self._client), timeout=90
+                    )
+                except asyncio.TimeoutError:
+                    warning("Claim extraction: timed out (90s)")
+                except Exception as e:
+                    warning(f"Claim extraction: {e}")
+            if MEMORY_CORE_SQLITE and not session.chat_active():
+                try:
+                    from cognition import consolidation
+                    await asyncio.wait_for(
+                        consolidation.run(self._client), timeout=90
+                    )
+                except asyncio.TimeoutError:
+                    warning("Consolidation: timed out (90s)")
+                except Exception as e:
+                    warning(f"Consolidation: {e}")
 
             # ── Phase 4 L2: fact-embedding cache (e5 only) ─────────
             # Off the chat path.  Only embeds new/changed facts, so it is
@@ -220,7 +248,8 @@ class Heartbeat:
             try:
                 text = await run_reflection(self._client)
                 if text:
-                    append_reflection(text, idle)
+                    entry = append_reflection(text, idle)
+                    await intake.record_reflection(text, entry["ts"])
                     self._last_reflection_ts = time.time()
                     preview = text[:80]
                     log("heartbeat", "reflection", preview=preview, chars=len(text), idle_seconds=round(idle, 1))
@@ -295,7 +324,8 @@ class Heartbeat:
 
         # Log finding (even if empty results); tagged so budget rehydrate can
         # tell autonomous searches from budget-exempt /search ones.
-        append_finding(query, results, source="autonomous")
+        entry = append_finding(query, results, source="autonomous")
+        await intake.record_finding(query, results, entry["ts"])
         self._last_search_ts = time.time()
         self._searches_today += 1
 

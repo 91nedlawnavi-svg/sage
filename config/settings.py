@@ -44,6 +44,14 @@ MEMBRANE_RECENCY_HOURS = 72
 # Conversation log (Phase 4 Layer 0)
 CONVERSATION_PATH = BASE_DIR / "conversation.jsonl"
 
+# Wave 2 memory core (SQLite). Off = legacy JSONL behavior, byte-identical.
+# Flipped on at cutover (after migration verify OK), never before.
+MEMORY_CORE_SQLITE = os.environ.get("SAGE_MEMORY_CORE", "0").lower() in ("1", "true", "yes")
+# Scribe model for claim extraction — won the 12/12 bake-off (eval_harness,
+# commit 7a1dfdc). Falls back to CHAT_MODEL via router on failure.
+EXTRACTION_SCRIBE_MODEL = os.environ.get(
+    "SAGE_EXTRACTION_SCRIBE", "cf/@cf/meta/llama-3.3-70b-instruct-fp8-fast")
+
 # Knowledge store (Phase 4 Layer 2 — derived notebooks)
 KNOWLEDGE_ENABLED = os.environ.get("SAGE_KNOWLEDGE_ENABLED", "0").lower() in ("1", "true", "yes")
 KNOWLEDGE_DIR = BASE_DIR / "knowledge"

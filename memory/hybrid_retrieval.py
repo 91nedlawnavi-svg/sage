@@ -186,6 +186,35 @@ async def retrieve(query_text: str, embed_fn=None, *, k: int = DEFAULT_K,
                 "mode": "degraded"}
 
 
+# ── prompt block (chat path) ──────────────────────────────────────────────
+def build_memory_block(result: dict) -> str | None:
+    """Render a retrieve() result for prompt assembly: facts as known truth,
+    gaps handed alongside so she can ask the natural question (§2.4 —
+    'structure carries the intelligence'). None when nothing surfaced."""
+    try:
+        facts, gaps = result.get("facts") or [], result.get("gaps") or []
+        if not facts and not gaps:
+            return None
+        names = {e["id"]: e["display_name"] for e in result.get("entities") or []}
+        lines = ["[WHAT YOU KNOW — from your memory of Elliot's world. "
+                 "Trust these; weave them in naturally, don't recite them.]"]
+        for f in facts:
+            subj = names.get(f["subject_entity"], "someone")
+            line = f"- {subj}: {f['predicate'].replace('_', ' ')} {f['object_value']}"
+            if f.get("epistemic") == "believed-by":
+                line += " (their belief — not verified fact)"
+            lines.append(line)
+        if gaps:
+            lines.append("[WHAT YOU DON'T KNOW — open gaps. If the moment is "
+                         "natural, you can ask.]")
+            for g in gaps:
+                lines.append(f"- {g['description']}")
+        return "\n".join(lines)
+    except Exception as exc:
+        warning(f"hybrid_retrieval/build_memory_block: {type(exc).__name__}: {exc}")
+        return None
+
+
 # ── offline self-test ─────────────────────────────────────────────────────
 if __name__ == "__main__":
     import asyncio
@@ -279,6 +308,12 @@ if __name__ == "__main__":
         # unknown entity → empty but shaped; episodes fallback path exercised
         r = await retrieve("completely unknown topic zzz", None)
         assert r["facts"] == [] and r["entities"] == []
+        assert build_memory_block(r) is None, "empty result rendered a block"
+
+        r = await retrieve("How is Maya doing?", None)
+        block = build_memory_block(r)
+        assert "Maya" in block and "pilot" in block, "facts missing from block"
+        assert "moved to Jakarta" in block, "gap missing from block"
 
         print("OK hybrid_retrieval self-test")
 

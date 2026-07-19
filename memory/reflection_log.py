@@ -11,8 +11,9 @@ def _ensure_parent_dir():
     REFLECTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
-def append_reflection(text: str, idle_seconds: float) -> None:
-    """Append a reflection entry to the JSONL log."""
+def append_reflection(text: str, idle_seconds: float) -> dict:
+    """Append a reflection entry to the JSONL log. Returns the entry written
+    (the SQLite intake mirror reuses its ts as the dedup source_key)."""
     _ensure_parent_dir()
     entry = {
         "ts": datetime.now().isoformat(),
@@ -27,6 +28,7 @@ def append_reflection(text: str, idle_seconds: float) -> None:
     except Exception as e:
         # never raise into the heartbeat path — but never fail silently either
         warning(f"reflection_log/append failed: {e}")
+    return entry
 
 
 def read_recent(n: int = 20) -> list[dict]:
