@@ -464,6 +464,100 @@ async def mark_waiting_message_read(*, actor: str = "elliot") -> None:
     await writer(STORE).submit(_m, actor=actor, action="read-waiting-message")
 
 
+# ── threads (§3.1) ────────────────────────────────────────────────────────
+THREAD_INITIAL_HEAT = 1.0
+THREAD_DECAY_PER_BEAT = 0.05  # each quiet heartbeat slot drains a little heat
+THREAD_HOT_THRESHOLD = 0.7    # above this → eligible for burst search
+THREAD_STALE_THRESHOLD = 0.1  # below this → auto-stale
+# Max share of weekly thread-heat any single thread can hold
+THREAD_PORTFOLIO_FLOOR = 0.5
+
+
+async def open_thread(question: str, *, spawned_from: str | None = None,
+                      spawn_kind: str | None = None,
+                      actor: str = "she") -> str:
+    """Open a new thread. Returns id."""
+    def _m(conn, audit):
+        tid = new_id()
+        ts = now_utc()
+        conn.execute(
+            "INSERT INTO threads (id, question, heat, spawned_from, spawn_kind, "
+            "created_ts, updated_ts) VALUES (?,?,?,?,?,?,?)",
+            (tid, question, THREAD_INITIAL_HEAT, spawned_from, spawn_kind, ts, ts))
+        audit("threads", tid, {"question": question[:80], "spawn_kind": spawn_kind})
+        return tid
+    return await writer(STORE).submit(_m, actor=actor, action="open-thread")
+
+
+async def feed_thread(thread_id: str, heat_delta: float = 0.3,
+                      *, actor: str = "she") -> None:
+    """A finding or reflection touched this thread — raise its heat."""
+    def _m(conn, audit):
+        ts = now_utc()
+        row = conn.execute("SELECT heat FROM threads WHERE id=?", (thread_id,)).fetchone()
+        if row is None:
+            return
+        new_heat = min(2.0, row["heat"] + heat_delta)
+        conn.execute("UPDATE threads SET heat=?, updated_ts=? WHERE id=?",
+                     (new_heat, ts, thread_id))
+        audit("threads", thread_id, {"heat_delta": heat_delta, "new_heat": new_heat},
+              _action="feed")
+    await writer(STORE).submit(_m, actor=actor, action="feed-thread")
+
+
+async def resolve_thread(thread_id: str, conclusion: str,
+                         *, actor: str = "she") -> None:
+    """Archive a thread as resolved with a conclusion."""
+    def _m(conn, audit):
+        ts = now_utc()
+        conn.execute(
+            "UPDATE threads SET status='resolved', conclusion=?, "
+            "heat=0, resolved_ts=?, updated_ts=? WHERE id=?",
+            (conclusion, ts, ts, thread_id))
+        audit("threads", thread_id, {"conclusion": conclusion[:120]},
+              _action="resolve")
+    await writer(STORE).submit(_m, actor=actor, action="resolve-thread")
+
+
+def hot_threads(limit: int = 5) -> list[dict]:
+    """Return open threads by heat descending."""
+    rows = query(STORE,
+        "SELECT * FROM threads WHERE status='open' ORDER BY heat DESC LIMIT ?",
+        (limit,))
+    return [dict(r) for r in rows]
+
+
+def all_open_threads() -> list[dict]:
+    rows = query(STORE, "SELECT * FROM threads WHERE status='open' ORDER BY heat DESC")
+    return [dict(r) for r in rows]
+
+
+async def decay_threads(*, actor: str = "she") -> int:
+    """Apply per-beat heat decay; stale threads below threshold auto-close.
+
+    Returns number staled. Called from the heartbeat quiet slot.
+    """
+    def _m(conn, audit):
+        ts = now_utc()
+        rows = conn.execute(
+            "SELECT id, heat FROM threads WHERE status='open'").fetchall()
+        staled = 0
+        for r in rows:
+            new_heat = max(0.0, r["heat"] - THREAD_DECAY_PER_BEAT)
+            if new_heat < THREAD_STALE_THRESHOLD:
+                conn.execute(
+                    "UPDATE threads SET status='stale', heat=0, updated_ts=? WHERE id=?",
+                    (ts, r["id"]))
+                audit("threads", r["id"], {"staled": True}, _action="stale")
+                staled += 1
+            else:
+                conn.execute(
+                    "UPDATE threads SET heat=?, updated_ts=? WHERE id=?",
+                    (new_heat, ts, r["id"]))
+        return staled
+    return await writer(STORE).submit(_m, actor=actor, action="decay-threads")
+
+
 # ── offline self-test ─────────────────────────────────────────────────────
 if __name__ == "__main__":
     import asyncio

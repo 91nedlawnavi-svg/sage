@@ -270,8 +270,27 @@ ALTER TABLE episodes ADD COLUMN extracted INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX idx_episodes_unextracted ON episodes(extracted) WHERE extracted = 0;
 """
 
+# V3: threads ledger (§3.1 — open questions with heat)
+_RELATIONAL_V3 = """
+CREATE TABLE threads (
+    id          TEXT PRIMARY KEY,
+    question    TEXT NOT NULL,
+    heat        REAL NOT NULL DEFAULT 1.0,
+    status      TEXT NOT NULL DEFAULT 'open'
+        CHECK (status IN ('open','resolved','stale')),
+    spawned_from TEXT,           -- gap_id or episode_id or finding ts
+    spawn_kind   TEXT,           -- 'gap' | 'reflection' | 'finding' | 'elliot'
+    conclusion   TEXT,           -- set when resolved
+    created_ts   TEXT NOT NULL,
+    updated_ts   TEXT NOT NULL,
+    resolved_ts  TEXT
+);
+CREATE INDEX idx_threads_open ON threads(status, heat) WHERE status = 'open';
+CREATE INDEX idx_threads_updated ON threads(updated_ts);
+"""
+
 _MIGRATIONS: dict[str, list[str]] = {
-    "relational": [_RELATIONAL_V1, _RELATIONAL_V2],
+    "relational": [_RELATIONAL_V1, _RELATIONAL_V2, _RELATIONAL_V3],
     "interior": [_INTERIOR_V1],
 }
 

@@ -194,6 +194,23 @@ class Heartbeat:
                     warning("Claim extraction: timed out (90s)")
                 except Exception as e:
                     warning(f"Claim extraction: {e}")
+
+            # ── Wave 3: spawn threads from unthreaded open gaps (§2.4/§3.1) ─
+            if MEMORY_CORE_SQLITE and not session.chat_active():
+                try:
+                    from memory.relational_api import open_gaps
+                    from cognition.threads import spawn_from_gap
+                    from memory.sqlite_core import query as db_query
+                    # Only gaps not yet threaded
+                    gaps = open_gaps(limit=5)
+                    for gap in gaps:
+                        existing = db_query("relational",
+                            "SELECT id FROM threads WHERE spawned_from=? "
+                            "AND spawn_kind='gap' AND status='open'", (gap["id"],))
+                        if not existing:
+                            await spawn_from_gap(gap)
+                except Exception as e:
+                    warning(f"Gap→thread spawn: {e}")
             if MEMORY_CORE_SQLITE and not session.chat_active():
                 try:
                     from cognition import consolidation
@@ -204,6 +221,16 @@ class Heartbeat:
                     warning("Consolidation: timed out (90s)")
                 except Exception as e:
                     warning(f"Consolidation: {e}")
+
+            # ── Wave 3: thread decay + portfolio check (§3.1) ──────
+            if MEMORY_CORE_SQLITE and not session.chat_active():
+                try:
+                    from cognition.threads import decay_and_check_portfolio
+                    summary = await decay_and_check_portfolio()
+                    if summary.get("staled"):
+                        log("threads", "decay", **summary)
+                except Exception as e:
+                    warning(f"Thread decay: {e}")
 
             # ── Phase 4 L2: fact-embedding cache (e5 only) ─────────
             # Off the chat path.  Only embeds new/changed facts, so it is
@@ -330,6 +357,14 @@ class Heartbeat:
         self._searches_today += 1
 
         log("heartbeat", "search", query=query, n=len(results))
+
+        # Feed open threads whose question overlaps this search query (§3.1)
+        if MEMORY_CORE_SQLITE:
+            try:
+                from cognition.threads import feed_from_finding
+                await feed_from_finding(query, results)
+            except Exception:
+                pass
 
         # Reach hook (§3.4): substantive finding → queue a waiting message.
         # Threshold: ≥2 results, first has a real title. Elliot sees it when
