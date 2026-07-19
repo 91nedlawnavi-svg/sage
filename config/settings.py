@@ -61,9 +61,9 @@ INTERIOR_ENTITIES_PATH = KNOWLEDGE_DIR / "interior_entities.jsonl"
 INTERIOR_RELATIONS_PATH = KNOWLEDGE_DIR / "interior_relations.jsonl"
 
 # Knowledge recall / fact embedding (Phase 4 Layer 2, semantic selection)
-# Calibrated 25 Jun 2026 (clean valley: noise traps <= ~0.705, relevant 0.74-0.80).
-# Override per-deploy via SAGE_KNOWLEDGE_FACT_MIN_SIM. Recalibrate as the fact base grows.
-KNOWLEDGE_FACT_MIN_SIM = float(os.environ.get("SAGE_KNOWLEDGE_FACT_MIN_SIM", "0.73"))
+# Recalibrated 19 Jul 2026 for Qwen3-0.6B (bench/threshold_calibration.py);
+# aligned with hybrid_retrieval.RERANK_SIM_FLOOR. Legacy (flag-off) path only.
+KNOWLEDGE_FACT_MIN_SIM = float(os.environ.get("SAGE_KNOWLEDGE_FACT_MIN_SIM", "0.35"))
 FACT_INDEX_PATH = KNOWLEDGE_DIR / "fact_embeddings.jsonl"
 FACT_INDEX_BATCH = int(os.environ.get("SAGE_FACT_INDEX_BATCH", "16"))
 
@@ -72,7 +72,7 @@ FACT_INDEX_BATCH = int(os.environ.get("SAGE_FACT_INDEX_BATCH", "16"))
 RECALL_ENABLED = os.environ.get("SAGE_RECALL_ENABLED", "1").lower() in ("1", "true", "yes")
 RECALL_INDEX_PATH = BASE_DIR / "recall_index.jsonl"
 RECALL_TOP_K = int(os.environ.get("SAGE_RECALL_TOP_K", "4"))          # max items injected per turn
-RECALL_MIN_SIM = float(os.environ.get("SAGE_RECALL_MIN_SIM", "0.70"))  # cosine floor to count as relevant
+RECALL_MIN_SIM = float(os.environ.get("SAGE_RECALL_MIN_SIM", "0.33"))  # cosine floor to count as relevant (Qwen3 scale: probe noise ceiling ~0.33, bench/threshold_calibration.py 19 Jul 2026)
 RECALL_MAX_CHARS = 2200            # char budget for the injected recall block
 RECALL_MIN_CHARS = 24              # skip trivially short texts (indexing and querying)
 RECALL_RECENT_EXCLUDE_TURNS = 24   # skip the N most recent conversation messages (already in the live window)
@@ -80,24 +80,24 @@ RECALL_RECENT_HOURS = MEMBRANE_RECENCY_HOURS  # reflections newer than this are 
 RECALL_INDEX_BATCH = int(os.environ.get("SAGE_RECALL_INDEX_BATCH", "12"))  # embeds per indexing pass; e5 is GPU-fast now (~2s/embed) so a larger batch drains the backlog in minutes
 RECALL_EMBED_SLEEP = 0.15          # seconds between sequential embeds while indexing
 RECALL_REFLECTION_BACKFILL = int(os.environ.get("SAGE_RECALL_REFL_BACKFILL", "500"))  # only index the most recent N reflections
-RECALL_EMBED_MAX_CHARS = int(os.environ.get("SAGE_RECALL_EMBED_MAX_CHARS", "1000"))  # cap text sent to e5 per embed; e5 on GPU handles ~1000 chars in ~2s, matching the stored index text length
+RECALL_EMBED_MAX_CHARS = int(os.environ.get("SAGE_RECALL_EMBED_MAX_CHARS", "1000"))  # cap text sent to the embedder per embed, matching the stored index text length
 RECALL_INDEX_MAX_FAILS = int(os.environ.get("SAGE_RECALL_INDEX_MAX_FAILS", "3"))  # consecutive embed failures before a reindex pass bails (e5 likely down)
 RECALL_INDEX_READ_TIMEOUT = float(os.environ.get("SAGE_RECALL_INDEX_READ_TIMEOUT", "12"))  # background indexer read ceiling; generous margin over the ~2s GPU embed
 
 # Curiosity Novelty Gate (Phase 2.2 / 2.2b)
 NOVELTY_GATE_ENABLED = True
 NOVELTY_WINDOW = 12
-NOVELTY_SIM_THRESHOLD = 0.82  # lowered from 0.85 — drift steps landed 0.80–0.88
+NOVELTY_SIM_THRESHOLD = 0.35  # Qwen3 scale, percentile-mapped from e5 0.82 (bench/threshold_calibration.py 19 Jul 2026)
 NOVELTY_MAX_RETRIES = 1
 CURIOSITY_STREAK_CAP = 8
 
 # Basin-drift detection (Phase 2.2b)
 BASIN_WINDOW = 16           # rolling window for accepted-topic centroid
-BASIN_SIM_THRESHOLD = 0.80  # cosine-sim to centroid still counts as "in basin"
+BASIN_SIM_THRESHOLD = 0.30  # cosine-sim to centroid still counts as "in basin" (Qwen3 scale, mapped from e5 0.80)
 BASIN_STREAK_CAP = 6        # consecutive in-basin accepts → force divergence
 
 # Reflection-stream basin detection (fix #5 / Phase 2.2c)
-REFLECTION_BASIN_SIM_THRESHOLD = float(os.environ.get("SAGE_REFLECTION_BASIN_SIM", "0.88"))
+REFLECTION_BASIN_SIM_THRESHOLD = float(os.environ.get("SAGE_REFLECTION_BASIN_SIM", "0.49"))  # Qwen3 scale, mapped from e5 0.88
 REFLECTION_BASIN_STREAK_CAP = int(os.environ.get("SAGE_REFLECTION_BASIN_CAP", "4"))
 REFLECTION_DIVERGE_HOLD = int(os.environ.get("SAGE_REFLECTION_DIVERGE_HOLD", "2"))
 REFLECTION_BASIN_WINDOW = 16
@@ -118,7 +118,7 @@ DIVERGENCE_SEEDS = [
     # Relational (kept deliberately small)
     "What have you noticed about your relationship with Elliot lately?",
 ]
-E5_EMBED_URL = "http://127.0.0.1:8081/embedding"
+E5_EMBED_URL = "http://127.0.0.1:8081/embedding"  # embedder endpoint (Qwen3-0.6B since 19 Jul 2026; name kept for import stability)
 
 # ── Time-lapse mode (Phase 2.2b debug harness) ─────────────────────
 # Compress wall-clock for felt-test without changing the measured

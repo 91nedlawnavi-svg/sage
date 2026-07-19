@@ -102,17 +102,22 @@ def _append_index(entry: dict) -> None:
 
 
 # ── embedding ──────────────────────────────────────────────
+# Qwen3-Embedding convention: documents embed plain, queries carry a task
+# instruction. Thresholds in settings are calibrated to THIS prefix pair
+# (bench/threshold_calibration.py) — change one, rerun the other.
+QUERY_PREFIX = ("Instruct: Given a query about the user's life and past "
+                "conversations, retrieve relevant memories\nQuery: ")
+PASSAGE_PREFIX = ""
+
+
 async def _embed(
     text: str, client: httpx.AsyncClient | None, read_timeout: float = 10.0,
-    prefix: str = "query: ",
+    prefix: str = PASSAGE_PREFIX,
 ) -> list[float] | None:
     text = (text or "").strip()
     if not text:
         return None
-    # Cap input length, then apply the e5 task prefix. e5-large-v2 is trained to
-    # expect "query: " on search queries and "passage: " on indexed documents;
-    # omitting them measurably degrades retrieval. The cap keeps inputs within
-    # the model's 512-token window (e5-large-v2 on GPU embeds in ~0.05s).
+    # Cap keeps inputs well under the model's context window.
     text = prefix + text[:RECALL_EMBED_MAX_CHARS]
     timeout = httpx.Timeout(connect=5.0, read=read_timeout, write=5.0, pool=2.0)
     try:
@@ -137,7 +142,7 @@ async def embed_query(text: str, client: httpx.AsyncClient | None) -> list[float
     reuse it for both ``recall()`` and the knowledge surface's semantic
     fact selection — guaranteeing no second embed on the chat turn.
     """
-    return await _embed(text, client, prefix="query: ")
+    return await _embed(text, client, prefix=QUERY_PREFIX)
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -211,7 +216,7 @@ async def reindex(client: httpx.AsyncClient | None, batch: int | None = None) ->
         done = 0
         fails = 0
         for item in pending[:limit]:
-            emb = await _embed(item["text"], client, read_timeout=RECALL_INDEX_READ_TIMEOUT, prefix="passage: ")
+            emb = await _embed(item["text"], client, read_timeout=RECALL_INDEX_READ_TIMEOUT, prefix=PASSAGE_PREFIX)
             if emb is None:
                 # One slow/oversized item must not wedge the whole backlog. Skip
                 # it and try the next; bail only when e5 looks genuinely down
@@ -338,7 +343,7 @@ async def recall(
         if query_embedding is not None:
             q_emb = query_embedding
         else:
-            q_emb = await _embed(q, client, prefix="query: ")
+            q_emb = await _embed(q, client, prefix=QUERY_PREFIX)
             if q_emb is None:
                 return None
 

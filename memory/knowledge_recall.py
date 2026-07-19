@@ -26,7 +26,7 @@ from config.settings import (
     RECALL_EMBED_SLEEP,
     RECALL_INDEX_READ_TIMEOUT,
 )
-from memory.semantic_recall import _embed, _cosine, _read_jsonl
+from memory.semantic_recall import _embed, _cosine, _read_jsonl, PASSAGE_PREFIX
 from cognition.knowledge_reconcile import reconcile_notebook
 from utils.logger import warning, log
 
@@ -139,7 +139,7 @@ async def reindex_facts(client, *, batch: int | None = None) -> int:
                 text,
                 client,
                 read_timeout=RECALL_INDEX_READ_TIMEOUT,
-                prefix="passage: ",
+                prefix=PASSAGE_PREFIX,
             )
             if emb is None:
                 # Embedder unavailable — skip this fact, try the next.

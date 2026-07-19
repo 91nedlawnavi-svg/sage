@@ -76,12 +76,12 @@ class NoveltyGate:
 
         Returns a 1024-d vector or None on any failure (unreachable, bad
         response, etc.). The gate only ever compares these vectors against each
-        other (buffer / centroids), so it applies the e5 "query: " prefix
-        uniformly — consistency matters here, not query/passage roles.
+        other (buffer / centroids), so all embeds are plain text — matching
+        how bench/threshold_calibration.py measured the mapped thresholds.
         """
         if not text.strip():
             return None
-        payload = "query: " + text.strip()
+        payload = text.strip()
         try:
             if client is None:
                 async with httpx.AsyncClient(timeout=5.0) as c:
