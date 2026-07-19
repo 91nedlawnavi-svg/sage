@@ -30,10 +30,13 @@ async def spawn_from_gap(gap: dict) -> str | None:
         desc = (gap.get("description") or "").strip()
         if not gap_id or not desc:
             return None
-        # Idempotent: don't re-spawn if one already exists for this gap
+        # Idempotent across ALL statuses: a gap gets ONE thread ever. Checking
+        # only status='open' respawned a fresh thread every time the previous
+        # one staled — an infinite stale-thread factory (live store had 3
+        # threads for one gap within hours of deploy).
         existing = db_query("relational",
-            "SELECT id FROM threads WHERE spawned_from=? AND spawn_kind='gap' "
-            "AND status='open'", (gap_id,))
+            "SELECT id FROM threads WHERE spawned_from=? AND spawn_kind='gap'",
+            (gap_id,))
         if existing:
             return existing[0]["id"]
         question = f"What do I know about: {desc}?"

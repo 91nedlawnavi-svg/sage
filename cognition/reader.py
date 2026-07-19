@@ -37,6 +37,19 @@ MAX_TEXT_CHARS = 8000  # cap so one article can't dominate the context
 _domain_last: dict[str, float] = {}
 DOMAIN_POLITE_DELAY = 1.0  # seconds
 
+_traf_cfg = None
+
+
+def _traf_config():
+    """Trafilatura config with a hard download timeout (lazy, cached)."""
+    global _traf_cfg
+    if _traf_cfg is None:
+        from trafilatura.settings import use_config
+        cfg = use_config()
+        cfg.set("DEFAULT", "DOWNLOAD_TIMEOUT", str(int(FETCH_TIMEOUT)))
+        _traf_cfg = cfg
+    return _traf_cfg
+
 
 def _host(url: str) -> str:
     try:
@@ -63,8 +76,10 @@ def fetch_article(url: str) -> str | None:
         time.sleep(DOMAIN_POLITE_DELAY - delta)
 
     try:
-        downloaded = trafilatura.fetch_url(url, no_ssl=False,
-                                           timeout=FETCH_TIMEOUT)
+        # trafilatura's own fetcher: sites (e.g. Wikipedia) 403 bare httpx
+        # UAs but accept it. Its config carries the download timeout —
+        # fetch_url() itself has no timeout kwarg.
+        downloaded = trafilatura.fetch_url(url, config=_traf_config())
         _domain_last[host] = time.time()
         if not downloaded:
             return None

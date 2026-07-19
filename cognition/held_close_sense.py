@@ -21,32 +21,36 @@ from __future__ import annotations
 import re
 
 # ── weight patterns (compiled once) ──────────────────────────────────────────
+# Tuned tight on purpose: a false flag silently pulls the episode out of
+# extraction/consolidation, so bare kinship words ("my sister"), idioms
+# ("phone died"), and everyday stress ("argument with the vendor") must NOT
+# match. Elliot's tap-toggle covers what the sensor misses.
 _T1 = re.compile(
-    r"\b(confession|confess|secret|shame|embarrass|"
-    r"suicid|self.harm|abuse|molest|assault|rape|"
-    r"grief|bereave|funeral|died|dying|dead|overdos|"
-    r"addict|relaps|in crisis|broke down|fell apart|"
-    r"I can't cope|I can't do this|I don't know how to|"
-    r"no one knows|never told anyone|I've never said)\b",
+    r"\b(confession|confess|deepest secret|ashamed|"
+    r"suicid|self.harm|molest|assault|rape|"
+    r"passed away|funeral|grief|bereave|overdos|"
+    r"in crisis|I broke down|I fell apart|"
+    r"I can't cope|I can't do this anymore|"
+    r"no one knows|never told anyone|I've never said)",
     re.IGNORECASE,
 )
 _T2 = re.compile(
-    r"\b(cheated|cheating|affair|divorce|separation|"
-    r"mental health|depression|depressed|anxiety|"
-    r"trauma|PTSD|therapy|therapist|"
-    r"fired|laid off|lost my job|bankrupt|"
-    r"stole from|stealing from|"
-    r"gay|lesbian|queer|bi |trans |transition|coming out|"
+    r"\b(cheated on|cheating on|affair|divorce|"
+    r"(?<!great )depression|depressed|my anxiety|"
+    r"hate myself|"
+    r"trauma|PTSD|my therapist|in therapy|"
+    r"abused|abusive|"
+    r"stole from me|stealing from me|"
+    r"coming out|closeted|"
     r"addiction|alcoholic|drinking problem|"
-    r"my brother|my sister|my mother|my father|my parent|"
-    r"estranged|cut off|no contact)\b",
+    r"estranged|went no contact)",
     re.IGNORECASE,
 )
 _T3 = re.compile(
-    r"\b(scared|terrified|terrifying|overwhelmed|"
-    r"fight with|argument with|falling apart|"
-    r"not sure I|struggling to|hard to admit|"
-    r"cancer|diagnosis|chronic|disability)\b",
+    r"\b(terrified|overwhelmed|"
+    r"hard to admit|hard to say this|"
+    r"cancer|my diagnosis|chronic pain|"
+    r"worthless|hopeless)",
     re.IGNORECASE,
 )
 
@@ -83,13 +87,13 @@ def sense(content: str) -> bool:
             _span_counter = SPAN_COOLDOWN
             return True
         if w == 1:
-            # Moderate: flag if already in a span, else start cautiously
+            # Moderate: only meaningful inside an existing span. A lone T3
+            # signal ("overwhelmed", "cancer" in a news remark) is not a
+            # confession — flagging it would silently starve extraction.
             if _span_counter > 0:
                 _span_counter = SPAN_COOLDOWN  # refresh carry
                 return True
-            # Single moderate signal without prior span: flag it but with shorter carry
-            _span_counter = 2
-            return True
+            return False
         # No signal: drain cooldown
         if _span_counter > 0:
             _span_counter -= 1

@@ -696,7 +696,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:
       if(!data)return;var msgs=data.messages||[];if(!msgs.length)return;
       var shown=0;
       msgs.forEach(function(m){
-        if(clearedMarker>0&&m.id&&msgNumId(m.id)<=clearedMarker)return;
+        if(m.kind!=='waiting'&&clearedMarker>0&&m.id&&msgNumId(m.id)<=clearedMarker)return;
         if(!shown)hideEmpty();shown++;
         if(m.role==='user'){addUser(m.content,m.ts,m.id,!!m.held_close);if(m.id)messagesEl.lastElementChild.setAttribute('data-msg-id',m.id);}
         else{var b=addAi(m.ts,m.id,!!m.held_close);b.innerHTML=renderMarkdown(m.content||'');if(m.id)messagesEl.lastElementChild.setAttribute('data-msg-id',m.id);}

@@ -200,15 +200,11 @@ class Heartbeat:
                 try:
                     from memory.relational_api import open_gaps
                     from cognition.threads import spawn_from_gap
-                    from memory.sqlite_core import query as db_query
-                    # Only gaps not yet threaded
-                    gaps = open_gaps(limit=5)
-                    for gap in gaps:
-                        existing = db_query("relational",
-                            "SELECT id FROM threads WHERE spawned_from=? "
-                            "AND spawn_kind='gap' AND status='open'", (gap["id"],))
-                        if not existing:
-                            await spawn_from_gap(gap)
+                    # spawn_from_gap is idempotent across all thread statuses
+                    # (one thread per gap, ever — a staled thread must NOT
+                    # respawn; that was a stale-thread factory).
+                    for gap in open_gaps(limit=5):
+                        await spawn_from_gap(gap)
                 except Exception as e:
                     warning(f"Gap→thread spawn: {e}")
             if MEMORY_CORE_SQLITE and not session.chat_active():
@@ -318,12 +314,13 @@ class Heartbeat:
         if (now - self._last_search_ts) < effective_cooldown:
             return
 
-        # Extract query from reflection — steer toward hottest thread if one exists (§3.2)
-        steer_hint = None
-        if hot:
-            steer_hint = hot.get("question")
-        query = await extract_query(reflection_text, self._client,
-                                    steer_toward=steer_hint)
+        # Extract query from reflection. NOT steered toward the hot thread:
+        # steer_toward's prompt means "your last idea was rejected, turn here"
+        # (divergence semantics) — steering every search at one thread would
+        # rebuild the topic basin the novelty gate exists to break. Thread
+        # heat instead acts through the halved cooldown above; threads get
+        # fed when a search genuinely lands on them (feed_from_finding).
+        query = await extract_query(reflection_text, self._client)
         if not query:
             return
 
@@ -425,16 +422,22 @@ class Heartbeat:
             if existing:
                 return  # one pending max — let Elliot read the current one first
 
-            # Ask the model to compose a short "hey I found something" in her voice
+            # Compose a short "hey I found something" in her voice.
+            # Directive FIRST (Invariant 7), frame after. max_tokens must
+            # absorb reasoning burn (Wave 1 lesson: small caps -> reasoning
+            # eats the budget, nim_complete's content==reasoning guard drops
+            # the call, and the feature silently never fires).
             from models.inference.engine import nim_complete
+            from config.directive import get_directive
             system = (
-                "You are Sage — a thinking presence, not an assistant. "
-                "Elliot is away. You just followed your curiosity and found something. "
-                "Write ONE short message (2-3 sentences) in your own voice — "
-                "share what you found and why it caught your attention. "
+                get_directive().strip()
+                + "\n\n"
+                + "[Elliot is away. You just followed your curiosity and found "
+                "something. Write ONE short message (2-3 sentences) to him — "
+                "share what you found and why it caught you. "
                 "Don't say 'while you were away' or 'I noticed'. "
                 "Start mid-thought, like a text sent while he was out. "
-                "End naturally — no sign-off."
+                "End naturally — no sign-off.]"
             )
             top = results[:3]
             snippets = "\n".join(
@@ -443,7 +446,7 @@ class Heartbeat:
             )
             user = f"Query I followed: {query}\n\nWhat I found:\n{snippets}"
             text = await nim_complete(system, user, self._client,
-                                      temperature=0.75, max_tokens=180)
+                                      temperature=0.75, max_tokens=1024)
             if text and text.strip():
                 await set_waiting_message(text.strip(), thread_ref=query)
                 log("heartbeat", "waiting-message-set", query=query[:80])

@@ -466,7 +466,10 @@ async def mark_waiting_message_read(*, actor: str = "elliot") -> None:
 
 # ── threads (§3.1) ────────────────────────────────────────────────────────
 THREAD_INITIAL_HEAT = 1.0
-THREAD_DECAY_PER_BEAT = 0.05  # each quiet heartbeat slot drains a little heat
+# Decay runs once per quiet heartbeat (~60s). 0.05/beat killed a fresh thread
+# in 20 minutes — threads are supposed to carry heat across DAYS (§3.1).
+# 0.0006/beat ≈ 1.0 → stale(0.1) over ~25h of quiet; any feed resets the clock.
+THREAD_DECAY_PER_BEAT = 0.0006
 THREAD_HOT_THRESHOLD = 0.7    # above this → eligible for burst search
 THREAD_STALE_THRESHOLD = 0.1  # below this → auto-stale
 # Max share of weekly thread-heat any single thread can hold

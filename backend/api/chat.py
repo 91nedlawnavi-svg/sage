@@ -74,11 +74,20 @@ async def chat_endpoint(request: ChatRequest):
     # active while they run.
     session.begin_chat()
 
-    # Mark the waiting message read on Elliot's first reply (§3.4)
+    # Waiting message (§3.4): on Elliot's first reply, materialize the pending
+    # note into the real conversation log as her turn (so it survives reload
+    # and she has it in context — blueprint: the assistant-turn-with-no-
+    # preceding-user-turn must survive hydration), THEN mark it read.
     if MEMORY_CORE_SQLITE:
         try:
-            from memory.relational_api import mark_waiting_message_read
-            await mark_waiting_message_read(actor="elliot")
+            from memory.relational_api import (
+                get_waiting_message, mark_waiting_message_read)
+            _wm = get_waiting_message()
+            if _wm:
+                await intake.record_chat_turn(
+                    append_message("assistant", _wm["content"]))
+                session.append("assistant", _wm["content"])
+                await mark_waiting_message_read(actor="elliot")
         except Exception:
             pass
 
