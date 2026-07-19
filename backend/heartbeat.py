@@ -295,17 +295,35 @@ class Heartbeat:
 
         self._check_day_rollover()
 
-        # Daily cap
-        if self._searches_today >= AUTONOMOUS_SEARCH_MAX_PER_DAY:
+        # Daily cap — generous ceiling per §3.3 ("no hard cap, invisible to her")
+        # The blueprint retires the old scarcity knobs in Wave 3. Keep a sane
+        # runaway-loop ceiling (50/day vs old 10).
+        if self._searches_today >= 50:
             return
 
-        # Cooldown gate
+        # Cooldown gate — halved when a hot thread exists (§3.2 burst)
+        hot = None
+        if MEMORY_CORE_SQLITE:
+            try:
+                from cognition.threads import hottest_thread
+                hot = hottest_thread()
+            except Exception:
+                hot = None
+        effective_cooldown = (
+            AUTONOMOUS_SEARCH_COOLDOWN_SECONDS // 2
+            if (hot and hot.get("heat", 0) >= 0.7)
+            else AUTONOMOUS_SEARCH_COOLDOWN_SECONDS
+        )
         now = time.time()
-        if (now - self._last_search_ts) < AUTONOMOUS_SEARCH_COOLDOWN_SECONDS:
+        if (now - self._last_search_ts) < effective_cooldown:
             return
 
-        # Extract query from reflection
-        query = await extract_query(reflection_text, self._client)
+        # Extract query from reflection — steer toward hottest thread if one exists (§3.2)
+        steer_hint = None
+        if hot:
+            steer_hint = hot.get("question")
+        query = await extract_query(reflection_text, self._client,
+                                    steer_toward=steer_hint)
         if not query:
             return
 
