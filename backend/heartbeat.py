@@ -145,10 +145,14 @@ class Heartbeat:
         while self._running:
             self._last_beat_ts = time.time()
             # ── reflection + search (NIM + e5) ───────────────────────
+            # 120s leash: reflection is a reasoning-model call (same disease
+            # the builder had at 25s — 45s cancelled ~half of reflections),
+            # and _maybe_search's own LLM calls run inside this leash too.
+            # Off the chat path; chat_active gate inside _maybe_reflect.
             try:
-                await asyncio.wait_for(self._maybe_reflect(), timeout=45)
+                await asyncio.wait_for(self._maybe_reflect(), timeout=120)
             except asyncio.TimeoutError:
-                warning("Heartbeat beat error: _maybe_reflect timed out (45s)")
+                warning("Heartbeat beat error: _maybe_reflect timed out (120s)")
             except Exception as e:
                 warning(f"Heartbeat beat error: {e}")
 
@@ -217,6 +221,19 @@ class Heartbeat:
                     warning("Consolidation: timed out (90s)")
                 except Exception as e:
                     warning(f"Consolidation: {e}")
+
+            # ── Wave 3: stance extraction (§2.5/§2.6) — her own stream
+            # digested into the belief ledger + source-trust verdicts.
+            if MEMORY_CORE_SQLITE and not session.chat_active():
+                try:
+                    from cognition import stance_extraction
+                    await asyncio.wait_for(
+                        stance_extraction.run(self._client), timeout=90
+                    )
+                except asyncio.TimeoutError:
+                    warning("Stance extraction: timed out (90s)")
+                except Exception as e:
+                    warning(f"Stance extraction: {e}")
 
             # ── Wave 3: thread decay + portfolio check (§3.1) ──────
             if MEMORY_CORE_SQLITE and not session.chat_active():

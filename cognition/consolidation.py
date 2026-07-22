@@ -202,8 +202,10 @@ async def run(client) -> int:
 
         from models.inference.engine import nim_complete
         system, user = _build_prompt(episodes, active_impressions())
+        # 2048: at 1024 the judge's JSON truncated mid-array on real batches —
+        # the only passes that DID find impressions were the ones that got cut.
         raw = await nim_complete(system, user, client,
-                                 temperature=0.2, max_tokens=1024)
+                                 temperature=0.2, max_tokens=2048)
         if raw is None:
             return 0  # infra down — retry next quiet slot, episodes stay pending
         parsed = _parse(raw)
