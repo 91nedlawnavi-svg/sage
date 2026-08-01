@@ -564,7 +564,7 @@ async def main():
 
     if not all_entities and not all_relations:
         print("\n⚠️ No extractions from any batch — model call may have failed.")
-        print("Check NVIDIA_API_KEY and network connectivity.")
+        print("Check OMNIROUTE_API_KEY and Omniroute reachability on :20128.")
         return
 
     # 3. Merge all relations from all batches (dedup on subject/predicate/object)

@@ -3,14 +3,14 @@ Leaves systemd env untouched; interior notebook untouched. Run with the venv."""
 import asyncio
 import httpx
 
-from config.settings import NVIDIA_API_KEY
+from config.settings import OMNIROUTE_API_KEY
 import cognition.knowledge_builder as kb
 
 MAX_PASSES = 50  # safety leash; 104 turns / 12 per pass ~= 9 passes
 
 async def main() -> None:
-    if not NVIDIA_API_KEY:
-        raise SystemExit("No NVIDIA_API_KEY in env — load .env before running.")
+    if not OMNIROUTE_API_KEY:
+        raise SystemExit("No OMNIROUTE_API_KEY in env — load .env before running.")
     kb.KNOWLEDGE_ENABLED = True          # in-process ONLY; does not touch systemd
     client = httpx.AsyncClient()
     try:

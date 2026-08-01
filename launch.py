@@ -57,10 +57,10 @@ def main():
     # environment-backed settings at import time.
     from config.settings import PORT
 
-    # 2. Warn if NVIDIA_API_KEY missing (not fatal — chat routes through the
-    #    local router, which doesn't require it).
-    if not os.environ.get("NVIDIA_API_KEY"):
-        print("\033[93m⚠ No NVIDIA_API_KEY set — fine if the local router is handling chat.\033[0m")
+    # 2. Warn if OMNIROUTE_API_KEY missing (not fatal — chat routes through the
+    #    local router, which may or may not require it depending on config).
+    if not os.environ.get("OMNIROUTE_API_KEY"):
+        print("\033[93m⚠ No OMNIROUTE_API_KEY set — local Omniroute may reject requests.\033[0m")
 
     # 3. Worker precheck (warn only)
     check_worker()

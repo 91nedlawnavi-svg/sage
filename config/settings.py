@@ -3,7 +3,10 @@ from pathlib import Path
 
 BASE_DIR = Path.home() / "sage_data"
 
-NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY", "")
+# Omniroute (local router on :20128) is the sole chat endpoint for Sage.
+# Earlier code called this NVIDIA_API_KEY because the router replaced raw
+# NVIDIA calls without renaming the var; the var name is now honest.
+OMNIROUTE_API_KEY = os.environ.get("OMNIROUTE_API_KEY", "")
 CHAT_API_URL = "http://localhost:20128/v1/chat/completions"
 CHAT_MODEL = os.environ.get("SAGE_CHAT_MODEL", "sage")
 CHAT_TEMPERATURE = 0.75
@@ -24,6 +27,15 @@ REFLECTION_TEMPERATURE = 0.7
 # 1-in-8 still ended mid-sentence.
 REFLECTION_MAX_TOKENS = 1536
 REFLECTIONS_PATH = BASE_DIR / "reflections.jsonl"
+
+# Voice (STT + TTS via Deepgram)
+DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY", "")
+DEEPGRAM_TTS_MODEL = os.environ.get("SAGE_TTS_MODEL", "aura-2-luna-en")
+DEEPGRAM_STT_MODEL = os.environ.get("SAGE_STT_MODEL", "nova-3")
+DEEPGRAM_TTS_URL = "https://api.deepgram.com/v1/speak"
+DEEPGRAM_STT_URL = "https://api.deepgram.com/v1/listen"
+VOICE_TIMEOUT_SECONDS = 15
+VOICE_ENABLED = bool(DEEPGRAM_API_KEY)
 
 # Web Search / Curiosity config
 SEARXNG_URL = "http://localhost:8080/search"

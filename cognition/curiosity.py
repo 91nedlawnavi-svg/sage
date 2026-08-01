@@ -1,7 +1,6 @@
 from config.settings import (
     CHAT_MODEL,
     CHAT_API_URL,
-    NVIDIA_API_KEY,
 )
 from models.inference.engine import nim_complete
 import httpx

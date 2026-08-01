@@ -2,7 +2,7 @@ import httpx
 import json
 import re
 from config.settings import (
-    NVIDIA_API_KEY,
+    OMNIROUTE_API_KEY,
     CHAT_API_URL,
     CHAT_MODEL,
     CHAT_TEMPERATURE,
@@ -42,8 +42,8 @@ async def chat_stream(messages: list[dict], client: httpx.AsyncClient):
     """
     try:
         headers = {"Accept": "text/event-stream"}
-        if NVIDIA_API_KEY and NVIDIA_API_KEY.strip():
-            headers["Authorization"] = f"Bearer {NVIDIA_API_KEY.strip()}"
+        if OMNIROUTE_API_KEY and OMNIROUTE_API_KEY.strip():
+            headers["Authorization"] = f"Bearer {OMNIROUTE_API_KEY.strip()}"
 
         async with client.stream(
             "POST",
@@ -110,8 +110,8 @@ async def nim_complete(
     """Non-streaming completion for reflection/synthesis (future phase)."""
     try:
         headers = {}
-        if NVIDIA_API_KEY and NVIDIA_API_KEY.strip():
-            headers["Authorization"] = f"Bearer {NVIDIA_API_KEY.strip()}"
+        if OMNIROUTE_API_KEY and OMNIROUTE_API_KEY.strip():
+            headers["Authorization"] = f"Bearer {OMNIROUTE_API_KEY.strip()}"
 
         response = await client.post(
             CHAT_API_URL,
