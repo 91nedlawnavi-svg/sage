@@ -142,4 +142,8 @@ python launch.py
 
 ## Status
 
-Wave 1 (metabolism: heartbeat, curiosity, novelty gate, Membrane, layered JSONL memory, universe graph) and Wave 2 (SQLite memory core: WAL stores, claim extraction, promotion desk, hybrid retrieval, Qwen3 embedder) are complete and running live. Wave 3 (tactful recall, held-close gate, belief-ledger steelman) is the planned next phase.
+All three rebuild waves have landed. Wave 1 (heartbeat, curiosity, novelty gate, Membrane, layered JSONL memory, universe graph), Wave 2 (SQLite memory core: WAL stores, claim extraction, promotion desk, hybrid retrieval, Qwen3 embedder), and Wave 3 (threads ledger, article reader, held-close tier, belief ledger + source trust, heat-driven rhythm, waiting message, directive v3) are all built and tested. A voice call channel (`/call`, hold-to-talk, Deepgram STT/TTS) rides alongside chat.
+
+Two caveats worth naming: the SQLite core sits behind `MEMORY_CORE_SQLITE`, which is still OFF — the cutover ritual has not been run, so the legacy JSONL path is what actually serves her memory today. And the voice channel has passed endpoint probes but not a real conversation.
+
+`Sage_v2.0.1_BLUEPRINT.md` holds the architecture and the dated decision log; there are no post-Wave-3 targets set yet.
