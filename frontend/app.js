@@ -197,6 +197,11 @@
   setInterval(function(){checkStatus();refreshInnerHint();if($('drawer').classList.contains('open')&&activeTab!=='graph')loadTab(activeTab);},CFG.REFRESH_MS);
   inputEl.focus();
 
+  // Show "Call" link in header when voice is available
+  fetch('/api/voice/status').then(function(r){return r.ok?r.json():null;}).then(function(d){
+    if(d&&d.enabled){var cl=$('call-link');if(cl)cl.style.display='flex';}
+  }).catch(function(){});
+
   // ── Graph tab ──
   var REVIEW_CAT_COLORS={family:"#c98a6f",friend:"#8ca37e",romantic:"#c08aa0",colleague:"#7f93a8",acquaintance:"#9a8d86",creator:"#c2a15e",other:"#857c73"};
   var reviewState={state:'pending',category:'',min:'',max:'',endpoint:'',items:[]};

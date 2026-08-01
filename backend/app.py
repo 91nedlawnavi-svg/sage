@@ -10,6 +10,7 @@ from config.settings import PORT, CHAT_MODEL, TIMELAPSE, HEARTBEAT_INTERVAL_SECO
 from backend.api.chat import router as chat_router
 from backend.api.graph import router as graph_router
 from backend.api.desk import router as desk_router
+from backend.api.voice import router as voice_router
 from backend.heartbeat import Heartbeat
 from config.directive import get_directive
 from utils.logger import info, error
@@ -97,6 +98,7 @@ app = FastAPI(title="Sage v2", lifespan=lifespan)
 app.include_router(chat_router)
 app.include_router(graph_router)
 app.include_router(desk_router)
+app.include_router(voice_router)
 
 # Frontend assets (app.css, app.js, graph.js) split out of index.html so a
 # stray tag breaks one file, not the whole UI. "/" still serves the HTML.
@@ -181,6 +183,12 @@ async def get_heartbeat():
         "idle_seconds": session.idle_seconds(),
         "reflecting": heartbeat.reflecting,
     }
+
+
+@app.get("/call")
+async def call_ui():
+    """Serve the voice call UI."""
+    return FileResponse(FRONTEND / "call.html")
 
 
 @app.get("/")
