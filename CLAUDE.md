@@ -93,7 +93,7 @@ No pytest. The gate (`/sage-tests`) is module self-tests run directly:
 ```bash
 python -m py_compile <each changed .py>
 python -m cognition.knowledge_surface
-python -m cognition.knowledge_reconcile
+python -m cognition.knowledge_reconcile      # LOCK-ERA — see note below
 python -m cognition.knowledge_extraction   # self-tests + regression
 python -m tests.l2_felt_test               # knowledge layer end-to-end
 python -m tests.trust_suite                # SQLite core cross-module properties
@@ -105,6 +105,14 @@ python bench/run_brick3b_benchmark.py      # relationship engine (temp store)
 For JS, `node --check` each changed file. A `PostToolUse` hook auto-runs
 `py_compile` on every `.py` write — do not treat that as the gate, it is only
 the syntax floor.
+
+`knowledge_reconcile` exists only to make sticky-note locks win a precedence
+fight (`locked > elliot > she`). Invariant 4 deleted locks on 2026-08-02. Keep
+running it while the old code is still on disk — it guards live behaviour
+today — but it is **not** a target to preserve: when the event model lands,
+reconcile and its gate line are deleted together, and no replacement
+"current view" collapser is written. Recall computes state; nothing collapses
+it ahead of time.
 
 ## Architecture
 
@@ -130,6 +138,14 @@ search, and quiet-slot consolidation/extraction, using `cognition/` —
   `semantic_recall.py`, `knowledge_store.py`.
 - Retrieval: `memory/hybrid_retrieval.py` (structure first, then semantic).
 
+**This section describes the code as it stands, not as it should be.** Every
+part named above that serves the retired fact model — `claim_extraction.py`,
+`desk.py`, the drawer desk UI, `knowledge_reconcile`, the queue and locks in
+`knowledge_store.py` — was built for invariants 3 and 4 *before* they were
+rewritten on 2026-08-02. It is still live because the event model has not been
+built yet, not because it is right. Read it as inventory. When in doubt, the
+invariants win over this section.
+
 `config/settings.py` is the single source of truth for tunables.
 
 **Frontend** is split — `frontend/index.html` is a ~97-line shell; `app.css`,
@@ -154,13 +170,36 @@ and freshness against the working tree.
 2. **Contamination wall.** `relational` and `interior` stay separate — never
    read one while building the other. The graph API exposes only `relational`.
    Her identity never blurs into Elliot's.
-3. **Sticky-note locks.** Re-derivation only *appends*. Locked / hand-authored
-   facts always win and survive reconcile.
-4. **Claims are not facts.** Extraction writes claims with epistemic tags and
-   provenance into the queue. Facts are gated on Elliot at the promotion desk.
+3. **Events, not frozen facts.** The memory unit is a timestamped event — what
+   was said or what happened — never a standing state tuple. Every memory
+   carries **two clocks**: `said_at` (exact, free from the log) and
+   `happened_at` (usually fuzzy, often unknown, permanently allowed to stay
+   that way). Current state is *computed at recall*, never stored and then
+   defended. No resolver pass hunts for missing dates; unknowns are normal, not
+   gaps. Ordering between events is first-class — "before the move" is a real
+   link even when neither event has a date. Eras are labeled with Elliot's own
+   verbatim words ("elementary", "back at uni"), harvested from speech, never
+   from a schema of life stages. The graph indexes **durable entities only** —
+   people, places, persistent things. Moods, intentions, and mid-sentence
+   clauses are events or nothing.
+4. **No promotion gate.** There is no approval queue and no lock. She remembers
+   by hearing, like a person. Contradiction is data, not conflict: "said in
+   March he'd never been to a club" and "went to a club in November" are both
+   permanently true, and she derives *first time* from the pair. Elliot
+   corrects her by talking, not by signing a form. (Retired 2026-08-02: the
+   promotion desk and sticky-note locks are deleted, not paused — locks froze
+   moments into permanent claims and then defended them against reality, which
+   is exactly the thing that made her feel like a database. **Do not restore
+   them as a safety improvement.**)
 5. **Held-close content** is excluded from the pipeline — no re-shipping, no
    silent impressions, tactful-recall gate. Marked quietly in the UI, never
-   announced in her voice.
+   announced in her voice. (Under the old model this was enforced at *write*
+   time: held-close spans never became facts, so they could never be recalled.
+   Under invariant 3 everything is stored as an event and there is no
+   extraction gate to exclude at — so **the guard moves to recall time**:
+   held-close events live in the same pool and the retrieval path is what must
+   refuse them. Whoever builds the event store owes this; if it is not moved,
+   this invariant silently stops holding.)
 6. **Time.** Store UTC (tz-aware ISO8601). Display WIB (UTC+7). This class of
    bug has bitten twice.
 7. **Benchmark isolation.** Benchmarks and dry runs use `/tmp/...`, never
