@@ -201,7 +201,11 @@ and freshness against the working tree.
    refuse them. Whoever builds the event store owes this; if it is not moved,
    this invariant silently stops holding.)
 6. **Time.** Store UTC (tz-aware ISO8601). Display WIB (UTC+7). This class of
-   bug has bitten twice.
+   bug has bitten twice. Exactness applies to `said_at` only. `happened_at` may
+   be an interval (two ISO8601 bounds), an era reference (a label with no bounds
+   yet), or **null — and a null is not a defect**; nothing backfills it. Fuzzy
+   time displays as Elliot's own words ("back in middle school"), never as a
+   converted stamp, and never with invented precision.
 7. **Benchmark isolation.** Benchmarks and dry runs use `/tmp/...`, never
    `~/sage_data`, unless Elliot explicitly asks to target the live store.
 8. **Secrets.** Never read, print, or rewrite `.env`. Refer to values by name.
