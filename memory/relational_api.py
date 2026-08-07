@@ -261,13 +261,16 @@ async def untombstone_fact(fact_id: str, *, actor: str) -> bool:
     return await writer(STORE).submit(_m, actor=actor, action="untombstone")
 
 
-def current_facts(subject_entity: str | None = None) -> list[dict]:
+def current_facts(subject_entity: str | None = None, *, exclude_held_close: bool = False) -> list[dict]:
     """The live view: not superseded, not tombstoned. Locked-wins ordering."""
-    sql = ("SELECT * FROM facts WHERE superseded_by IS NULL AND tombstoned=0 ")
+    sql = "SELECT * FROM facts WHERE superseded_by IS NULL AND tombstoned=0 "
     params: tuple = ()
     if subject_entity:
         sql += "AND subject_entity=? "
         params = (subject_entity,)
+    if exclude_held_close:
+        sql += ("AND NOT EXISTS (SELECT 1 FROM provenance p JOIN episodes e "
+                "ON e.id=p.episode_id WHERE p.claim_id=facts.id AND e.held_close=1) ")
     sql += "ORDER BY locked DESC, valid_from DESC"
     return [dict(r) for r in query(STORE, sql, params)]
 
@@ -314,12 +317,19 @@ async def answer_gap(gap_id: str, *, fact_id: str, actor: str = "she") -> None:
     await writer(STORE).submit(_m, actor=actor, action="answer")
 
 
-def open_gaps(about_entity: str | None = None, limit: int = 10) -> list[dict]:
+def open_gaps(about_entity: str | None = None, limit: int = 10,
+              *, exclude_held_close: bool = False) -> list[dict]:
     sql = "SELECT * FROM gaps WHERE status='open' "
     params: tuple = ()
     if about_entity:
         sql += "AND about_entity=? "
         params = (about_entity,)
+    if exclude_held_close:
+        sql += ("AND NOT EXISTS (SELECT 1 FROM episodes e WHERE e.id=gaps.spawned_from "
+                "AND e.held_close=1) "
+                "AND NOT EXISTS (SELECT 1 FROM provenance p JOIN episodes e "
+                "ON e.id=p.episode_id WHERE p.claim_id=gaps.spawned_from "
+                "AND e.held_close=1) ")
     sql += "ORDER BY created_ts DESC LIMIT ?"
     return [dict(r) for r in query(STORE, sql, (*params, limit))]
 
@@ -388,12 +398,21 @@ async def decide_promotion(queue_id: str, *, approve: bool,
     return await writer(STORE).submit(_m, actor=actor, action="decide-promotion")
 
 
-def held_close_source_keys() -> set[str]:
-    """Return source_keys of all held-close relational episodes.
-    Used by the history API to annotate chat turns and the recall gate."""
-    rows = query(STORE,
-        "SELECT source_key FROM episodes WHERE held_close=1 AND source_key IS NOT NULL")
-    return {r["source_key"] for r in rows}
+def held_close_source_keys() -> set[str] | None:
+    """Return held-close source keys, or None when authority is unavailable."""
+    try:
+        from memory.sqlite_core import _connect
+        conn = _connect(STORE, readonly=True)
+        try:
+            rows = conn.execute(
+                "SELECT source_key FROM episodes WHERE held_close=1 AND source_key IS NOT NULL"
+            ).fetchall()
+        finally:
+            conn.close()
+        return {r["source_key"] for r in rows}
+    except Exception as exc:
+        warning(f"relational_api/held_close_source_keys: {type(exc).__name__}: {exc}")
+        return None
 
 
 async def set_held_close_by_source_key(source_key: str, held: bool,

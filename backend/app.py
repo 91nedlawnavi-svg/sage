@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.routing import APIRouter
 from pydantic import BaseModel
 from pathlib import Path
-from config.settings import PORT, CHAT_MODEL, TIMELAPSE, HEARTBEAT_INTERVAL_SECONDS, AUTONOMOUS_SEARCH_COOLDOWN_SECONDS, AUTONOMOUS_SEARCH_MAX_PER_DAY, MEMORY_CORE_SQLITE
+from config.settings import PORT, CHAT_MODEL, TIMELAPSE, HEARTBEAT_INTERVAL_SECONDS, AUTONOMOUS_SEARCH_COOLDOWN_SECONDS, AUTONOMOUS_SEARCH_MAX_PER_DAY, MEMORY_CORE_SQLITE, SAGE_BACKGROUND_ENABLED
 from backend.api.chat import router as chat_router
 from backend.api.graph import router as graph_router
 from backend.api.desk import router as desk_router
@@ -69,17 +69,20 @@ async def lifespan(app: FastAPI):
     http_client = httpx.AsyncClient()
     info("HTTP client created")
 
-    # Phase 4 Layer 1: warm the semantic-recall index with one throttled batch;
-    # the heartbeat drains the rest of the backlog over subsequent beats.
-    try:
-        indexed = await semantic_recall.reindex(http_client)
-        info(f"Semantic recall index warmed: +{indexed} this pass")
-    except Exception as e:
-        error(f"Semantic recall warm-up failed: {e}")
+    if SAGE_BACKGROUND_ENABLED:
+        # Phase 4 Layer 1: warm the semantic-recall index with one throttled batch;
+        # the heartbeat drains the rest of the backlog over subsequent beats.
+        try:
+            indexed = await semantic_recall.reindex(http_client)
+            info(f"Semantic recall index warmed: +{indexed} this pass")
+        except Exception as e:
+            error(f"Semantic recall warm-up failed: {e}")
 
-    # Start heartbeat
-    heartbeat = Heartbeat(http_client)
-    heartbeat.start()
+        # Start heartbeat
+        heartbeat = Heartbeat(http_client)
+        heartbeat.start()
+    else:
+        info("Background workers disabled")
 
     yield
 

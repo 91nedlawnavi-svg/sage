@@ -18,14 +18,17 @@ class ConversationSession:
         # Track in-flight chat requests so heartbeat knows not to run
         self._active_chats: int = 0
 
-    def append(self, role: str, content: str):
+    def append(self, role: str, content: str, message_id: str | None = None):
         """Append a turn to the conversation."""
-        self._turns.append({"role": role, "content": content})
+        turn = {"role": role, "content": content}
+        if message_id:
+            turn["id"] = message_id
+        self._turns.append(turn)
 
     def replace_history(self, turns: list[dict]):
         """Replace in-memory history with persisted turns."""
         self._turns = [
-            {"role": t.get("role", ""), "content": t.get("content", "")}
+            {"role": t.get("role", ""), "content": t.get("content", ""), "id": t.get("id")}
             for t in turns
             if t.get("role") in ("user", "assistant") and (t.get("content") or "").strip()
         ]
@@ -53,9 +56,19 @@ class ConversationSession:
         """Return True while a chat request is in flight."""
         return self._active_chats > 0
 
-    def history(self) -> list[dict]:
-        """Return the last HISTORY_TURNS*2 messages for context."""
-        # Each turn is one user+assistant pair, so 2 messages per turn
+    def history(self, held_close_ids: set[str] | None = None) -> list[dict]:
+        """Return recent model context, excluding held-close source IDs."""
+        if held_close_ids is None:
+            return []
+        max_messages = HISTORY_TURNS * 2
+        return [
+            {"role": t["role"], "content": t["content"]}
+            for t in self._turns
+            if t.get("id") not in held_close_ids
+        ][-max_messages:]
+
+    def recent_turns(self) -> list[dict]:
+        """Return recent turns for non-model internal use."""
         max_messages = HISTORY_TURNS * 2
         return self._turns[-max_messages:] if self._turns else []
 

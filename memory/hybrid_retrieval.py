@@ -11,9 +11,8 @@ Order beats a bigger embedder: structure narrows, similarity ranks.
      distilled matches.
   4. Recency/frequency weighting on top of similarity.
 
-Held-close episodes never leave this module unless the caller explicitly
-sets include_held_close=True (the Wave 3 tactful-recall gate will be the
-only such caller — §2.8).
+Held-close episodes and any fact or gap derived from one never leave this
+module.
 
 Degradation ladder (Invariant 1): embedder down → structural results in
 recency order; store down → []. Never raises into chat.
@@ -48,8 +47,7 @@ def _tokens(text: str) -> list[str]:
 
 
 # ── stage 1: structural ───────────────────────────────────────────────────
-def structural_candidates(query_text: str, *, include_held_close: bool = False
-                          ) -> dict:
+def structural_candidates(query_text: str) -> dict:
     """Entity-link the query via the alias index; pull linked subgraphs.
     Returns {"entities": [...], "facts": [...], "gaps": [...], "episodes": [...]}"""
     out = {"entities": [], "facts": [], "gaps": [], "episodes": []}
@@ -66,17 +64,16 @@ def structural_candidates(query_text: str, *, include_held_close: bool = False
 
         out["entities"] = list(seen_entities.values())
         for eid in seen_entities:
-            out["facts"].extend(rel.current_facts(eid))
-            out["gaps"].extend(rel.open_gaps(eid, limit=5))
+            out["facts"].extend(rel.current_facts(eid, exclude_held_close=True))
+            out["gaps"].extend(rel.open_gaps(eid, limit=5, exclude_held_close=True))
 
         if seen_entities:
             marks = ",".join("?" for _ in seen_entities)
-            held = "" if include_held_close else "AND e.held_close=0 "
             rows = query("relational",
                 "SELECT DISTINCT e.* FROM episodes e "
                 "JOIN provenance p ON p.episode_id=e.id "
                 "JOIN facts f ON f.id=p.claim_id "
-                f"WHERE f.subject_entity IN ({marks}) {held}"
+                f"WHERE f.subject_entity IN ({marks}) AND e.held_close=0 "
                 "ORDER BY e.ts DESC LIMIT ?",
                 (*seen_entities.keys(), STRUCTURAL_EPISODE_LIMIT))
             out["episodes"] = [dict(r) for r in rows]
@@ -112,7 +109,6 @@ def _fact_text(f: dict) -> str:
 
 async def retrieve(query_text: str, embed_fn=None, *, k: int = DEFAULT_K,
                    include_episodes: bool = False,
-                   include_held_close: bool = False,
                    now_ts: str | None = None) -> dict:
     """The chat-path entry point.
 
@@ -122,8 +118,7 @@ async def retrieve(query_text: str, embed_fn=None, *, k: int = DEFAULT_K,
     from memory.sqlite_core import now_utc
     now_ts = now_ts or now_utc()
     try:
-        cand = structural_candidates(query_text,
-                                     include_held_close=include_held_close)
+        cand = structural_candidates(query_text)
         facts, episodes = cand["facts"], cand["episodes"]
 
         vec_q = None
@@ -246,40 +241,41 @@ if __name__ == "__main__":
         f2 = await rel.add_fact(subject_entity=maya, predicate="works_as",
                                 object_kind="literal", object_value="nurse",
                                 provenance_episodes=[ep2])
-        f3 = await rel.add_fact(subject_entity=maya, predicate="works_as",
+        f3 = await rel.add_fact(subject_entity=maya, predicate="secret_job",
                                 object_kind="literal", object_value="pilot",
                                 origin="elliot", locked=True, actor="elliot",
                                 provenance_episodes=[hc])
         await rel.add_gap(description="when Maya moved to Jakarta",
                           about_entity=maya, spawned_from=f1)
+        await rel.add_gap(description="held Maya detail", about_entity=maya,
+                          spawned_from=hc)
+        await rel.add_gap(description="held Maya pilot detail", about_entity=maya,
+                          spawned_from=f3)
+        f4 = await rel.add_fact(subject_entity=maya, predicate="has_pet",
+                                object_kind="literal", object_value="canary",
+                                provenance_episodes=[ep1, hc])
 
-        # structural-only (no embedder): entity-links "Maya", facts + gap come back
-        r = await retrieve("How is Maya doing?", None)
+        # Structural mode keeps open material and excludes all held provenance.
+        r = await retrieve("How is Maya doing?", None, include_episodes=True)
         assert r["mode"] == "structural"
         assert len(r["entities"]) == 1
-        got_preds = {f["predicate"] for f in r["facts"]}
-        assert "lives_in" in got_preds and "works_as" in got_preds
-        assert len(r["gaps"]) == 1, "gap didn't ride along"
-
-        # locked wins: pilot (locked) outranks nurse... which lock already retired
-        works = [f for f in r["facts"] if f["predicate"] == "works_as"]
-        assert len(works) == 1 and works[0]["object_value"] == "pilot"
-
-        # held-close never leaves the module by default
-        r = await retrieve("Maya", None, include_episodes=True)
+        assert {f["object_value"] for f in r["facts"]} == {"Jakarta", "nurse"}
+        assert [g["description"] for g in r["gaps"]] == ["when Maya moved to Jakarta"]
         assert all("heavy thing" not in e["content"] for e in r["episodes"]), \
-            "HELD-CLOSE LEAKED"
-        r_hc = await retrieve("Maya", None, include_episodes=True,
-                              include_held_close=True)
-        # (only the tactful-recall gate may set that flag — Wave 3)
+            "HELD-CLOSE EPISODE LEAKED"
+        block = build_memory_block(r)
+        assert "pilot" not in block and "canary" not in block and "held Maya" not in block, \
+            "HELD-CLOSE PROVENANCE LEAKED"
+        assert f3 and f4
 
+        # Held-close cannot be requested through an override.
+        assert "include_held_close" not in retrieve.__code__.co_varnames
+        assert "include_held_close" not in structural_candidates.__code__.co_varnames
         # alias pathway: "my sister" links to Maya
         r = await retrieve("what does my sister do", None)
         assert len(r["entities"]) == 1 and r["entities"][0]["id"] == maya
 
-        # hybrid mode: fake embedder ranks Jakarta-fact above pilot for a
-        # Jakarta query — but locked pilot still floats via its bonus... on
-        # its own predicate; lives_in must be top of the non-locked ranks.
+        # Hybrid mode ranks Jakarta fact above the nursing fact.
         async def fake_embed(texts):
             out = []
             for t in texts:
@@ -312,8 +308,8 @@ if __name__ == "__main__":
 
         r = await retrieve("How is Maya doing?", None)
         block = build_memory_block(r)
-        assert "Maya" in block and "pilot" in block, "facts missing from block"
-        assert "moved to Jakarta" in block, "gap missing from block"
+        assert "Maya" in block and "Jakarta" in block, "open facts missing from block"
+        assert "moved to Jakarta" in block, "open gap missing from block"
 
         print("OK hybrid_retrieval self-test")
 

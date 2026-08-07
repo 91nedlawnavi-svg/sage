@@ -19,7 +19,7 @@ from config.settings import MEMORY_CORE_SQLITE
 from utils.logger import warning
 
 
-async def record_chat_turn(entry: dict | None) -> None:
+async def record_chat_turn(entry: dict | None, held_close: bool | None = None) -> None:
     """Mirror one conversation-log entry (as returned by append_message)."""
     if not MEMORY_CORE_SQLITE or not entry:
         return
@@ -34,9 +34,10 @@ async def record_chat_turn(entry: dict | None) -> None:
             ts=entry["ts"],
             source_key=entry["id"],
         )
-        # Span sensing: only Elliot turns trigger held-close logic (§2.8)
+        # Span sensing: only Elliot turns trigger held-close logic (§2.8).
+        # Chat may provide a precomputed result to avoid advancing span state twice.
         if episode_id and speaker == "elliot":
-            held = _hc_sense(entry["content"])
+            held = _hc_sense(entry["content"]) if held_close is None else held_close
             if held:
                 await rel.set_held_close(episode_id, True, "she-sensed", actor="she")
     except Exception as exc:

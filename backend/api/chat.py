@@ -18,6 +18,16 @@ from config.settings import MEMORY_CORE_SQLITE
 
 router = APIRouter()
 
+HELD_CLOSE_ACKNOWLEDGEMENT = "I'm holding this close."
+
+
+def _stream_message(message: str) -> StreamingResponse:
+    return StreamingResponse(
+        iter([message]),
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
 
 def _build_search_block(query: str, results: list[dict]) -> str:
     """Build the search context block injected into the user message."""
@@ -64,6 +74,10 @@ async def chat_endpoint(request: ChatRequest):
     if not user_message:
         raise HTTPException(status_code=400, detail="message cannot be empty")
 
+    # Local-only classification must happen before any provider-bound work.
+    from cognition.held_close_sense import sense as held_close_sense
+    held_close = held_close_sense(user_message)
+
     # Get directive (fails fast if missing/empty)
     directive = get_directive()
 
@@ -84,12 +98,34 @@ async def chat_endpoint(request: ChatRequest):
                 get_waiting_message, mark_waiting_message_read)
             _wm = get_waiting_message()
             if _wm:
-                await intake.record_chat_turn(
-                    append_message("assistant", _wm["content"]))
-                session.append("assistant", _wm["content"])
+                entry = append_message("assistant", _wm["content"])
+                await intake.record_chat_turn(entry)
+                if entry:
+                    session.append("assistant", _wm["content"], entry.get("id"))
                 await mark_waiting_message_read(actor="elliot")
         except Exception:
             pass
+
+    if held_close:
+        try:
+            entry = append_message("user", user_message)
+            await intake.record_chat_turn(entry, held_close=True)
+            if entry:
+                session.append("user", user_message, entry.get("id"))
+        finally:
+            session.end_chat()
+        return _stream_message(HELD_CLOSE_ACKNOWLEDGEMENT)
+
+    held_close_ids: set[str] | None = set()
+    if MEMORY_CORE_SQLITE:
+        try:
+            from memory.relational_api import held_close_source_keys
+            held_close_ids = held_close_source_keys()
+        except Exception:
+            held_close_ids = None
+
+    def _model_history() -> list[dict]:
+        return session.history(held_close_ids)
 
     # ── /search command: on-demand web search (budget-exempt) ──────
     # Match "/search" only as a complete token (followed by whitespace or end of
@@ -99,17 +135,17 @@ async def chat_endpoint(request: ChatRequest):
         if not query:
             msg = "What should I look into? Just tell me what you're curious about — a topic, a question, anything."
             try:
-                await intake.record_chat_turn(append_message("user", user_message))
-                session.append("user", user_message)
-                await intake.record_chat_turn(append_message("assistant", msg))
-                session.append("assistant", msg)
+                entry = append_message("user", user_message)
+                await intake.record_chat_turn(entry)
+                if entry:
+                    session.append("user", user_message, entry.get("id"))
+                entry = append_message("assistant", msg)
+                await intake.record_chat_turn(entry)
+                if entry:
+                    session.append("assistant", msg, entry.get("id"))
             finally:
                 session.end_chat()
-            return StreamingResponse(
-                iter([msg]),
-                media_type="text/plain; charset=utf-8",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-            )
+            return _stream_message(msg)
 
         async def search_stream():
             full_reply = ""
@@ -144,7 +180,7 @@ async def chat_endpoint(request: ChatRequest):
                 messages = build_chat_messages(
                     directive,
                     user_message,  # raw /search text — used for knowledge relevance
-                    session.history(),
+                    _model_history(),
                 )
                 messages[-1]["content"] = search_block
 
@@ -177,10 +213,14 @@ async def chat_endpoint(request: ChatRequest):
                 if full_reply and completed:
                     # completed=True only on a clean end — never inside
                     # GeneratorExit cleanup, so awaiting here is safe.
-                    await intake.record_chat_turn(append_message("user", user_message))
-                    session.append("user", user_message)
-                    await intake.record_chat_turn(append_message("assistant", full_reply))
-                    session.append("assistant", full_reply)
+                    entry = append_message("user", user_message)
+                    await intake.record_chat_turn(entry)
+                    if entry:
+                        session.append("user", user_message, entry.get("id"))
+                    entry = append_message("assistant", full_reply)
+                    await intake.record_chat_turn(entry)
+                    if entry:
+                        session.append("assistant", full_reply, entry.get("id"))
 
                     # 9) Write finding (best-effort, off-loop). Only on a real
                     #    result set. Failures are LOGGED, never silently swallowed,
@@ -249,14 +289,13 @@ async def chat_endpoint(request: ChatRequest):
 
         # Phase 4 Layer 1: recall relevant older content by meaning.
         # Passes the pre-computed embedding so recall skips its own embed call.
-        # recent_turns feeds the tactful held-close gate (§2.8).
-        _recent_turns = [m["content"] for m in session.history()[-8:] if m.get("content")]
+        # Held-close source keys are hard-excluded before prompt assembly.
         recall_block = await semantic_recall.recall(
             user_message,
             http_client,
             boost_keys=_boost_keys,
             query_embedding=_q_emb,
-            recent_turns=_recent_turns,
+            held_close_keys=held_close_ids,
         )
 
         # Build messages with history (+ recalled long-term memory)
@@ -267,7 +306,7 @@ async def chat_endpoint(request: ChatRequest):
         messages = build_chat_messages(
             directive,
             user_message,
-            session.history(),
+            _model_history(),
             recall_block=recall_block,
             knowledge_relations=knowledge_relations,
             memory_block=memory_block,
@@ -275,8 +314,10 @@ async def chat_endpoint(request: ChatRequest):
 
         # Persist user message BEFORE streaming so it survives assistant failure.
         # session.begin_chat() already updated the activity timestamp.
-        await intake.record_chat_turn(append_message("user", user_message))
-        session.append("user", user_message)
+        entry = append_message("user", user_message)
+        await intake.record_chat_turn(entry, held_close=False)
+        if entry:
+            session.append("user", user_message, entry.get("id"))
     except Exception:
         session.end_chat()
         raise
@@ -304,8 +345,10 @@ async def chat_endpoint(request: ChatRequest):
             if full_reply and completed:
                 # completed=True only on a clean end — never inside
                 # GeneratorExit cleanup, so awaiting here is safe.
-                await intake.record_chat_turn(append_message("assistant", full_reply))
-                session.append("assistant", full_reply)
+                entry = append_message("assistant", full_reply)
+                await intake.record_chat_turn(entry)
+                if entry:
+                    session.append("assistant", full_reply, entry.get("id"))
             # Always decrement the active-chat counter, even on disconnect
             session.end_chat()
 

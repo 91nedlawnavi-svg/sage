@@ -162,14 +162,15 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 # ── indexing ──────────────────────────────────────────────
-def _pending_items() -> list[dict]:
+def _pending_items(held_close_keys: set[str]) -> list[dict]:
     """Conversation turns + recent reflections not yet in the index."""
     items: list[dict] = []
 
     for e in _read_jsonl(CONVERSATION_PATH):
         key = e.get("id")
         text = (e.get("content") or "").strip()
-        if not key or key in _index_keys or len(text) < RECALL_MIN_CHARS:
+        if (not key or key in held_close_keys or key in _index_keys
+                or len(text) < RECALL_MIN_CHARS):
             continue
         items.append({
             "key": key,
@@ -210,7 +211,14 @@ async def reindex(client: httpx.AsyncClient | None, batch: int | None = None) ->
         return 0
     try:
         _load_index()
-        pending = _pending_items()
+        if MEMORY_CORE_SQLITE:
+            from memory.relational_api import held_close_source_keys
+            held_close_keys = held_close_source_keys()
+            if held_close_keys is None:
+                return 0
+        else:
+            held_close_keys = set()
+        pending = _pending_items(held_close_keys)
         if not pending:
             return 0
         limit = batch if batch is not None else RECALL_INDEX_BATCH
@@ -250,23 +258,6 @@ async def reindex(client: httpx.AsyncClient | None, batch: int | None = None) ->
     except Exception as exc:
         warning(f"semantic_recall/reindex: {type(exc).__name__}: {exc}")
         return 0
-
-
-def _held_close_keys() -> set[str]:
-    """Return source_keys of held-close relational episodes (for tactful recall).
-
-    Degrades to empty set on any failure — recall still runs, held-close gate
-    simply doesn't fire. Never raises.
-    """
-    if not MEMORY_CORE_SQLITE:
-        return set()
-    try:
-        from memory.sqlite_core import query
-        rows = query("relational",
-            "SELECT source_key FROM episodes WHERE held_close=1 AND source_key IS NOT NULL")
-        return {r["source_key"] for r in rows}
-    except Exception:
-        return set()
 
 
 # ── retrieval ─────────────────────────────────────────────
@@ -337,7 +328,7 @@ async def recall(
     *,
     boost_keys: set[str] | None = None,
     query_embedding: list[float] | None = None,
-    recent_turns: list[str] | None = None,
+    held_close_keys: set[str] | None = None,
 ) -> str | None:
     """Return a formatted recall block for the current message, or None.
 
@@ -347,10 +338,8 @@ async def recall(
     personal facts from the knowledge layer outrank or survive alongside
     merely topical matches.
 
-    Tactful recall gate (§2.8): held-close episodes are never surfaced by raw
-    cosine match alone. They only pass if the current conversation carries
-    weight signals (*recent_turns* checked via held_close_sense). Friends know
-    what not to bring up at dinner.
+    Held-close episodes are never surfaced. The caller resolves source keys
+    once for all model-bound context; unavailable authority means no recall.
 
     Never raises — degrades silently to None (no recall) on any failure.
     """
@@ -371,13 +360,8 @@ async def recall(
             if q_emb is None:
                 return None
 
-        # Tactful gate: held-close keys + conversation weight check (§2.8)
-        held_keys = _held_close_keys()
-        if held_keys and recent_turns:
-            from cognition.held_close_sense import conversation_has_weight
-            _conv_has_weight = conversation_has_weight(recent_turns)
-        else:
-            _conv_has_weight = False
+        if held_close_keys is None:
+            return None
 
         excluded = _excluded_keys()
         scored: list[tuple[float, dict]] = []
@@ -385,8 +369,7 @@ async def recall(
             key = e.get("key", "")
             if key in excluded:
                 continue
-            # Tactful recall gate: held-close episode only surfaces if conversation is heavy
-            if key in held_keys and not _conv_has_weight:
+            if key in held_close_keys:
                 continue
             sim = _cosine(q_emb, e.get("embedding") or [])
             boost = 0.15 if (boost_keys and key in boost_keys) else 0.0

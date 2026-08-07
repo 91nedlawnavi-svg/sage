@@ -203,7 +203,7 @@ def test_personal_fact_beats_topical() -> dict:
         # So the no-boost block must contain the generic turn and NOT the
         # personal one. This is the mechanism the boost exists to override.
         block_no_boost = asyncio.run(
-            semantic_recall.recall(query, client=None, boost_keys=None),
+            semantic_recall.recall(query, client=None, boost_keys=None, held_close_keys=set()),
         )
         assert block_no_boost is not None, (
             "Without boost: recall should return a block (generic_1 qualifies)"
@@ -216,7 +216,7 @@ def test_personal_fact_beats_topical() -> dict:
 
         # ── e) With boost → both surface ─────────────────────────────
         block_with_boost = asyncio.run(
-            semantic_recall.recall(query, client=None, boost_keys=boost_keys),
+            semantic_recall.recall(query, client=None, boost_keys=boost_keys, held_close_keys=set()),
         )
         assert block_with_boost is not None, (
             "With boost: recall should return a block"

@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-BASE_DIR = Path.home() / "sage_data"
+BASE_DIR = Path(os.environ.get("SAGE_DATA_DIR", Path.home() / "sage_data")).expanduser()
 
 # Omniroute (local router on :20128) is the sole chat endpoint for Sage.
 # Earlier code called this NVIDIA_API_KEY because the router replaced raw
@@ -59,6 +59,8 @@ CONVERSATION_PATH = BASE_DIR / "conversation.jsonl"
 # Wave 2 memory core (SQLite). Off = legacy JSONL behavior, byte-identical.
 # Flipped on at cutover (after migration verify OK), never before.
 MEMORY_CORE_SQLITE = os.environ.get("SAGE_MEMORY_CORE", "0").lower() in ("1", "true", "yes")
+# Benchmark harness can disable autonomous writers while retaining the full chat path.
+SAGE_BACKGROUND_ENABLED = os.environ.get("SAGE_BACKGROUND_ENABLED", "1").lower() in ("1", "true", "yes")
 # Scribe model for claim extraction — won the 12/12 bake-off (eval_harness,
 # commit 7a1dfdc). Routed via the 'sage-scribe' Omniroute combo: CF
 # Llama-3.3-70b ONLY, spread across 5 accounts for rate-limit headroom —
