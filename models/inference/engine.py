@@ -8,6 +8,7 @@ from config.settings import (
     CHAT_TEMPERATURE,
     CHAT_MAX_TOKENS,
     CHAT_TOP_P,
+    EXTRACTION_SCRIBE_MODEL,
 )
 from utils.logger import warning
 
@@ -148,6 +149,88 @@ async def nim_complete(
 
 
 if __name__ == "__main__":
+    import asyncio
+
+    class _Response:
+        def __init__(self, status_code=200, lines=(), body=b"error"):
+            self.status_code = status_code
+            self._lines = lines
+            self._body = body
+
+        async def aread(self):
+            return self._body
+
+        async def aiter_lines(self):
+            for line in self._lines:
+                yield line
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise httpx.HTTPStatusError("failed", request=None, response=self)
+
+        def json(self):
+            return {"choices": [{"message": {"content": "done"}}]}
+
+    class _Stream:
+        def __init__(self, response):
+            self.response = response
+
+        async def __aenter__(self):
+            return self.response
+
+        async def __aexit__(self, *_):
+            return False
+
+    class _Client:
+        def __init__(self, response=None, error=None):
+            self.response = response or _Response()
+            self.error = error
+            self.calls = []
+
+        def stream(self, method, url, **kwargs):
+            self.calls.append((method, url, kwargs))
+            if self.error:
+                raise self.error
+            return _Stream(self.response)
+
+        async def post(self, url, **kwargs):
+            self.calls.append(("POST", url, kwargs))
+            if self.error:
+                raise self.error
+            return self.response
+
+    async def _checks():
+        chat = _Client(_Response(lines=[
+            'data: {"choices":[{"delta":{"content":"hello"}}]}',
+            "data: [DONE]",
+        ]))
+        assert [chunk async for chunk in chat_stream([], chat)] == ["hello"]
+        assert len(chat.calls) == 1 and chat.calls[0][2]["json"]["model"] == CHAT_MODEL
+
+        failed_chat = _Client(_Response(status_code=503))
+        frames = [chunk async for chunk in chat_stream([], failed_chat)]
+        assert len(failed_chat.calls) == 1
+        assert json.loads(frames[0].strip("\x1e"))["event"] == "error"
+
+        timed_out = _Client(error=httpx.ConnectError("down"))
+        frames = [chunk async for chunk in chat_stream([], timed_out)]
+        assert len(timed_out.calls) == 1
+        assert json.loads(frames[0].strip("\x1e"))["event"] == "error"
+
+        timeout = _Client(error=httpx.ReadTimeout("slow"))
+        frames = [chunk async for chunk in chat_stream([], timeout)]
+        assert len(timeout.calls) == 1
+        assert json.loads(frames[0].strip("\x1e"))["event"] == "error"
+
+        scribe = _Client()
+        assert await nim_complete("system", "user", scribe, EXTRACTION_SCRIBE_MODEL) == "done"
+        assert len(scribe.calls) == 1
+        assert scribe.calls[0][2]["json"]["model"] == EXTRACTION_SCRIBE_MODEL
+
+        failed_scribe = _Client(error=httpx.ConnectError("down"))
+        assert await nim_complete("system", "user", failed_scribe, EXTRACTION_SCRIBE_MODEL) is None
+        assert len(failed_scribe.calls) == 1
+
     assert strip_reasoning("<think>blah</think>Hello") == "Hello"
     assert strip_reasoning("truncated reasoning tail</think>Real answer") == "Real answer"
     assert strip_reasoning("plain answer") == "plain answer"
@@ -155,4 +238,5 @@ if __name__ == "__main__":
     frame = error_frame("x")
     assert frame.startswith("\x1e") and frame.endswith("\x1e")
     assert json.loads(frame.strip("\x1e"))["event"] == "error"
+    asyncio.run(_checks())
     print("OK engine self-checks")

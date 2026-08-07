@@ -8,6 +8,7 @@ BASE_DIR = Path(os.environ.get("SAGE_DATA_DIR", Path.home() / "sage_data")).expa
 # NVIDIA calls without renaming the var; the var name is now honest.
 OMNIROUTE_API_KEY = os.environ.get("OMNIROUTE_API_KEY", "")
 CHAT_API_URL = "http://localhost:20128/v1/chat/completions"
+# Normal chat's sole configured Omniroute alias; no in-app alias fallback.
 CHAT_MODEL = os.environ.get("SAGE_CHAT_MODEL", "sage")
 CHAT_TEMPERATURE = 0.75
 CHAT_MAX_TOKENS = 2048
@@ -61,17 +62,12 @@ CONVERSATION_PATH = BASE_DIR / "conversation.jsonl"
 MEMORY_CORE_SQLITE = os.environ.get("SAGE_MEMORY_CORE", "0").lower() in ("1", "true", "yes")
 # Benchmark harness can disable autonomous writers while retaining the full chat path.
 SAGE_BACKGROUND_ENABLED = os.environ.get("SAGE_BACKGROUND_ENABLED", "1").lower() in ("1", "true", "yes")
-# Scribe model for claim extraction — won the 12/12 bake-off (eval_harness,
-# commit 7a1dfdc). Routed via the 'sage-scribe' Omniroute combo: CF
-# Llama-3.3-70b ONLY, spread across 5 accounts for rate-limit headroom —
-# single-model, so account failover can't change extraction behavior.
-# KNOWN JITTER (measured 2026-07-19): this model at temp 0.1 is not
-# deterministic on the eval battery — runs score 10-12/12, occasionally
-# emitting a forbidden claim (fx07/fx08) or malformed JSON. The promotion
-# desk gates all claims, so worst case is a junk nomination Elliot rejects.
-# An earlier multi-model combo (3x70B) was rejected partly on this jitter
-# being misread as fallback divergence; single-model is still the right call
-# (no cross-model variation stacked on top of the base jitter).
+# `sage` is normal chat's only configured Omniroute alias. `sage-scribe` is
+# extraction's only configured alias: one behavioral model distributed across
+# accounts for capacity, never a multi-model fallback. Aliases are deployment-
+# owned; Sage code sends one request and never selects or mutates routing.
+# Scribe may still emit malformed extraction output; that pass freezes and
+# retries later rather than silently changing models.
 EXTRACTION_SCRIBE_MODEL = os.environ.get(
     "SAGE_EXTRACTION_SCRIBE", "sage-scribe")
 
