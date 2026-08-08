@@ -1,0 +1,7 @@
+{"id":"chat-single-alias","surface":"chat_stream","model":"CHAT_MODEL","requests":1,"outcome":"stream-content"}
+{"id":"scribe-single-alias","surface":"nim_complete","model":"EXTRACTION_SCRIBE_MODEL","requests":1,"outcome":"content-or-none"}
+{"id":"chat-http-error","surface":"chat_stream","failure":"http_503","requests":1,"outcome":"error-frame"}
+{"id":"chat-connect-error","surface":"chat_stream","failure":"connect_error","requests":1,"outcome":"error-frame"}
+{"id":"chat-timeout","surface":"chat_stream","failure":"read_timeout","requests":1,"outcome":"error-frame"}
+{"id":"held-close-local","surface":"chat_endpoint","provider_requests":0,"outcome":"local-acknowledgement"}
+{"id":"no-fallback","surface":"all","policy":"no-alias-substitution-or-retry","requests":1,"outcome":"safe-failure"}

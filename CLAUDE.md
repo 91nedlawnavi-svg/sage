@@ -88,23 +88,30 @@ Services Sage depends on:
 
 ## Tests
 
-No pytest. The gate (`/sage-tests`) is module self-tests run directly:
+No pytest. Canonical deterministic gate:
 
 ```bash
-python -m py_compile <each changed .py>
-python -m cognition.knowledge_surface
-python -m cognition.knowledge_reconcile      # LOCK-ERA — see note below
-python -m cognition.knowledge_extraction   # self-tests + regression
-python -m tests.l2_felt_test               # knowledge layer end-to-end
-python -m tests.trust_suite                # SQLite core cross-module properties
-python -m tests.graph_sqlite_test          # graph API in SQLite mode
-python -m tests.basin_replay               # novelty gate (when touching it)
-python bench/run_brick3b_benchmark.py      # relationship engine (temp store)
+scripts/sage-tests <changed paths>
 ```
 
-For JS, `node --check` each changed file. A `PostToolUse` hook auto-runs
-`py_compile` on every `.py` write — do not treat that as the gate, it is only
-the syntax floor.
+It compiles changed Python, checks changed JavaScript, runs every deterministic
+module check, and adds basin replay when changed paths touch basin/novelty code
+(or when called with `--basin`). It never calls a provider or Brick 3b.
+`bench/run_brick3b_benchmark.py` is opt-in live quality evidence, isolated in
+`/tmp`; it is not gate evidence, routing policy, or fallback selection.
+
+A `PostToolUse` hook auto-runs `py_compile` on every `.py` write — do not treat
+that as the gate, it is only the syntax floor.
+
+### Project records
+
+- `Sage_v2.0.1_BLUEPRINT.md`: architecture and append-only decision authority.
+- `docs/PROJECT_LEDGER.md`: operational backlog, deprecations, and release
+  evidence.
+- `docs/RETIRED_FACT_MODEL.md`: live-but-delete-next fact-model inventory.
+
+No feature growth in retired fact, lock, promotion, desk, or current-view
+paths. Event-model replacement must be live before removal.
 
 `knowledge_reconcile` exists only to make sticky-note locks win a precedence
 fight (`locked > elliot > she`). Invariant 4 deleted locks on 2026-08-02. Keep

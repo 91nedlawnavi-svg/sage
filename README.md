@@ -146,4 +146,4 @@ All three rebuild waves have landed. Wave 1 (heartbeat, curiosity, novelty gate,
 
 Two caveats worth naming: the SQLite core sits behind `MEMORY_CORE_SQLITE`, which is still OFF — the cutover ritual has not been run, so the legacy JSONL path is what actually serves her memory today. And the voice channel has passed endpoint probes but not a real conversation.
 
-`Sage_v2.0.1_BLUEPRINT.md` holds the architecture and the dated decision log; there are no post-Wave-3 targets set yet.
+`Sage_v2.0.1_BLUEPRINT.md` holds architecture and dated decisions. `docs/PROJECT_LEDGER.md` tracks operational backlog, deprecations, and release evidence; `docs/RETIRED_FACT_MODEL.md` marks live legacy fact paths for deletion only after event-memory replacement. The README remains an inventory of shipped code until that replacement lands.

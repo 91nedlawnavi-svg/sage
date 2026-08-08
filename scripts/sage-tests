@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Sage deterministic test gate. Does not call live router or Brick 3b.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+if [[ -x .venv/bin/python ]]; then
+    PYTHON="${PYTHON:-.venv/bin/python}"
+else
+    PYTHON="${PYTHON:-python3}"
+fi
+
+run_basin=false
+changed=()
+for path in "$@"; do
+    case "$path" in
+        --basin) run_basin=true ;;
+        --help|-h)
+            printf 'Usage: scripts/sage-tests [--basin] [changed-file ...]\n'
+            exit 0
+            ;;
+        --*)
+            printf 'Unknown option: %s\n' "$path" >&2
+            exit 2
+            ;;
+        *)
+            [[ -f "$path" ]] || { printf 'Changed file not found: %s\n' "$path" >&2; exit 2; }
+            changed+=("$path")
+            [[ "$path" == *novelty* || "$path" == *basin* ]] && run_basin=true
+            ;;
+    esac
+done
+
+for path in "${changed[@]}"; do
+    case "$path" in
+        *.py) "$PYTHON" -m py_compile "$path" ;;
+        *.js) node --check "$path" ;;
+    esac
+done
+
+"$PYTHON" -m cognition.knowledge_surface
+"$PYTHON" -m cognition.knowledge_reconcile
+"$PYTHON" -m cognition.knowledge_extraction
+"$PYTHON" -m tests.l2_felt_test
+"$PYTHON" -m tests.trust_suite
+"$PYTHON" -m tests.graph_sqlite_test
+"$PYTHON" -m tests.routing_policy_test
+"$PYTHON" -m tests.held_close_firewall_test
+
+if "$run_basin"; then
+    "$PYTHON" -m tests.basin_replay
+fi
+
+printf 'OK sage-tests\n'
