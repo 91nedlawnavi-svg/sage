@@ -1,0 +1,30 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Sage lived memory
+sage_data/
+/sage_data/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build and generated output
+build/
+dist/
+*.egg-info/
+graphify-out/
+
+# Editors and operating system
+.vscode/
+.idea/
+.DS_Store
