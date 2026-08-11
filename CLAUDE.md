@@ -41,7 +41,25 @@ Require Elliot's explicit approval before commits, pushes, tags, GitHub actions,
 - `docs/NORTH_STAR.md`: purpose and non-goals.
 - `docs/INVARIANTS.md`: non-negotiable behavior.
 - `docs/DECISIONS.md`: append-only settled decisions.
+- `docs/BLUEPRINT.md`: authoritative long-range product map and sequencing.
 - `docs/MILESTONE.md`: sole current scope and acceptance evidence.
 - `README.md`: public description of current reality.
 
+Precedence:
+
+- North Star and Invariants constrain everything else.
+- Decisions records settled choices.
+- Blueprint guides future sequencing.
+- Milestone selects active work and acceptance evidence.
+- README reports present reality.
+
 Do not create duplicate authorities. Update documents only when reality or a settled decision changes.
+
+## Model-calling guides
+
+Local router guide names for Claude-family calls:
+
+- Fable: `anthropic/claude-fable-5`
+- Opus: `anthropic/claude-opus-5`
+- Sonnet: `anthropic/claude-sonnet-5`
+- Haiku: `anthropic/claude-haiku-4.5`
