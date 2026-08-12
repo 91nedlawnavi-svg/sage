@@ -6,7 +6,15 @@ Memory is her main engine. She should carry continuity, hold open questions, and
 
 ## Status
 
-Early rebuild. Repository currently contains project rules and first milestone only. No runnable application yet.
+Foundation chat slice available: terminal chat through local free-tier router aliases with durable timestamped event persistence. Recall and embeddings remain excluded from current milestone.
+
+Run after configuring a confirmed free-tier alias:
+
+```bash
+python3 src/sage.py --alias <alias>
+```
+
+This writes lived memory to `~/sage_data/`; back up existing lived memory before first use.
 
 ## Principles
 

@@ -14,3 +14,11 @@ Append dated decisions here. Do not rewrite earlier entries; add a later entry w
 - Reach is one revisable waiting message in app, never push notification.
 - Beliefs may change only through argument and evidence.
 - Directive work remains undecided and absent from repository.
+
+## 2026-08-12 — Foundation implementation boundary
+
+- Foundation uses a local terminal chat surface.
+- Sage calls only `http://localhost:20128/v1/chat/completions` using a required configured free-tier alias.
+- Event history is append-only JSONL at `~/sage_data/events.jsonl`; each record has `role`, `content`, and exact UTC `said_at`.
+- User events persist before router calls. Assistant events persist only after valid successful replies.
+- No router fallback, retry, alternate provider, or paid-model route exists.

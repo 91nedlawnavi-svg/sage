@@ -45,7 +45,7 @@ Exactly current `docs/MILESTONE.md` acceptance checks:
 - Successful assistant reply is shown to user.
 - Accepted user and assistant turns persist as separate timestamped events.
 - Restart retains persisted events.
-- Provider failure reports clear failure and preserves no false assistant event.
+- Provider failure reports clear failure, retains accepted user event, and preserves no false assistant event.
 - No paid-model fallback exists.
 
 **Excluded**
