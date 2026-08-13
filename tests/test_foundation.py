@@ -20,14 +20,17 @@ class FakeRouter(BaseHTTPRequestHandler):
     status = 200
     response: object = {"choices": [{"message": {"content": "Hello."}}]}
     request_body: dict[str, object] | None = None
+    truncate_response = False
 
     def do_POST(self) -> None:
         length = int(self.headers["Content-Length"])
         type(self).request_body = json.loads(self.rfile.read(length))
         self.send_response(type(self).status)
         self.send_header("Content-Type", "application/json")
+        body = json.dumps(type(self).response).encode()
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(json.dumps(type(self).response).encode())
+        self.wfile.write(body[:-1] if type(self).truncate_response else body)
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -38,6 +41,7 @@ class FoundationTests(unittest.TestCase):
         FakeRouter.status = 200
         FakeRouter.response = {"choices": [{"message": {"content": "Hello."}}]}
         FakeRouter.request_body = None
+        FakeRouter.truncate_response = False
         self.server = ThreadingHTTPServer(("localhost", 0), FakeRouter)
         self.thread = Thread(target=self.server.serve_forever)
         self.thread.start()
@@ -78,6 +82,14 @@ class FoundationTests(unittest.TestCase):
         events = self.store.read_all()
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["role"], "user")
+
+    def test_truncated_router_response_keeps_user_event_without_crashing(self) -> None:
+        FakeRouter.truncate_response = True
+
+        reply = handle_message("Hello Sage", self.store, self.router)
+
+        self.assertEqual(reply, ROUTER_FAILURE)
+        self.assertEqual([(event["role"], event["content"]) for event in self.store.read_all()], [("user", "Hello Sage")])
 
     def test_production_router_has_only_localhost_route(self) -> None:
         self.assertEqual(ROUTER_BASE_URL, "http://localhost:20128")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from http.client import IncompleteRead
 from typing import Final
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -43,7 +44,7 @@ class RouterClient:
         try:
             with urlopen(request, timeout=30) as response:
                 body = json.load(response)
-        except (HTTPError, URLError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+        except (HTTPError, URLError, OSError, IncompleteRead, UnicodeDecodeError, json.JSONDecodeError):
             return RouterResult(reply=None)
 
         try:

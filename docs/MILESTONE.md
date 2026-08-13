@@ -2,37 +2,27 @@
 
 ## Status
 
-Not started.
+Foundation complete. Next scope not selected.
 
-## Outcome
+## Completed outcome
 
-Prove smallest chat vertical slice: route a message through a free-tier alias and persist each accepted user and assistant turn as timestamped events.
+One local terminal chat interaction routes through a configured free-tier alias. Sage displays a successful reply. Each accepted user and assistant turn persists as a separate timestamped event and survives restart.
 
-## In scope
-
-- One local chat interaction
-- Free-tier model alias routing
-- Local persistence for accepted user and assistant turns
-- Exact UTC `said_at` timestamps
-- Verification that persisted turns survive process restart
-
-## Acceptance checks
+## Acceptance evidence
 
 - A user message reaches configured free-tier alias.
 - Successful assistant reply is shown to user.
 - Accepted user and assistant turns persist as separate timestamped events.
 - Restart retains persisted events.
-- Provider failure reports clear failure and preserves no false assistant event.
+- Provider failure reports clear failure, retains accepted user event, and writes no false assistant event.
 - No paid-model fallback exists.
 
-## Explicitly excluded
+## Verification
 
-- Recall and embeddings
-- Entities and graph
-- Heartbeat or reach
-- Threads
-- Voice
-- Beliefs
-- Directive work
+```bash
+python3 -m unittest tests/test_foundation.py
+```
 
-No implementation has begun.
+## Next scope
+
+No next milestone selected. Recall, embeddings, entities/graph, heartbeat/reach, threads, voice, beliefs, directive work, and web frontend serving remain excluded until a later milestone selects them.
