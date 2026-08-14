@@ -34,7 +34,13 @@ Surface uncertainty immediately. Do not invent product decisions.
 
 ## Approval boundaries
 
-Require Elliot's explicit approval before commits, pushes, tags, GitHub actions, service restarts, `.env` changes, live-memory writes, deletions, or migration/cutover actions. Passing checks is not approval.
+Engineering may commit and push Sage work after relevant checks and review. Require Elliot's explicit approval before tags, GitHub actions, service restarts, `.env` changes, live-memory writes, deletions, or migration/cutover actions. Passing checks is not approval.
+
+## Task workbench
+
+- Use `~/sage/workbench/` for task-specific source archives, audit outputs, and temporary working files.
+- Keep each task's material in its own subdirectory.
+- Treat workbench copies as disposable. Never use it for lived memory.
 
 ## Documentation authority
 
@@ -57,9 +63,13 @@ Do not create duplicate authorities. Update documents only when reality or a set
 
 ## Model-calling guides
 
-Local router guide names for Claude-family calls:
+Claude Code runs through `https://api.xkiro.com/v1/messages` using Anthropic protocol. Delegate through nested Claude Code CLI calls; Agent tool model overrides do not accept provider aliases.
 
 - Fable: `anthropic/claude-fable-5`
 - Opus: `anthropic/claude-opus-5`
 - Sonnet: `anthropic/claude-sonnet-5`
 - Haiku: `anthropic/claude-haiku-4.5`
+
+Use `claude -p --model <alias>` to delegate. Choose model tier without asking: Haiku for mechanical inventory, Sonnet for subsystem analysis, Fable for hard architecture or adversarial review. Provider aliases must be probed through this CLI path, not Agent model overrides.
+
+Haiku may need `[1m]` appended when task needs its full context window: `anthropic/claude-haiku-4.5[1m]`.
