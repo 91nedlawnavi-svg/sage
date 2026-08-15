@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
 from threading import Thread
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import unittest
 
@@ -130,6 +131,52 @@ class FoundationTests(unittest.TestCase):
                 events = json.load(response)["events"]
             self.assertEqual([(event["role"], event["content"]) for event in events], [("user", "Hello Sage"), ("assistant", "Hello.")])
             self.assertEqual(FakeRouter.request_body["stream"], True)
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_browser_rejects_untrusted_origin_and_host(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            url = f"http://127.0.0.1:{web_server.server_port}/api/chat"
+            payload = json.dumps({"message": "Hello Sage"}).encode()
+            request = Request(
+                url,
+                data=payload,
+                headers={"Content-Type": "application/json", "Origin": "https://evil.example"},
+                method="POST",
+            )
+            with self.assertRaises(HTTPError) as error:
+                urlopen(request)
+            self.assertEqual(error.exception.code, 403)
+            request = Request(url, headers={"Host": "evil.example"})
+            with self.assertRaises(HTTPError) as error:
+                urlopen(request)
+            self.assertEqual(error.exception.code, 403)
+            self.assertEqual(self.store.read_all(), [])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_browser_rejects_missing_or_oversized_body(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            url = f"http://127.0.0.1:{web_server.server_port}/api/chat"
+            request = Request(url, data=b"", headers={"Content-Type": "application/json"}, method="POST")
+            with self.assertRaises(HTTPError) as error:
+                urlopen(request)
+            self.assertEqual(error.exception.code, 413)
+            request = Request(url, data=b"x" * (64 * 1024 + 1), headers={"Content-Type": "application/json"}, method="POST")
+            with self.assertRaises(HTTPError) as error:
+                urlopen(request)
+            self.assertEqual(error.exception.code, 413)
+            self.assertEqual(self.store.read_all(), [])
         finally:
             web_server.shutdown()
             web_thread.join()

@@ -2,6 +2,9 @@ const messages = document.querySelector("#messages");
 const form = document.querySelector("#composer");
 const input = document.querySelector("#message");
 const status = document.querySelector("#status");
+const send = form.querySelector("button");
+input.disabled = true;
+send.disabled = true;
 
 function add(role, content = "") {
   const article = document.createElement("article");
@@ -30,7 +33,7 @@ form.addEventListener("submit", async (event) => {
   if (!message) return;
   input.value = "";
   input.disabled = true;
-  form.querySelector("button").disabled = true;
+  send.disabled = true;
   add("user", message);
   const reply = add("assistant");
   status.textContent = "thinking";
@@ -54,10 +57,14 @@ form.addEventListener("submit", async (event) => {
     reply.textContent = "Sage could not reach the local server. Your message may have been saved.";
   } finally {
     input.disabled = false;
-    form.querySelector("button").disabled = false;
+    send.disabled = false;
     input.focus();
     status.textContent = "ready";
   }
 });
 
-loadHistory().catch(() => { status.textContent = "offline"; });
+loadHistory().catch(() => { status.textContent = "offline"; }).finally(() => {
+  input.disabled = false;
+  send.disabled = false;
+  input.focus();
+});

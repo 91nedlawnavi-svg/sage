@@ -26,11 +26,14 @@ class EventStore:
             "content": content,
             "said_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
+        created = not self.path.exists()
         self.data_root.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as events_file:
             events_file.write(json.dumps(event, ensure_ascii=False) + "\n")
             events_file.flush()
             os.fsync(events_file.fileno())
+        if created:
+            self._fsync_directory(self.data_root)
         return event
 
     def read_all(self) -> list[Event]:
@@ -38,6 +41,14 @@ class EventStore:
             return []
         with self.path.open(encoding="utf-8") as events_file:
             return [self._parse(line) for line in events_file if line.strip()]
+
+    @staticmethod
+    def _fsync_directory(path: Path) -> None:
+        descriptor = os.open(path, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
 
     @staticmethod
     def _parse(line: str) -> Event:

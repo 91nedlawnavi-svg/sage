@@ -17,7 +17,7 @@ Sage runs as a local browser chat on `127.0.0.1`. Browser reload shows persisted
 - `GET /` serves local browser chat; `GET /api/history` returns persisted events in chronological order.
 - `POST /api/chat` routes only to configured alias through `localhost:20128/v1` and streams successful reply chunks.
 - Accepted user event persists before router work.
-- Complete successful stream persists exactly one assistant event; a failed, malformed, truncated, or client-abandoned stream persists no assistant event.
+- Complete successful router stream persists exactly one assistant event; failed, malformed, truncated, or server-observed disconnected streams persist no assistant event.
 - Browser reload retains events.
 - Provider failure reports clear failure and retains accepted user event.
 - Terminal Foundation behavior and tests remain supported.

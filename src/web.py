@@ -14,7 +14,9 @@ from events import EventStore
 from router import RouterClient
 
 STATIC_ROOT = Path(__file__).with_name("static")
+MAX_REQUEST_BYTES = 64 * 1024
 ROUTER_FAILURE = "Sage could not reach the local router. Your message was saved; no assistant reply was recorded."
+SAVE_FAILURE = "Sage received a reply but could not save it. No assistant reply was recorded."
 
 
 class SageServer(ThreadingHTTPServer):
@@ -28,6 +30,9 @@ class SageHandler(BaseHTTPRequestHandler):
     server: SageServer
 
     def do_GET(self) -> None:
+        if not self._trusted_host():
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
         path = urlparse(self.path).path
         if path == "/":
             self._serve_static("index.html", "text/html; charset=utf-8")
@@ -43,14 +48,27 @@ class SageHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
+        if not self._trusted_host() or not self._same_origin():
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
         if urlparse(self.path).path != "/api/chat":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
+        if self.headers.get("Content-Type", "").split(";", 1)[0] != "application/json":
+            self._json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "content type must be application/json"})
+            return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
+            length = int(self.headers["Content-Length"])
+        except (KeyError, ValueError):
+            self._json(HTTPStatus.LENGTH_REQUIRED, {"error": "content length is required"})
+            return
+        if not 0 < length <= MAX_REQUEST_BYTES:
+            self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "message is too large"})
+            return
+        try:
             body = json.loads(self.rfile.read(length))
             message = body["message"].strip()
-        except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        except (KeyError, TypeError, json.JSONDecodeError):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "message must be a nonblank string"})
             return
         if not message:
@@ -74,6 +92,7 @@ class SageHandler(BaseHTTPRequestHandler):
 
         reply: list[str] = []
         completed = False
+        ended = False
         try:
             for chunk in chunks:
                 if chunk == "":
@@ -81,20 +100,32 @@ class SageHandler(BaseHTTPRequestHandler):
                     break
                 reply.append(chunk)
                 self._write_chunk(chunk)
-            if completed and reply:
-                self.server.store.append("assistant", "".join(reply))
-            elif not completed:
+            if not completed or not reply:
                 self._write_chunk(ROUTER_FAILURE)
+                return
+            try:
+                self.server.store.append("assistant", "".join(reply))
+            except OSError:
+                self._write_chunk(SAVE_FAILURE)
         except (BrokenPipeError, ConnectionResetError):
-            return
-        except OSError:
             return
         finally:
             try:
                 self.wfile.write(b"0\r\n\r\n")
                 self.wfile.flush()
+                ended = True
             except (BrokenPipeError, ConnectionResetError, OSError):
                 pass
+        if not ended:
+            return
+
+    def _trusted_host(self) -> bool:
+        host = self.headers.get("Host", "")
+        return host in {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
+
+    def _same_origin(self) -> bool:
+        origin = self.headers.get("Origin")
+        return origin is None or origin == f"http://{self.headers['Host']}"
 
     def _write_chunk(self, text: str) -> None:
         data = text.encode()
