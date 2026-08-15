@@ -9,6 +9,10 @@ venv/
 sage_data/
 /sage_data/
 
+# Disposable task artifacts
+workbench/
+/workbench/
+
 # Python
 __pycache__/
 *.py[cod]

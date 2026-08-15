@@ -22,3 +22,10 @@ Append dated decisions here. Do not rewrite earlier entries; add a later entry w
 - Event history is append-only JSONL at `~/sage_data/events.jsonl`; each record has `role`, `content`, and exact UTC `said_at`.
 - User events persist before router calls. Assistant events persist only after valid successful replies.
 - No router fallback, retry, alternate provider, or paid-model route exists.
+
+## 2026-08-15 — Local browser chat runtime
+
+- Sage serves its local browser chat from `127.0.0.1`; it does not bind a LAN-facing address.
+- Browser chat uses Python's standard-library HTTP server and static local assets. FastAPI is not added for this slice.
+- Browser and terminal chat share event persistence and local-router behavior.
+- Browser replies use HTTP chunked streaming. Only a complete valid router stream becomes an assistant event.

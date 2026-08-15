@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from http.client import IncompleteRead
-from typing import Final
+from http.client import HTTPResponse, IncompleteRead
+from typing import Final, Iterator
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -28,21 +28,21 @@ class RouterClient:
         self.alias = alias
         self.endpoint = f"{base_url}/v1/chat/completions"
 
-    def chat(self, message: str) -> RouterResult:
-        payload = json.dumps(
-            {
-                "model": self.alias,
-                "messages": [{"role": "user", "content": message}],
-            }
-        ).encode()
-        request = Request(
+    def _request(self, message: str, *, stream: bool) -> Request:
+        payload = {"model": self.alias, "messages": [{"role": "user", "content": message}]}
+        if stream:
+            payload["stream"] = True
+        encoded_payload = json.dumps(payload).encode()
+        return Request(
             self.endpoint,
-            data=payload,
+            data=encoded_payload,
             headers={"Content-Type": "application/json"},
             method="POST",
         )
+
+    def chat(self, message: str) -> RouterResult:
         try:
-            with urlopen(request, timeout=30) as response:
+            with urlopen(self._request(message, stream=False), timeout=30) as response:
                 body = json.load(response)
         except (HTTPError, URLError, OSError, IncompleteRead, UnicodeDecodeError, json.JSONDecodeError):
             return RouterResult(reply=None)
@@ -52,3 +52,36 @@ class RouterClient:
         except (KeyError, IndexError, TypeError):
             return RouterResult(reply=None)
         return RouterResult(reply=reply) if isinstance(reply, str) and reply.strip() else RouterResult(reply=None)
+
+    def stream(self, message: str) -> Iterator[str]:
+        try:
+            response = urlopen(self._request(message, stream=True), timeout=30)
+        except (HTTPError, URLError, OSError, IncompleteRead):
+            return
+
+        with response:
+            yield from self._stream_response(response)
+
+    @staticmethod
+    def _stream_response(response: HTTPResponse) -> Iterator[str]:
+        completed = False
+        try:
+            for raw_line in response:
+                line = raw_line.decode("utf-8").strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    completed = True
+                    break
+                try:
+                    content = json.loads(data)["choices"][0]["delta"].get("content")
+                except (KeyError, IndexError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+                    return
+                if isinstance(content, str) and content:
+                    yield content
+        except (OSError, IncompleteRead, UnicodeDecodeError):
+            return
+        if not completed:
+            return
+        yield ""

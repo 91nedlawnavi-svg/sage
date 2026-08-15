@@ -1,0 +1,13 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0; background: Canvas; color: CanvasText; }
+main { box-sizing: border-box; display: grid; grid-template-rows: auto 1fr auto; height: 100dvh; max-width: 48rem; margin: auto; padding: 1rem; gap: 1rem; }
+header { display: flex; justify-content: space-between; }
+#status { color: GrayText; font-size: .875rem; }
+#messages { overflow-y: auto; display: grid; align-content: start; gap: .75rem; }
+article { max-width: 85%; padding: .75rem 1rem; border-radius: .75rem; background: color-mix(in srgb, CanvasText 8%, Canvas); }
+article.user { justify-self: end; background: color-mix(in srgb, Highlight 18%, Canvas); }
+article strong { font-size: .8rem; }
+article p { white-space: pre-wrap; margin: .25rem 0 0; }
+form { display: grid; gap: .5rem; }
+textarea { box-sizing: border-box; width: 100%; font: inherit; padding: .6rem; }
+button { justify-self: end; font: inherit; padding: .5rem 1rem; }
