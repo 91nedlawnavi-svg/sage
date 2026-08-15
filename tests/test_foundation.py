@@ -136,6 +136,11 @@ class FoundationTests(unittest.TestCase):
             web_thread.join()
             web_server.server_close()
 
+    def test_read_ignores_incomplete_final_record(self) -> None:
+        self.store.path.write_text('{"role":"user","content":"saved","said_at":"2026-08-15T00:00:00Z"}\n{"role"')
+
+        self.assertEqual([(event["role"], event["content"]) for event in self.store.read_all()], [("user", "saved")])
+
     def test_browser_rejects_untrusted_origin_and_host(self) -> None:
         web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
         web_thread = Thread(target=web_server.serve_forever)

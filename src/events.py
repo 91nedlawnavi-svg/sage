@@ -40,7 +40,18 @@ class EventStore:
         if not self.path.exists():
             return []
         with self.path.open(encoding="utf-8") as events_file:
-            return [self._parse(line) for line in events_file if line.strip()]
+            lines = events_file.readlines()
+        events: list[Event] = []
+        for index, line in enumerate(lines):
+            if not line.strip():
+                continue
+            try:
+                events.append(self._parse(line))
+            except json.JSONDecodeError:
+                if index == len(lines) - 1 and not line.endswith("\n"):
+                    break
+                raise
+        return events
 
     @staticmethod
     def _fsync_directory(path: Path) -> None:
