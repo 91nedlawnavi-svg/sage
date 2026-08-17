@@ -3,21 +3,58 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 
-from events import EventStore
+from events import Event, EventStore
+from held_close import PrivacyDecision, classify
 from router import RouterClient
 
+HELD_CLOSE_ACKNOWLEDGEMENT = "I'm holding this close."
 ROUTER_FAILURE = "Sage could not reach the local router. Your message was saved; no assistant reply was recorded."
+SAVE_FAILURE = "Sage could not save your message. Nothing was sent."
+
+
+@dataclass(frozen=True)
+class AcceptedMessage:
+    event: Event
+    privacy: PrivacyDecision
+
+
+def accept_message(message: str, store: EventStore) -> AcceptedMessage | None:
+    """Persist and classify user input before any provider can receive it."""
+    try:
+        event = store.append("user", message)
+        privacy = classify(message, store.carry_before_next_user_event())
+        store.append_privacy(event["id"], privacy.held_close, "sensor", carry_after=privacy.carry_after)
+    except OSError:
+        return None
+    return AcceptedMessage(event, privacy)
+
+
+def build_router_messages(
+    message: str,
+    store: EventStore,
+    *,
+    max_context: int = 8,
+    exclude_event_id: str | None = None,
+) -> list[dict[str, str]]:
+    messages = [
+        {"role": event["role"], "content": event["content"]}
+        for event in store.recall(message, limit=max_context, exclude_event_id=exclude_event_id)
+    ]
+    messages.append({"role": "user", "content": message})
+    return messages
 
 
 def handle_message(message: str, store: EventStore, router: RouterClient) -> str:
-    try:
-        store.append("user", message)
-    except OSError:
-        return "Sage could not save your message. Nothing was sent."
+    accepted = accept_message(message, store)
+    if accepted is None:
+        return SAVE_FAILURE
+    if accepted.privacy.held_close:
+        return HELD_CLOSE_ACKNOWLEDGEMENT
 
-    result = router.chat(message)
+    result = router.chat_with_messages(build_router_messages(message, store, exclude_event_id=accepted.event["id"]))
     if not result.succeeded:
         return ROUTER_FAILURE
 

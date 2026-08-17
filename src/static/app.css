@@ -8,6 +8,8 @@ article { max-width: 85%; padding: .75rem 1rem; border-radius: .75rem; backgroun
 article.user { justify-self: end; background: color-mix(in srgb, Highlight 18%, Canvas); }
 article strong { font-size: .8rem; }
 article p { white-space: pre-wrap; margin: .25rem 0 0; }
+article.held-close { outline: 1px solid color-mix(in srgb, Highlight 45%, Canvas); }
+button.privacy { display: block; margin-top: .5rem; font: inherit; font-size: .75rem; }
 form { display: grid; gap: .5rem; }
 textarea { box-sizing: border-box; width: 100%; font: inherit; padding: .6rem; }
 button { justify-self: end; font: inherit; padding: .5rem 1rem; }

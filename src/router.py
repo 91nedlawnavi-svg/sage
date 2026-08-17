@@ -28,8 +28,8 @@ class RouterClient:
         self.alias = alias
         self.endpoint = f"{base_url}/v1/chat/completions"
 
-    def _request(self, message: str, *, stream: bool) -> Request:
-        payload = {"model": self.alias, "messages": [{"role": "user", "content": message}]}
+    def _request(self, messages: list[dict[str, str]], *, stream: bool) -> Request:
+        payload: dict[str, object] = {"model": self.alias, "messages": messages}
         if stream:
             payload["stream"] = True
         encoded_payload = json.dumps(payload).encode()
@@ -41,8 +41,11 @@ class RouterClient:
         )
 
     def chat(self, message: str) -> RouterResult:
+        return self.chat_with_messages([{"role": "user", "content": message}])
+
+    def chat_with_messages(self, messages: list[dict[str, str]]) -> RouterResult:
         try:
-            with urlopen(self._request(message, stream=False), timeout=30) as response:
+            with urlopen(self._request(messages, stream=False), timeout=30) as response:
                 body = json.load(response)
         except (HTTPError, URLError, OSError, IncompleteRead, UnicodeDecodeError, json.JSONDecodeError):
             return RouterResult(reply=None)
@@ -54,14 +57,16 @@ class RouterClient:
         return RouterResult(reply=reply) if isinstance(reply, str) and reply.strip() else RouterResult(reply=None)
 
     def stream(self, message: str) -> Iterator[str]:
+        return self.stream_with_messages([{"role": "user", "content": message}])
+
+    def stream_with_messages(self, messages: list[dict[str, str]]) -> Iterator[str]:
         try:
-            response = urlopen(self._request(message, stream=True), timeout=30)
+            response = urlopen(self._request(messages, stream=True), timeout=30)
         except (HTTPError, URLError, OSError, IncompleteRead):
             return
 
         with response:
             yield from self._stream_response(response)
-
     @staticmethod
     def _stream_response(response: HTTPResponse) -> Iterator[str]:
         completed = False

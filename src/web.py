@@ -8,15 +8,15 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterator
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from events import EventStore
 from router import RouterClient
+from sage import HELD_CLOSE_ACKNOWLEDGEMENT, ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_messages
 
 STATIC_ROOT = Path(__file__).with_name("static")
 MAX_REQUEST_BYTES = 64 * 1024
-ROUTER_FAILURE = "Sage could not reach the local router. Your message was saved; no assistant reply was recorded."
-SAVE_FAILURE = "Sage received a reply but could not save it. No assistant reply was recorded."
+SAVE_REPLY_FAILURE = "Sage received a reply but could not save it. No assistant reply was recorded."
 
 
 class SageServer(ThreadingHTTPServer):
@@ -51,48 +51,103 @@ class SageHandler(BaseHTTPRequestHandler):
         if not self._trusted_host() or not self._same_origin():
             self.send_error(HTTPStatus.FORBIDDEN)
             return
-        if urlparse(self.path).path != "/api/chat":
-            self.send_error(HTTPStatus.NOT_FOUND)
+        path = urlparse(self.path).path
+        if path == "/api/chat":
+            self._chat()
             return
+        event_id = self._privacy_target(path)
+        if event_id is not None:
+            self._privacy_override(event_id)
+            return
+        self.send_error(HTTPStatus.NOT_FOUND)
+
+    def _chat(self) -> None:
+        body = self._json_body()
+        if body is None:
+            return
+        message = body.get("message")
+        if not isinstance(message, str) or not (message := message.strip()):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "message must be a nonblank string"})
+            return
+        accepted = accept_message(message, self.server.store)
+        if accepted is None:
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_FAILURE})
+            return
+        headers = {
+            "X-Sage-Event-ID": accepted.event["id"],
+            "X-Sage-Held-Close": str(accepted.privacy.held_close).lower(),
+        }
+        if accepted.privacy.held_close:
+            self._stream_reply(iter((HELD_CLOSE_ACKNOWLEDGEMENT, "")), headers, persist_reply=False)
+            return
+        self._stream_reply(
+            self.server.router.stream_with_messages(
+                build_router_messages(message, self.server.store, exclude_event_id=accepted.event["id"])
+            ),
+            headers,
+            persist_reply=True,
+        )
+
+    def _privacy_override(self, event_id: str) -> None:
+        body = self._json_body()
+        if body is None:
+            return
+        held_close = body.get("held_close")
+        if not isinstance(held_close, bool):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "held_close must be boolean"})
+            return
+        try:
+            updated = self.server.store.set_held_close(event_id, held_close)
+        except OSError:
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Sage could not save privacy setting."})
+            return
+        if not updated:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "user event not found"})
+            return
+        self._json(HTTPStatus.OK, {"event_id": event_id, "held_close": held_close})
+
+    def _json_body(self) -> dict[str, object] | None:
         if self.headers.get("Content-Type", "").split(";", 1)[0] != "application/json":
             self._json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "content type must be application/json"})
-            return
+            return None
         try:
             length = int(self.headers["Content-Length"])
         except (KeyError, ValueError):
             self._json(HTTPStatus.LENGTH_REQUIRED, {"error": "content length is required"})
-            return
+            return None
         if not 0 < length <= MAX_REQUEST_BYTES:
             self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "message is too large"})
-            return
+            return None
         try:
             body = json.loads(self.rfile.read(length))
-            message = body["message"].strip()
-        except (KeyError, TypeError, json.JSONDecodeError):
-            self._json(HTTPStatus.BAD_REQUEST, {"error": "message must be a nonblank string"})
-            return
-        if not message:
-            self._json(HTTPStatus.BAD_REQUEST, {"error": "message must be a nonblank string"})
-            return
+        except json.JSONDecodeError:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "body must be JSON"})
+            return None
+        if not isinstance(body, dict):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "body must be an object"})
+            return None
+        return body
 
-        try:
-            self.server.store.append("user", message)
-        except OSError:
-            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Sage could not save your message. Nothing was sent."})
-            return
+    @staticmethod
+    def _privacy_target(path: str) -> str | None:
+        prefix = "/api/events/"
+        suffix = "/privacy"
+        if not path.startswith(prefix) or not path.endswith(suffix):
+            return None
+        event_id = unquote(path[len(prefix):-len(suffix)])
+        return event_id if event_id and "/" not in event_id else None
 
-        self._stream_reply(self.server.router.stream(message))
-
-    def _stream_reply(self, chunks: Iterator[str]) -> None:
+    def _stream_reply(self, chunks: Iterator[str], headers: dict[str, str], *, persist_reply: bool) -> None:
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Transfer-Encoding", "chunked")
         self.send_header("Cache-Control", "no-cache")
+        for name, value in headers.items():
+            self.send_header(name, value)
         self.end_headers()
 
         reply: list[str] = []
         completed = False
-        ended = False
         try:
             for chunk in chunks:
                 if chunk == "":
@@ -103,21 +158,19 @@ class SageHandler(BaseHTTPRequestHandler):
             if not completed or not reply:
                 self._write_chunk(ROUTER_FAILURE)
                 return
-            try:
-                self.server.store.append("assistant", "".join(reply))
-            except OSError:
-                self._write_chunk(SAVE_FAILURE)
+            if persist_reply:
+                try:
+                    self.server.store.append("assistant", "".join(reply))
+                except OSError:
+                    self._write_chunk(SAVE_REPLY_FAILURE)
         except (BrokenPipeError, ConnectionResetError):
             return
         finally:
             try:
                 self.wfile.write(b"0\r\n\r\n")
                 self.wfile.flush()
-                ended = True
             except (BrokenPipeError, ConnectionResetError, OSError):
                 pass
-        if not ended:
-            return
 
     def _trusted_host(self) -> bool:
         host = self.headers.get("Host", "")

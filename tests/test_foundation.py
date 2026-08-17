@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from events import EventStore
 from router import ROUTER_BASE_URL, RouterClient
-from sage import ROUTER_FAILURE, handle_message
+from sage import HELD_CLOSE_ACKNOWLEDGEMENT, ROUTER_FAILURE, handle_message
 from web import SageServer
 
 
@@ -72,6 +72,49 @@ class FoundationTests(unittest.TestCase):
         self.server.server_close()
         self.temporary_directory.cleanup()
 
+    def test_recall_excludes_non_query_matches(self) -> None:
+        self.store.append("user", "Noisy weather update")
+        self.store.append("assistant", "Sunny tomorrow")
+        self.store.append("user", "I never told anyone about this confession")
+
+        self.store.append("assistant", "Thanks for sharing")
+        self.store.append("user", "I need advice")
+
+        store = EventStore(self.store.data_root)
+        self.assertEqual(
+            [(event["role"], event["content"]) for event in store.recall("advice")],
+            [("user", "I need advice")],
+        )
+
+    def test_recall_prefers_exact_match_over_keyword_ties(self) -> None:
+        self.store.append("user", "Need tea recipe")
+        self.store.append("user", "Tea is what I need")
+
+        self.assertEqual(
+            [(event["role"], event["content"]) for event in self.store.recall("need tea", limit=1)],
+            [("user", "Need tea recipe")],
+        )
+
+    def test_recall_treats_stopword_only_query_as_context_fallback(self) -> None:
+        self.store.append("user", "First topic")
+        self.store.append("assistant", "Answer")
+
+        self.assertEqual(
+            [(event["role"], event["content"]) for event in self.store.recall("the and a")],
+            [("user", "First topic"), ("assistant", "Answer")],
+        )
+
+    def test_recall_excludes_held_close_events(self) -> None:
+        self.store.append("user", "open topic")
+        hidden = self.store.append("user", "I never told anyone about this")
+        self.store.append_privacy(hidden["id"], True, "sensor")
+        self.store.append("assistant", "ack")
+
+        self.assertEqual(
+            [(event["role"], event["content"]) for event in self.store.recall("topic")],
+            [("user", "open topic")],
+        )
+
     def test_success_persists_separate_utc_events_and_routes_alias(self) -> None:
         reply = handle_message("Hello Sage", self.store, self.router)
 
@@ -87,6 +130,36 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual([(event["role"], event["content"]) for event in events], [("user", "Hello Sage"), ("assistant", "Hello.")])
         for event in events:
             self.assertEqual(datetime.fromisoformat(event["said_at"].replace("Z", "+00:00")).utcoffset().total_seconds(), 0)
+
+    def test_held_close_terminal_never_reaches_router(self) -> None:
+        reply = handle_message("I never told anyone about this confession", self.store, self.router)
+
+        self.assertEqual(reply, HELD_CLOSE_ACKNOWLEDGEMENT)
+        self.assertIsNone(FakeRouter.request_body)
+        events = self.store.read_all()
+        self.assertEqual([(event["role"], event["content"]) for event in events], [("user", "I never told anyone about this confession")])
+        self.assertTrue(events[0]["held_close"])
+
+    def test_held_close_carry_replays_after_restart(self) -> None:
+        handle_message("I never told anyone about this confession", self.store, self.router)
+        reopened = EventStore(self.store.data_root)
+
+        reply = handle_message("ordinary follow-up", reopened, self.router)
+
+        self.assertEqual(reply, HELD_CLOSE_ACKNOWLEDGEMENT)
+        self.assertIsNone(FakeRouter.request_body)
+        self.assertTrue(reopened.read_all()[-1]["held_close"])
+
+    def test_privacy_override_is_append_only(self) -> None:
+        event = self.store.append("user", "ordinary message")
+        before = self.store.path.read_text()
+
+        self.assertTrue(self.store.set_held_close(event["id"], True))
+
+        self.assertTrue(self.store.path.read_text().startswith(before))
+        self.assertTrue(self.store.read_all()[0]["held_close"])
+        self.assertTrue(self.store.set_held_close(event["id"], False))
+        self.assertFalse(self.store.read_all()[0]["held_close"])
 
     def test_router_failure_keeps_user_event_without_assistant_event(self) -> None:
         FakeRouter.status = 503
@@ -114,6 +187,51 @@ class FoundationTests(unittest.TestCase):
     def test_blank_alias_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             RouterClient("   ")
+
+    def test_browser_held_close_never_reaches_router(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            payload = json.dumps({"message": "I never told anyone about this confession"}).encode()
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                self.assertEqual(response.read().decode(), HELD_CLOSE_ACKNOWLEDGEMENT)
+                self.assertEqual(response.headers["X-Sage-Held-Close"], "true")
+            self.assertIsNone(FakeRouter.request_body)
+            events = self.store.read_all()
+            self.assertEqual([(event["role"], event["content"]) for event in events], [("user", "I never told anyone about this confession")])
+            self.assertTrue(events[0]["held_close"])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_browser_privacy_override(self) -> None:
+        event = self.store.append("user", "ordinary message")
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            payload = json.dumps({"held_close": True}).encode()
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/events/{event['id']}/privacy",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                self.assertEqual(json.load(response)["held_close"], True)
+            self.assertTrue(self.store.read_all()[0]["held_close"])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
 
     def test_browser_history_and_completed_stream_persist_events(self) -> None:
         web_server = SageServer(("127.0.0.1", 0), self.store, self.router)

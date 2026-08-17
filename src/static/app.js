@@ -6,24 +6,59 @@ const send = form.querySelector("button");
 input.disabled = true;
 send.disabled = true;
 
-function add(role, content = "") {
+function add(event) {
   const article = document.createElement("article");
-  article.className = role;
+  article.className = event.role;
   const label = document.createElement("strong");
-  label.textContent = role === "user" ? "You" : "Sage";
+  label.textContent = event.role === "user" ? "You" : "Sage";
   const text = document.createElement("p");
-  text.textContent = content;
+  text.textContent = event.content || "";
   article.append(label, text);
+  if (event.role === "user" && event.id) {
+    addPrivacyControl(article, event);
+  }
   messages.append(article);
   article.scrollIntoView({block: "end"});
-  return text;
+  return {article, text};
+}
+
+function addPrivacyControl(article, event) {
+  const control = document.createElement("button");
+  control.type = "button";
+  control.className = "privacy";
+  control.dataset.eventId = event.id;
+  setHeldClose(article, control, event.held_close);
+  control.addEventListener("click", async () => {
+    control.disabled = true;
+    try {
+      const response = await fetch(`/api/events/${encodeURIComponent(event.id)}/privacy`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({held_close: !article.classList.contains("held-close")}),
+      });
+      if (!response.ok) throw new Error("privacy unavailable");
+      const result = await response.json();
+      setHeldClose(article, control, result.held_close);
+    } catch {
+      status.textContent = "privacy setting unavailable";
+    } finally {
+      control.disabled = false;
+    }
+  });
+  article.append(control);
+}
+
+function setHeldClose(article, control, heldClose) {
+  article.classList.toggle("held-close", heldClose);
+  control.textContent = heldClose ? "Open" : "Hold close";
+  control.setAttribute("aria-pressed", String(heldClose));
 }
 
 async function loadHistory() {
   const response = await fetch("/api/history");
   if (!response.ok) throw new Error("history unavailable");
   const {events} = await response.json();
-  for (const event of events) add(event.role, event.content);
+  for (const event of events) add(event);
   status.textContent = "ready";
 }
 
@@ -34,8 +69,8 @@ form.addEventListener("submit", async (event) => {
   input.value = "";
   input.disabled = true;
   send.disabled = true;
-  add("user", message);
-  const reply = add("assistant");
+  const user = add({role: "user", content: message});
+  const reply = add({role: "assistant"}).text;
   status.textContent = "thinking";
   try {
     const response = await fetch("/api/chat", {
@@ -44,6 +79,11 @@ form.addEventListener("submit", async (event) => {
       body: JSON.stringify({message}),
     });
     if (!response.ok || !response.body) throw new Error("chat unavailable");
+    const eventId = response.headers.get("X-Sage-Event-ID");
+    if (eventId) addPrivacyControl(user.article, {
+      id: eventId,
+      held_close: response.headers.get("X-Sage-Held-Close") === "true",
+    });
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     while (true) {
