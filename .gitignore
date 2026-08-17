@@ -32,3 +32,6 @@ graphify-out/
 .vscode/
 .idea/
 .DS_Store
+
+# Claude Code local state
+.claude/

@@ -29,3 +29,23 @@ Append dated decisions here. Do not rewrite earlier entries; add a later entry w
 - Browser chat uses Python's standard-library HTTP server and static local assets. FastAPI is not added for this slice.
 - Browser and terminal chat share event persistence and local-router behavior.
 - Browser replies use HTTP chunked streaming. Only a complete valid router stream becomes an assistant event.
+
+## 2026-08-15 — Held-close firewall
+
+- New conversation events receive stable IDs. Legacy Foundation event lines remain readable without rewrite.
+- User intake writes an append-only local privacy classification after its user event. Browser hold/release writes a later append-only override.
+- Effective held-close status is computed by replaying those privacy records in log order; no mutable privacy or current-state store exists.
+- Held-close detection is deterministic and provider-free, with four later user turns of local carry after a strong signal.
+- Held-close user input receives a fixed local acknowledgement and never enters a provider request. Release never retroactively ships an earlier held-close turn.
+
+## 2026-08-16 — Query-aware recall foundation
+
+- Router context is now built from historical events using query-aware keyword relevance and excludes held-close material by default.
+- Recall is deterministic, append-only event-based, and does not change existing held-close behavior or add mutable privacy state.
+- This is a temporary relevance fallback until embeddings are introduced for semantic scoring.
+
+## 2026-08-16 — Recall precision hardening
+
+- Add exact-phrase and stop-word-aware fallback inside `EventStore.recall` for higher precision before embeddings.
+- Keep exclusion of held-close events and avoid using a mutable state table in recall.
+- Multi-term recall now treats all-stop-word-only queries as context-fallback, preserving behavior for weak signals.

@@ -2,26 +2,26 @@
 
 ## Status
 
-Active: local browser chat with durable history and streaming.
+Active: semantic event recall.
 
 ## Foundation evidence
 
-Terminal chat routes through a configured free-tier alias. Each accepted user and assistant turn persists as a separate timestamped event and survives restart.
+Terminal and browser chat route through a configured free-tier alias. Each accepted user and successful assistant turn persists as a separate timestamped event. Browser chat is local-only, durable across reload, and streams complete valid router replies.
 
 ## Active outcome
 
-Sage runs as a local browser chat on `127.0.0.1`. Browser reload shows persisted history. A successful router stream appears progressively and persists one assistant event only after complete delivery. Terminal chat remains supported.
+Sage provides query-aware context recall for provider calls while preserving held-close exclusion. Recall currently uses exact-phrase and stop-word-aware keyword fallback until embeddings are added.
 
 ## Acceptance evidence
 
-- `GET /` serves local browser chat; `GET /api/history` returns persisted events in chronological order.
-- `POST /api/chat` routes only to configured alias through `localhost:20128/v1` and streams successful reply chunks.
-- Accepted user event persists before router work.
-- Complete successful router stream persists exactly one assistant event; failed, malformed, truncated, or server-observed disconnected streams persist no assistant event.
-- Browser reload retains events.
-- Provider failure reports clear failure and retains accepted user event.
-- Terminal Foundation behavior and tests remain supported.
-- No paid-model fallback exists.
+- Every new user message gains a stable event ID and one append-only local classification event.
+- Existing Foundation event lines remain readable without migration or rewrite.
+- Effective held-close state is computed by replaying classifications and later user overrides; no mutable privacy or current-state store exists.
+- A held-close turn persists locally, receives a fixed local acknowledgement, and never reaches `localhost:20128/v1`.
+- Browser and terminal share that provider firewall.
+- Browser history exposes effective state; same-origin hold/release controls append only a privacy override event.
+- Canary tests prove held-close content never enters any currently implemented provider request.
+- Open turns retain Foundation router and durability behavior. No paid-model fallback exists.
 
 ## Verification
 
@@ -31,8 +31,8 @@ python3 -m unittest discover -s tests
 
 ## Excluded
 
-Recall, embeddings, entities/graph, heartbeat/reach, threads, voice, beliefs, directive work, search, and held-close behavior remain excluded until later milestones select them.
+Embeddings, entities/graph, extraction, heartbeat/reach, threads, voice, beliefs, directive work, search, background provider work, and mutable privacy/current-state stores remain excluded.
 
 ## Next scope
 
-Held-close firewall is next candidate only after browser chat acceptance evidence passes.
+Embeddings-backed semantic ranking and recall precision hardening are next candidates.

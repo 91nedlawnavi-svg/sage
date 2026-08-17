@@ -65,11 +65,11 @@ Do not create duplicate authorities. Update documents only when reality or a set
 
 Claude Code runs through `https://api.xkiro.com/v1/messages` using Anthropic protocol. Delegate through nested Claude Code CLI calls; Agent tool model overrides do not accept provider aliases.
 
-- Fable: `anthropic/claude-fable-5`
-- Opus: `anthropic/claude-opus-5`
-- Sonnet: `anthropic/claude-sonnet-5`
-- Haiku: `anthropic/claude-haiku-4.5`
+- Fable: `cc-fable`
+- Opus: `cc-opus`
+- Sonnet: `cc-sonnet`
+- Haiku: `cc-haiku`
 
 Use `claude -p --model <alias>` to delegate. Choose model tier without asking: Haiku for mechanical inventory, Sonnet for subsystem analysis, Fable for hard architecture or adversarial review. Provider aliases must be probed through this CLI path, not Agent model overrides.
 
-Haiku may need `[1m]` appended when task needs its full context window: `anthropic/claude-haiku-4.5[1m]`.
+IF any of the models above acts up, PAUSE IMMEDIATELY and ask Elliot to fix it first.

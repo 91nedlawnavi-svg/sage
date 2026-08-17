@@ -27,7 +27,7 @@ Elliot should feel that Sage:
 ## Hard boundaries
 
 - Single user. Local-first.
-- Free-tier model routing only.
+- All model involved in Sage calls to localhost:20128/v1.
 - `~/sage_data/` contains lived memory and remains fully deletable.
 - Identity and code remain outside lived memory.
 - No frozen facts, locks, promotion desk, or current-state store.

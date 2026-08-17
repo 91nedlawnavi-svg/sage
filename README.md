@@ -6,7 +6,7 @@ Memory is her main engine. She should carry continuity, hold open questions, and
 
 ## Status
 
-Foundation chat slice available: terminal chat through local free-tier router aliases with durable timestamped event persistence. Recall and embeddings remain excluded from current milestone.
+Browser and terminal chat run through local free-tier router aliases with durable timestamped event persistence. Held-close turns stay local and never reach current provider paths. Semantic event recall is now active in the current milestone.
 
 Run after configuring a confirmed free-tier alias:
 
