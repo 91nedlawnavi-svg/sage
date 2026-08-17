@@ -55,3 +55,13 @@ Append dated decisions here. Do not rewrite earlier entries; add a later entry w
 - `EventStore.recall` uses weighted scoring combining term overlap ratio, term frequency in event content, and exact phrase matching.
 - Scoring maintains zero external dependencies and keeps held-close exclusion intact.
 - Results are ranked by score descending without introducing a mutable state store or caching layer.
+
+## 2026-08-17 — Full v3 Rebuild Completion
+
+- Restored dual storage separation (`~/sage_data/relational/` and `~/sage_data/interior/`).
+- Multi-model routing: `SAGE_CHAT_MODEL` (Mimo v2.5) for conversation, `SAGE_SCRIBE_MODEL` (Llama 3.3 70B) for extraction and reflections. Added `<think>` reasoning stripper and truncation protections.
+- Integrated local `llama-embedder` (`127.0.0.1:8081`) with hybrid vector cosine + BM25 scoring.
+- Event-based entity observations (no locks, no promotion queues).
+- Restored interior reflections log, arguable belief ledger, and single revisable waiting message buffer.
+- Added Notebook drawer UI in browser chat.
+- Unified launch entrypoint (`launch.py`) with heartbeat daemon and restored `sage.service` systemd daemon.

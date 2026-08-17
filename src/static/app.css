@@ -1,15 +1,265 @@
-:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-body { margin: 0; background: Canvas; color: CanvasText; }
-main { box-sizing: border-box; display: grid; grid-template-rows: auto 1fr auto; height: 100dvh; max-width: 48rem; margin: auto; padding: 1rem; gap: 1rem; }
-header { display: flex; justify-content: space-between; }
-#status { color: GrayText; font-size: .875rem; }
-#messages { overflow-y: auto; display: grid; align-content: start; gap: .75rem; }
-article { max-width: 85%; padding: .75rem 1rem; border-radius: .75rem; background: color-mix(in srgb, CanvasText 8%, Canvas); }
-article.user { justify-self: end; background: color-mix(in srgb, Highlight 18%, Canvas); }
-article strong { font-size: .8rem; }
-article p { white-space: pre-wrap; margin: .25rem 0 0; }
-article.held-close { outline: 1px solid color-mix(in srgb, Highlight 45%, Canvas); }
-button.privacy { display: block; margin-top: .5rem; font: inherit; font-size: .75rem; }
-form { display: grid; gap: .5rem; }
-textarea { box-sizing: border-box; width: 100%; font: inherit; padding: .6rem; }
-button { justify-self: end; font: inherit; padding: .5rem 1rem; }
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --bg: Canvas;
+  --text: CanvasText;
+  --border: color-mix(in srgb, CanvasText 12%, Canvas);
+  --muted: GrayText;
+  --user-bg: color-mix(in srgb, Highlight 16%, Canvas);
+  --assistant-bg: color-mix(in srgb, CanvasText 6%, Canvas);
+  --held-close-border: color-mix(in srgb, Highlight 45%, Canvas);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+#app {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+#header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+#header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#header-title {
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+#status {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+#status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #34c759;
+  display: inline-block;
+}
+
+#status-dot.cold {
+  background: #8e8e93;
+}
+
+#notebook-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+#messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 0;
+}
+
+#empty {
+  margin: auto;
+  text-align: center;
+  color: var(--muted);
+}
+
+#empty-glyph {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+article {
+  max-width: 80%;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: var(--assistant-bg);
+  align-self: flex-start;
+}
+
+article.user {
+  align-self: flex-end;
+  background: var(--user-bg);
+}
+
+article.waiting {
+  border-left: 3px solid #ff9500;
+}
+
+article strong {
+  font-size: 0.8rem;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+article p {
+  white-space: pre-wrap;
+  margin: 0;
+  line-height: 1.45;
+}
+
+article.held-close {
+  outline: 1px solid var(--held-close-border);
+}
+
+button.privacy {
+  display: inline-block;
+  margin-top: 0.5rem;
+  font: inherit;
+  font-size: 0.7rem;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+#input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+textarea {
+  flex: 1;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  resize: none;
+}
+
+button#send-btn {
+  font: inherit;
+  padding: 0.5rem 1.2rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--assistant-bg);
+  color: inherit;
+  cursor: pointer;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+#drawer {
+  width: 320px;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  display: none;
+  flex-direction: column;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+#drawer.open {
+  display: flex;
+}
+
+#drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+#drawer-title {
+  font-weight: 600;
+}
+
+#drawer-close {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  color: inherit;
+}
+
+#drawer-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+
+.drawer-tab {
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.drawer-tab.active {
+  color: inherit;
+  font-weight: 600;
+  border-bottom: 2px solid currentColor;
+}
+
+#drawer-content {
+  flex: 1;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.notebook-card {
+  padding: 0.6rem;
+  border-radius: 0.5rem;
+  background: var(--assistant-bg);
+  border: 1px solid var(--border);
+}
+
+.notebook-card-ts {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}

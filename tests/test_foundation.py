@@ -14,6 +14,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from events import EventStore
+from interior import InteriorStore
 from router import ROUTER_BASE_URL, RouterClient
 from sage import HELD_CLOSE_ACKNOWLEDGEMENT, ROUTER_FAILURE, handle_message
 from web import SageServer
@@ -63,7 +64,9 @@ class FoundationTests(unittest.TestCase):
         self.thread.start()
         self.base_url = f"http://localhost:{self.server.server_port}"
         self.temporary_directory = TemporaryDirectory()
-        self.store = EventStore(Path(self.temporary_directory.name))
+        self.data_root = Path(self.temporary_directory.name)
+        self.store = EventStore(self.data_root)
+        self.interior = InteriorStore(self.data_root)
         self.router = RouterClient("free-tier-alias", self.base_url)
 
     def tearDown(self) -> None:
@@ -341,6 +344,47 @@ class FoundationTests(unittest.TestCase):
             web_server.shutdown()
             web_thread.join()
             web_server.server_close()
+
+    def test_interior_reflections_and_beliefs_persistence(self) -> None:
+        ref = self.interior.append_reflection("I noticed Elliot's focus on rhythm.")
+        self.assertEqual(len(self.interior.list_reflections()), 1)
+        self.assertEqual(self.interior.list_reflections()[0]["content"], "I noticed Elliot's focus on rhythm.")
+
+        belief = self.interior.append_belief("free-tier routing", "essential invariant", "keeps Sage local and sustainable")
+        self.assertEqual(len(self.interior.list_beliefs()), 1)
+        self.assertEqual(self.interior.list_beliefs()[0]["topic"], "free-tier routing")
+
+    def test_waiting_message_prepended_and_cleared_on_chat(self) -> None:
+        self.interior.set_waiting_message("Hey Elliot, did that deploy succeed?")
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router, self.interior)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            with urlopen(f"{base_url}/api/history") as response:
+                events = json.load(response)["events"]
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["kind"], "waiting")
+            self.assertEqual(events[0]["content"], "Hey Elliot, did that deploy succeed?")
+
+            # Sending a message acknowledges and clears the waiting message
+            payload = json.dumps({"message": "Yes, it did."}).encode()
+            request = Request(f"{base_url}/api/chat", data=payload, headers={"Content-Type": "application/json"}, method="POST")
+            with urlopen(request) as response:
+                self.assertEqual(response.read().decode(), "Hello.")
+
+            self.assertIsNone(self.interior.get_waiting_message())
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_entity_observation_persistence(self) -> None:
+        obs = self.store.append_entity_observation("mimo", "Mimo v2.5", "primary free-tier chat model")
+        observations = self.store.entity_observations()
+        self.assertEqual(len(observations), 1)
+        self.assertEqual(observations[0]["entity_id"], "mimo")
+        self.assertEqual(observations[0]["name"], "Mimo v2.5")
 
 
 if __name__ == "__main__":

@@ -2,27 +2,18 @@
 
 ## Status
 
-Active: semantic event recall ranking and precision hardening.
+Active: Full rebuild — Dual Storage, Multi-Model Routing, Vector Semantic Recall, Interior Notebook, and Heartbeat.
 
-## Foundation evidence
+## Rebuild evidence
 
-Terminal and browser chat route through a configured free-tier alias. Each accepted user and successful assistant turn persists as a separate timestamped event. Browser chat is local-only, durable across reload, and streams complete valid router replies.
-
-## Active outcome
-
-Sage provides query-aware context recall for provider calls while preserving held-close exclusion. Recall scores historical events using term overlap, term frequency, and exact phrase match ranking.
-
-## Acceptance evidence
-
-- Every new user message gains a stable event ID and one append-only local classification event.
-- Existing Foundation event lines remain readable without migration or rewrite.
-- Effective held-close state is computed by replaying classifications and later user overrides; no mutable privacy or current-state store exists.
-- A held-close turn persists locally, receives a fixed local acknowledgement, and never reaches `localhost:20128/v1`.
-- Browser and terminal share that provider firewall.
-- Browser history exposes effective state; same-origin hold/release controls append only a privacy override event.
-- Canary tests prove held-close content never enters any currently implemented provider request.
-- Open turns retain Foundation router and durability behavior. No paid-model fallback exists.
-- Scored recall ranks exact-phrase and high-overlap/high-frequency terms ahead of weaker keyword hits.
+Sage v3 architecture is live and verified:
+- Physical separation of relational world memory (`~/sage_data/relational/`) and interior data (`~/sage_data/interior/`).
+- Multi-model routing using free-tier aliases (`SAGE_CHAT_MODEL` for conversation, `SAGE_SCRIBE_MODEL` for extraction/reflections) with reasoning preamble stripping and truncation guards.
+- Local embedding support connected to `llama-embedder` (`127.0.0.1:8081`) for vector cosine similarity combined with BM25 term frequency.
+- Entity observation intake (append-only observation events, zero locks, zero promotion queues).
+- Interior presence: private reflections log, arguable belief ledger with evidence tracking, single revisable waiting message buffer.
+- Lightweight web UI with Notebook drawer (reflections, beliefs, entities), held-close tap toggle, and chunked streaming.
+- Systemd user service `sage.service` running `launch.py` with active heartbeat daemon.
 
 ## Verification
 
@@ -32,8 +23,4 @@ python3 -m unittest discover -s tests
 
 ## Excluded
 
-Embeddings, entities/graph, extraction, heartbeat/reach, threads, voice, beliefs, directive work, search, background provider work, and mutable privacy/current-state stores remain excluded.
-
-## Next scope
-
-Entity candidate detection and continuity linking are next candidates.
+Mutable state tables, promotion desks, fact locks, and push notifications remain permanently excluded per invariants.

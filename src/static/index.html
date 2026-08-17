@@ -7,15 +7,49 @@
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-  <main>
-    <header><strong>Sage</strong><span id="status">connecting</span></header>
-    <section id="messages" aria-live="polite"></section>
+  <div id="app">
+    <header id="header">
+      <div id="header-left">
+        <span id="status-dot" class="cold" title="connecting"></span>
+        <span id="header-title">Sage</span>
+        <span id="status">connecting</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button id="notebook-toggle" type="button" aria-label="Notebook">
+          <span>Notebook</span>
+        </button>
+      </div>
+    </header>
+
+    <main id="messages" aria-live="polite">
+      <div id="empty">
+        <div id="empty-glyph">&#9671;</div>
+        <div id="empty-sub">Begin when you're ready.</div>
+      </div>
+    </main>
+
     <form id="composer">
-      <label for="message">Message Sage</label>
-      <textarea id="message" rows="3" required></textarea>
-      <button>Send</button>
+      <label for="message" class="sr-only">Message Sage</label>
+      <div id="input-row">
+        <textarea id="message" rows="1" placeholder="Message Sage" required></textarea>
+        <button id="send-btn" aria-label="Send">Send</button>
+      </div>
     </form>
-  </main>
+  </div>
+
+  <aside id="drawer" aria-label="Notebook Drawer">
+    <div id="drawer-header">
+      <span id="drawer-title">Notebook</span>
+      <button id="drawer-close" type="button" aria-label="Close">&#10005;</button>
+    </div>
+    <div id="drawer-tabs">
+      <button class="drawer-tab active" data-tab="reflections">Reflections</button>
+      <button class="drawer-tab" data-tab="beliefs">Beliefs</button>
+      <button class="drawer-tab" data-tab="entities">Entities</button>
+    </div>
+    <div id="drawer-content">Loading...</div>
+  </aside>
+
   <script src="/static/app.js"></script>
 </body>
 </html>

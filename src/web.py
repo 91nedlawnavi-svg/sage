@@ -1,4 +1,4 @@
-"""Local browser chat for Sage Foundation."""
+"""Local browser chat for Sage Foundation with Notebook and interior data APIs."""
 
 from __future__ import annotations
 
@@ -11,7 +11,8 @@ from typing import Iterator
 from urllib.parse import unquote, urlparse
 
 from events import EventStore
-from router import RouterClient
+from interior import InteriorStore
+from router import EmbeddingClient, RouterClient
 from sage import HELD_CLOSE_ACKNOWLEDGEMENT, ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_messages
 
 STATIC_ROOT = Path(__file__).with_name("static")
@@ -20,10 +21,17 @@ SAVE_REPLY_FAILURE = "Sage received a reply but could not save it. No assistant 
 
 
 class SageServer(ThreadingHTTPServer):
-    def __init__(self, address: tuple[str, int], store: EventStore, router: RouterClient) -> None:
+    def __init__(
+        self,
+        address: tuple[str, int],
+        store: EventStore,
+        router: RouterClient,
+        interior: InteriorStore | None = None,
+    ) -> None:
         super().__init__(address, SageHandler)
         self.store = store
         self.router = router
+        self.interior = interior or InteriorStore(store.data_root)
 
 
 class SageHandler(BaseHTTPRequestHandler):
@@ -41,9 +49,28 @@ class SageHandler(BaseHTTPRequestHandler):
         elif path == "/static/app.js":
             self._serve_static("app.js", "application/javascript; charset=utf-8")
         elif path == "/api/history":
-            self._json(HTTPStatus.OK, {"events": self.server.store.read_all()})
+            events = self.server.store.read_all()
+            waiting = self.server.interior.get_waiting_message()
+            if waiting and not waiting.get("read"):
+                # Prepend waiting message as active turn
+                events = [
+                    {
+                        "id": "waiting_message",
+                        "role": "assistant",
+                        "content": waiting["content"],
+                        "said_at": waiting["said_at"],
+                        "kind": "waiting",
+                    }
+                ] + events
+            self._json(HTTPStatus.OK, {"events": events})
+        elif path == "/reflections" or path == "/api/reflections":
+            self._json(HTTPStatus.OK, {"reflections": self.server.interior.list_reflections()})
+        elif path == "/api/beliefs":
+            self._json(HTTPStatus.OK, {"beliefs": self.server.interior.list_beliefs()})
+        elif path == "/api/entities":
+            self._json(HTTPStatus.OK, {"entities": self.server.store.entity_observations()})
         elif path == "/health":
-            self._json(HTTPStatus.OK, {"ok": True})
+            self._json(HTTPStatus.OK, {"ok": True, "model": self.server.router.alias})
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -54,6 +81,10 @@ class SageHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/chat":
             self._chat()
+            return
+        if path == "/api/waiting-message/ack":
+            self.server.interior.clear_waiting_message()
+            self._json(HTTPStatus.OK, {"ok": True})
             return
         event_id = self._privacy_target(path)
         if event_id is not None:
@@ -73,6 +104,10 @@ class SageHandler(BaseHTTPRequestHandler):
         if accepted is None:
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_FAILURE})
             return
+
+        # Acknowledge/clear waiting message once user speaks
+        self.server.interior.clear_waiting_message()
+
         headers = {
             "X-Sage-Event-ID": accepted.event["id"],
             "X-Sage-Held-Close": str(accepted.privacy.held_close).lower(),
@@ -211,7 +246,11 @@ class SageHandler(BaseHTTPRequestHandler):
 
 
 def run(alias: str, data_root: Path | None = None, port: int = 6969) -> None:
-    server = SageServer(("127.0.0.1", port), EventStore(data_root), RouterClient(alias))
+    embedder = EmbeddingClient()
+    store = EventStore(data_root, embedder=embedder)
+    router = RouterClient(alias)
+    interior = InteriorStore(data_root)
+    server = SageServer(("127.0.0.1", port), store, router, interior)
     print(f"Sage listening at http://127.0.0.1:{server.server_port}")
     try:
         server.serve_forever()

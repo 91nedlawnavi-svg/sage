@@ -1,15 +1,17 @@
-"""Append-only timestamped event persistence for Sage."""
+"""Append-only timestamped event persistence with vector embedding support for Sage."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import math
 import os
 import re
 from pathlib import Path
 from typing import Literal, NotRequired, TypedDict
 from uuid import uuid4
 
+from router import EmbeddingClient
 
 _STOP_WORDS = {
     "a",
@@ -48,10 +50,35 @@ class PrivacyRecord(TypedDict):
     said_at: str
 
 
+class EntityObservation(TypedDict):
+    kind: Literal["entity_obs"]
+    entity_id: str
+    name: str
+    observation: str
+    said_at: str
+    source_event_id: NotRequired[str]
+
+
+def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
+    if not vec_a or not vec_b or len(vec_a) != len(vec_b):
+        return 0.0
+    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    norm_a = math.sqrt(sum(a * a for a in vec_a))
+    norm_b = math.sqrt(sum(b * b for b in vec_b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
 class EventStore:
-    def __init__(self, data_root: Path | None = None) -> None:
+    def __init__(self, data_root: Path | None = None, embedder: EmbeddingClient | None = None) -> None:
         self.data_root = data_root or Path.home() / "sage_data"
+        self.relational_dir = self.data_root / "relational"
+        self.interior_dir = self.data_root / "interior"
         self.path = self.data_root / "events.jsonl"
+        self.embeddings_path = self.relational_dir / "embeddings.jsonl"
+        self.entities_path = self.relational_dir / "entities.jsonl"
+        self.embedder = embedder
 
     def append(self, role: Literal["user", "assistant"], content: str) -> Event:
         event: Event = {
@@ -61,6 +88,9 @@ class EventStore:
             "said_at": self._timestamp(),
         }
         self._append_record(event)
+        # Compute and persist embedding asynchronously or immediately if embedder is available
+        if self.embedder is not None:
+            self._save_embedding(event["id"], content)
         return event
 
     def append_privacy(
@@ -82,6 +112,46 @@ class EventStore:
             record["carry_after"] = carry_after
         self._append_record(record)
         return record
+
+    def append_entity_observation(
+        self,
+        entity_id: str,
+        name: str,
+        observation: str,
+        *,
+        source_event_id: str | None = None,
+    ) -> EntityObservation:
+        self.relational_dir.mkdir(parents=True, exist_ok=True)
+        record: EntityObservation = {
+            "kind": "entity_obs",
+            "entity_id": entity_id,
+            "name": name,
+            "observation": observation,
+            "said_at": self._timestamp(),
+        }
+        if source_event_id is not None:
+            record["source_event_id"] = source_event_id
+        with self.entities_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        return record
+
+    def entity_observations(self) -> list[EntityObservation]:
+        if not self.entities_path.exists():
+            return []
+        records: list[EntityObservation] = []
+        with self.entities_path.open(encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    data = json.loads(line)
+                    if data.get("kind") == "entity_obs":
+                        records.append(data)
+                except json.JSONDecodeError:
+                    continue
+        return records
 
     def history(self) -> list[Event]:
         records = self._read_records()
@@ -136,25 +206,41 @@ class EventStore:
         if not query_terms:
             return events[-limit:]
 
-        # BM25-style scoring: term frequency + exact match bonus + recency preservation
+        # Check for vector embedding similarity if embedder available
+        query_embedding: list[float] | None = None
+        embeddings_map: dict[str, list[float]] = {}
+        if self.embedder is not None:
+            query_embedding = self.embedder.embed(query)
+            if query_embedding:
+                embeddings_map = self._load_embeddings()
+
+        # Hybrid scoring: vector cosine similarity + BM25 term frequency + exact match bonus
         scored: list[tuple[float, int, int, Event]] = []
         for index, event in enumerate(events):
+            event_id = event["id"]
             event_content = event["content"].lower()
             event_tokens = self._tokenize(event_content, keep_stop_words=False)
             matched_terms = query_terms & event_tokens
-            if not matched_terms and normalized_query not in event_content:
+
+            # Vector similarity component
+            cos_sim = 0.0
+            if query_embedding and event_id in embeddings_map:
+                cos_sim = _cosine_similarity(query_embedding, embeddings_map[event_id])
+
+            if not matched_terms and normalized_query not in event_content and cos_sim < 0.35:
                 continue
 
-            # Exact phrase match gives a strong precision boost
             exact_match = 1 if normalized_query and normalized_query in event_content else 0
-
-            # Term overlap ratio against query terms
             overlap_score = len(matched_terms) / len(query_terms) if query_terms else 0.0
-
-            # Frequency score of matched terms in event content
             term_freq_score = sum(event_content.count(term) for term in matched_terms) / max(len(event_tokens), 1)
 
-            total_score = overlap_score * 2.0 + term_freq_score + (3.0 if exact_match else 0.0)
+            # Combined weighted score
+            total_score = (
+                overlap_score * 2.0
+                + term_freq_score
+                + (3.0 if exact_match else 0.0)
+                + (cos_sim * 4.0 if cos_sim > 0 else 0.0)
+            )
             if total_score > 0:
                 scored.append((total_score, exact_match, index, event))
 
@@ -164,9 +250,38 @@ class EventStore:
         scored.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
         return [event for _, _, _, event in scored[:limit]]
 
+    def _save_embedding(self, event_id: str, content: str) -> None:
+        if self.embedder is None:
+            return
+        vector = self.embedder.embed(content)
+        if vector is None:
+            return
+        self.relational_dir.mkdir(parents=True, exist_ok=True)
+        with self.embeddings_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"event_id": event_id, "vector": vector}) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+
+    def _load_embeddings(self) -> dict[str, list[float]]:
+        if not self.embeddings_path.exists():
+            return {}
+        mapping: dict[str, list[float]] = {}
+        with self.embeddings_path.open(encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                    mapping[record["event_id"]] = record["vector"]
+                except (json.JSONDecodeError, KeyError):
+                    continue
+        return mapping
+
     def _append_record(self, record: object) -> None:
         created = not self.path.exists()
         self.data_root.mkdir(parents=True, exist_ok=True)
+        self.relational_dir.mkdir(parents=True, exist_ok=True)
+        self.interior_dir.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as events_file:
             events_file.write(json.dumps(record, ensure_ascii=False) + "\n")
             events_file.flush()

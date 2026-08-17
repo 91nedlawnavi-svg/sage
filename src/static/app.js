@@ -1,16 +1,30 @@
 const messages = document.querySelector("#messages");
+const empty = document.querySelector("#empty");
 const form = document.querySelector("#composer");
 const input = document.querySelector("#message");
 const status = document.querySelector("#status");
-const send = form.querySelector("button");
+const statusDot = document.querySelector("#status-dot");
+const send = document.querySelector("#send-btn");
+const notebookToggle = document.querySelector("#notebook-toggle");
+const drawer = document.querySelector("#drawer");
+const drawerClose = document.querySelector("#drawer-close");
+const drawerTabs = document.querySelectorAll(".drawer-tab");
+const drawerContent = document.querySelector("#drawer-content");
+
+let activeTab = "reflections";
+
 input.disabled = true;
 send.disabled = true;
 
 function add(event) {
+  if (empty) empty.style.display = "none";
   const article = document.createElement("article");
   article.className = event.role;
+  if (event.kind === "waiting") {
+    article.classList.add("waiting");
+  }
   const label = document.createElement("strong");
-  label.textContent = event.role === "user" ? "You" : "Sage";
+  label.textContent = event.role === "user" ? "You" : (event.kind === "waiting" ? "Sage (Waiting)" : "Sage");
   const text = document.createElement("p");
   text.textContent = event.content || "";
   article.append(label, text);
@@ -58,8 +72,90 @@ async function loadHistory() {
   const response = await fetch("/api/history");
   if (!response.ok) throw new Error("history unavailable");
   const {events} = await response.json();
-  for (const event of events) add(event);
+  if (events && events.length > 0) {
+    if (empty) empty.style.display = "none";
+    for (const event of events) add(event);
+  }
   status.textContent = "ready";
+  if (statusDot) statusDot.classList.remove("cold");
+}
+
+notebookToggle.addEventListener("click", () => {
+  drawer.classList.toggle("open");
+  if (drawer.classList.contains("open")) {
+    loadDrawerTab(activeTab);
+  }
+});
+
+drawerClose.addEventListener("click", () => {
+  drawer.classList.remove("open");
+});
+
+drawerTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    drawerTabs.forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    activeTab = tab.dataset.tab;
+    loadDrawerTab(activeTab);
+  });
+});
+
+async function loadDrawerTab(tab) {
+  drawerContent.innerHTML = "Loading...";
+  try {
+    if (tab === "reflections") {
+      const res = await fetch("/api/reflections");
+      const data = await res.json();
+      const list = data.reflections || [];
+      if (list.length === 0) {
+        drawerContent.innerHTML = "<div style='color:var(--muted);'>No reflections recorded yet.</div>";
+        return;
+      }
+      drawerContent.innerHTML = list.slice().reverse().map(r => `
+        <div class="notebook-card">
+          <div class="notebook-card-ts">${new Date(r.said_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+          <div>${escapeHtml(r.content)}</div>
+        </div>
+      `).join("");
+    } else if (tab === "beliefs") {
+      const res = await fetch("/api/beliefs");
+      const data = await res.json();
+      const list = data.beliefs || [];
+      if (list.length === 0) {
+        drawerContent.innerHTML = "<div style='color:var(--muted);'>No beliefs recorded yet.</div>";
+        return;
+      }
+      drawerContent.innerHTML = list.slice().reverse().map(b => `
+        <div class="notebook-card">
+          <strong>${escapeHtml(b.topic)}</strong>
+          <div>${escapeHtml(b.stance)}</div>
+          <div class="notebook-card-ts" style="margin-top:4px;">Evidence: ${escapeHtml(b.evidence)}</div>
+        </div>
+      `).join("");
+    } else if (tab === "entities") {
+      const res = await fetch("/api/entities");
+      const data = await res.json();
+      const list = data.entities || [];
+      if (list.length === 0) {
+        drawerContent.innerHTML = "<div style='color:var(--muted);'>No entities observed yet.</div>";
+        return;
+      }
+      drawerContent.innerHTML = list.slice().reverse().map(e => `
+        <div class="notebook-card">
+          <strong>${escapeHtml(e.name)}</strong>
+          <div>${escapeHtml(e.observation)}</div>
+        </div>
+      `).join("");
+    }
+  } catch {
+    drawerContent.innerHTML = "<div style='color:var(--muted);'>Failed to load data.</div>";
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text || "";
+  return div.innerHTML;
 }
 
 form.addEventListener("submit", async (event) => {
