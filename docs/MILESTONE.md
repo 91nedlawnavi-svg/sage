@@ -2,7 +2,7 @@
 
 ## Status
 
-Active: semantic event recall.
+Active: semantic event recall ranking and precision hardening.
 
 ## Foundation evidence
 
@@ -10,7 +10,7 @@ Terminal and browser chat route through a configured free-tier alias. Each accep
 
 ## Active outcome
 
-Sage provides query-aware context recall for provider calls while preserving held-close exclusion. Recall currently uses exact-phrase and stop-word-aware keyword fallback until embeddings are added.
+Sage provides query-aware context recall for provider calls while preserving held-close exclusion. Recall scores historical events using term overlap, term frequency, and exact phrase match ranking.
 
 ## Acceptance evidence
 
@@ -22,6 +22,7 @@ Sage provides query-aware context recall for provider calls while preserving hel
 - Browser history exposes effective state; same-origin hold/release controls append only a privacy override event.
 - Canary tests prove held-close content never enters any currently implemented provider request.
 - Open turns retain Foundation router and durability behavior. No paid-model fallback exists.
+- Scored recall ranks exact-phrase and high-overlap/high-frequency terms ahead of weaker keyword hits.
 
 ## Verification
 
@@ -35,4 +36,4 @@ Embeddings, entities/graph, extraction, heartbeat/reach, threads, voice, beliefs
 
 ## Next scope
 
-Embeddings-backed semantic ranking and recall precision hardening are next candidates.
+Entity candidate detection and continuity linking are next candidates.

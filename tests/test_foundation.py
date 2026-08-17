@@ -101,6 +101,16 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(recalled[0][1], "Need a cup of tea and a sandwich")
         self.assertEqual(recalled[1][1], "Need help with the tea recipe")
 
+    def test_recall_ranks_higher_overlap_and_term_frequency_first(self) -> None:
+        self.store.append("user", "We bought apples and oranges for lunch")
+        self.store.append("user", "Apples are great, I love green apples and red apples")
+        self.store.append("user", "Just talking about oranges")
+
+        recalled = self.store.recall("apples apples", limit=2)
+        self.assertEqual(len(recalled), 2)
+        self.assertEqual(recalled[0]["content"], "Apples are great, I love green apples and red apples")
+        self.assertEqual(recalled[1]["content"], "We bought apples and oranges for lunch")
+
     def test_recall_treats_stopword_only_query_as_context_fallback(self) -> None:
         self.store.append("user", "First topic")
         self.store.append("assistant", "Answer")

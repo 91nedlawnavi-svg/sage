@@ -49,3 +49,9 @@ Append dated decisions here. Do not rewrite earlier entries; add a later entry w
 - Add exact-phrase and stop-word-aware fallback inside `EventStore.recall` for higher precision before embeddings.
 - Keep exclusion of held-close events and avoid using a mutable state table in recall.
 - Multi-term recall now treats all-stop-word-only queries as context-fallback, preserving behavior for weak signals.
+
+## 2026-08-17 — Scored term-frequency and phrase recall ranking
+
+- `EventStore.recall` uses weighted scoring combining term overlap ratio, term frequency in event content, and exact phrase matching.
+- Scoring maintains zero external dependencies and keeps held-close exclusion intact.
+- Results are ranked by score descending without introducing a mutable state store or caching layer.

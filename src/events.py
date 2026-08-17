@@ -136,20 +136,33 @@ class EventStore:
         if not query_terms:
             return events[-limit:]
 
-        scored: list[tuple[int, int, int, Event]] = []
+        # BM25-style scoring: term frequency + exact match bonus + recency preservation
+        scored: list[tuple[float, int, int, Event]] = []
         for index, event in enumerate(events):
             event_content = event["content"].lower()
-            score = len(query_terms & self._tokenize(event_content, keep_stop_words=False))
+            event_tokens = self._tokenize(event_content, keep_stop_words=False)
+            matched_terms = query_terms & event_tokens
+            if not matched_terms and normalized_query not in event_content:
+                continue
+
+            # Exact phrase match gives a strong precision boost
             exact_match = 1 if normalized_query and normalized_query in event_content else 0
-            if score > 0 or exact_match:
-                scored.append((score, exact_match, index, event))
+
+            # Term overlap ratio against query terms
+            overlap_score = len(matched_terms) / len(query_terms) if query_terms else 0.0
+
+            # Frequency score of matched terms in event content
+            term_freq_score = sum(event_content.count(term) for term in matched_terms) / max(len(event_tokens), 1)
+
+            total_score = overlap_score * 2.0 + term_freq_score + (3.0 if exact_match else 0.0)
+            if total_score > 0:
+                scored.append((total_score, exact_match, index, event))
 
         if not scored:
             return events[-limit:]
 
         scored.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
-        selected = sorted(scored[:limit], key=lambda item: item[2])
-        return [event for _, _, _, event in selected]
+        return [event for _, _, _, event in scored[:limit]]
 
     def _append_record(self, record: object) -> None:
         created = not self.path.exists()
