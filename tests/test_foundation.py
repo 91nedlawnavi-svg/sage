@@ -87,13 +87,19 @@ class FoundationTests(unittest.TestCase):
         )
 
     def test_recall_prefers_exact_match_over_keyword_ties(self) -> None:
-        self.store.append("user", "Need tea recipe")
-        self.store.append("user", "Tea is what I need")
+        self.store.append("user", "Need a cup of tea and a sandwich")
+        self.store.append("user", "Need help with the tea recipe")
 
+        recalled = [(event["role"], event["content"]) for event in self.store.recall("need tea")]
         self.assertEqual(
-            [(event["role"], event["content"]) for event in self.store.recall("need tea", limit=1)],
-            [("user", "Need tea recipe")],
+            recalled,
+            [
+                ("user", "Need a cup of tea and a sandwich"),
+                ("user", "Need help with the tea recipe"),
+            ],
         )
+        self.assertEqual(recalled[0][1], "Need a cup of tea and a sandwich")
+        self.assertEqual(recalled[1][1], "Need help with the tea recipe")
 
     def test_recall_treats_stopword_only_query_as_context_fallback(self) -> None:
         self.store.append("user", "First topic")

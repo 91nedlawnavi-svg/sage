@@ -23,6 +23,10 @@ Surface uncertainty immediately. Do not invent product decisions.
 - Sage may reach only through one revisable waiting message in app. No push notifications.
 - Sage beliefs change through argument and evidence. Do not create a routine external belief-edit path.
 
+## Communication
+
+Be concise and action-oriented. Save tokens: omit narration, restatement, obvious explanations, and unnecessary status updates. Give only what is needed to execute or understand the task. Prefer the simplest wording and solution. Do not expand for completeness unless asked.
+
 ## Working loop
 
 1. State one behavior-sized outcome and its acceptance checks.
