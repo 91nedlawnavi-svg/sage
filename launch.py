@@ -8,8 +8,22 @@ import sys
 from pathlib import Path
 
 # Add src directory to path
-SRC_DIR = Path(__file__).resolve().parent / "src"
+REPO_ROOT = Path(__file__).resolve().parent
+SRC_DIR = REPO_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
+
+
+def load_dotenv() -> None:
+    """Load KEY=VALUE pairs from .env without overriding the real environment."""
+    env_file = REPO_ROOT / ".env"
+    if not env_file.is_file():
+        return
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip())
 
 from events import EventStore
 from heartbeat import Heartbeat
@@ -19,6 +33,7 @@ from web import SageServer
 
 
 def main() -> None:
+    load_dotenv()
     parser = argparse.ArgumentParser(description="Launch Sage service.")
     parser.add_argument("--alias", default=os.getenv("SAGE_CHAT_MODEL", "or/opencode-zen/mimo-v2.5-free"), help="Chat model alias")
     parser.add_argument("--scribe-alias", default=os.getenv("SAGE_SCRIBE_MODEL", "sage-scribe"), help="Scribe model alias")
