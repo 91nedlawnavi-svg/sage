@@ -34,7 +34,7 @@ These rules govern every implementation. Deferred means no surface exists yet; i
 
 - Persist time in UTC. Display time in WIB.
 - Reach is at most one revisable waiting message in app. Never send push notifications.
-- Heartbeat and background reach behavior are deferred.
+- Heartbeat may run permitted local background extraction and reflection; background reach behavior remains deferred.
 
 ## Belief and agency
 

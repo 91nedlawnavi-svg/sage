@@ -65,3 +65,9 @@ Append dated decisions here. Do not rewrite earlier entries; add a later entry w
 - Restored interior reflections log, arguable belief ledger, and single revisable waiting message buffer.
 - Added Notebook drawer UI in browser chat.
 - Unified launch entrypoint (`launch.py`) with heartbeat daemon and restored `sage.service` systemd daemon.
+
+## 2026-08-24 — Background heartbeat boundary
+
+- Heartbeat is active for local background entity extraction and private reflections.
+- Heartbeat provider prompts include only events currently classified as not held-close.
+- Autonomous reach and push notifications remain deferred; the waiting-message buffer remains the only in-app reach surface.

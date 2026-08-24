@@ -24,8 +24,8 @@ class AcceptedMessage:
 def accept_message(message: str, store: EventStore) -> AcceptedMessage | None:
     """Persist and classify user input before any provider can receive it."""
     try:
-        event = store.append("user", message)
         privacy = classify(message, store.carry_before_next_user_event())
+        event = store.append("user", message, save_embedding=not privacy.held_close)
         store.append_privacy(event["id"], privacy.held_close, "sensor", carry_after=privacy.carry_after)
     except OSError:
         return None

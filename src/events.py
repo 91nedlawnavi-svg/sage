@@ -80,7 +80,13 @@ class EventStore:
         self.entities_path = self.relational_dir / "entities.jsonl"
         self.embedder = embedder
 
-    def append(self, role: Literal["user", "assistant"], content: str) -> Event:
+    def append(
+        self,
+        role: Literal["user", "assistant"],
+        content: str,
+        *,
+        save_embedding: bool = True,
+    ) -> Event:
         event: Event = {
             "id": str(uuid4()),
             "role": role,
@@ -88,8 +94,7 @@ class EventStore:
             "said_at": self._timestamp(),
         }
         self._append_record(event)
-        # Compute and persist embedding asynchronously or immediately if embedder is available
-        if self.embedder is not None:
+        if save_embedding and self.embedder is not None:
             self._save_embedding(event["id"], content)
         return event
 
