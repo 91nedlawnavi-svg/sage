@@ -21,10 +21,12 @@ class AcceptedMessage:
     privacy: PrivacyDecision
 
 
-def accept_message(message: str, store: EventStore) -> AcceptedMessage | None:
+def accept_message(message: str, store: EventStore, held_close: bool = False) -> AcceptedMessage | None:
     """Persist and classify user input before any provider can receive it."""
     try:
         privacy = classify(message, store.carry_before_next_user_event())
+        if held_close:
+            privacy = PrivacyDecision(True, privacy.tier, 0)
         event = store.append(
             "user",
             message,
@@ -33,7 +35,12 @@ def accept_message(message: str, store: EventStore) -> AcceptedMessage | None:
             privacy_carry_after=privacy.carry_after,
         )
         try:
-            store.append_privacy(event["id"], privacy.held_close, "sensor", carry_after=privacy.carry_after)
+            store.append_privacy(
+                event["id"],
+                privacy.held_close,
+                "user" if held_close else "sensor",
+                carry_after=None if held_close else privacy.carry_after,
+            )
         except OSError:
             pass
     except OSError:

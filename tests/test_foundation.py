@@ -248,6 +248,51 @@ class FoundationTests(unittest.TestCase):
             web_thread.join()
             web_server.server_close()
 
+    def test_browser_ephemeral_mode_holds_message_before_provider_work(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            payload = json.dumps({"message": "ordinary private note", "held_close_mode": True}).encode()
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                self.assertEqual(response.read().decode(), HELD_CLOSE_ACKNOWLEDGEMENT)
+                self.assertEqual(response.headers["X-Sage-Held-Close"], "true")
+            self.assertIsNone(FakeRouter.request_body)
+            event = self.store.read_all()[0]
+            self.assertTrue(event["held_close"])
+            self.assertTrue(event["provider_excluded"])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_browser_rejects_invalid_ephemeral_mode(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            payload = json.dumps({"message": "Hello Sage", "held_close_mode": "yes"}).encode()
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with self.assertRaises(HTTPError) as error:
+                urlopen(request)
+            self.assertEqual(error.exception.code, 400)
+            self.assertEqual(self.store.read_all(), [])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
     def test_browser_privacy_override(self) -> None:
         event = self.store.append("user", "ordinary message", initial_held_close=False)
         web_server = SageServer(("127.0.0.1", 0), self.store, self.router)

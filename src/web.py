@@ -100,7 +100,11 @@ class SageHandler(BaseHTTPRequestHandler):
         if not isinstance(message, str) or not (message := message.strip()):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "message must be a nonblank string"})
             return
-        accepted = accept_message(message, self.server.store)
+        held_close_mode = body.get("held_close_mode", False)
+        if not isinstance(held_close_mode, bool):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "held_close_mode must be boolean"})
+            return
+        accepted = accept_message(message, self.server.store, held_close=held_close_mode)
         if accepted is None:
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_FAILURE})
             return

@@ -8,19 +8,27 @@ const send = document.querySelector("#send-btn");
 const notebookToggle = document.querySelector("#notebook-toggle");
 const drawer = document.querySelector("#drawer");
 const drawerClose = document.querySelector("#drawer-close");
+const drawerOverlay = document.querySelector("#drawer-overlay");
 const drawerTabs = document.querySelectorAll(".drawer-tab");
 const drawerContent = document.querySelector("#drawer-content");
 
 let activeTab = "reflections";
 
-const WIB_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
-  hour: "2-digit",
-  minute: "2-digit",
-  timeZone: "Asia/Jakarta",
-});
-
 input.disabled = true;
 send.disabled = true;
+
+function setDrawerOpen(open) {
+  drawer.classList.toggle("open", open);
+  document.body.classList.toggle("drawer-open", open);
+}
+
+function resizeComposer() {
+  input.style.height = "auto";
+  input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
+}
+
+let heldCloseMode = false;
+  const pvNotice = document.querySelector("#pv-notice");
 
 function add(event) {
   if (empty) empty.style.display = "none";
@@ -34,48 +42,20 @@ function add(event) {
   const text = document.createElement("p");
   text.textContent = event.content || "";
   article.append(label, text);
-  if (event.role === "user" && event.id) {
-    addPrivacyControl(article, event);
-  }
   messages.append(article);
   article.scrollIntoView({block: "end"});
   return {article, text};
 }
 
-function addPrivacyControl(article, event) {
-  const control = document.createElement("button");
-  control.type = "button";
-  control.className = "privacy";
-  control.dataset.eventId = event.id;
-  setHeldClose(article, control, event.held_close);
-  control.addEventListener("click", async () => {
-    control.disabled = true;
-    try {
-      const response = await fetch(`/api/events/${encodeURIComponent(event.id)}/privacy`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({held_close: !article.classList.contains("held-close")}),
-      });
-      if (!response.ok) throw new Error("privacy unavailable");
-      const result = await response.json();
-      setHeldClose(article, control, result.held_close);
-    } catch {
-      status.textContent = "privacy setting unavailable";
-    } finally {
-      control.disabled = false;
-    }
-  });
-  article.append(control);
+function updatePvMode() {
+  heldCloseMode = !heldCloseMode;
+  pvNotice.hidden = !heldCloseMode;
 }
 
 function setHeldClose(article, control, heldClose) {
   article.classList.toggle("held-close", heldClose);
   control.textContent = heldClose ? "Open" : "Hold close";
   control.setAttribute("aria-pressed", String(heldClose));
-}
-
-function formatWib(timestamp) {
-  return `${WIB_TIME_FORMAT.format(new Date(timestamp))} WIB`;
 }
 
 async function loadHistory() {
@@ -91,14 +71,25 @@ async function loadHistory() {
 }
 
 notebookToggle.addEventListener("click", () => {
-  drawer.classList.toggle("open");
-  if (drawer.classList.contains("open")) {
-    loadDrawerTab(activeTab);
-  }
+  const open = !drawer.classList.contains("open");
+  setDrawerOpen(open);
+  if (open) loadDrawerTab(activeTab);
 });
 
-drawerClose.addEventListener("click", () => {
-  drawer.classList.remove("open");
+drawerClose.addEventListener("click", () => setDrawerOpen(false));
+drawerOverlay.addEventListener("click", () => setDrawerOpen(false));
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && drawer.classList.contains("open")) setDrawerOpen(false);
+});
+
+input.addEventListener("input", resizeComposer);
+resizeComposer();
+
+input.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+    form.requestSubmit();
+  }
 });
 
 drawerTabs.forEach((tab) => {
@@ -123,7 +114,7 @@ async function loadDrawerTab(tab) {
       }
       drawerContent.innerHTML = list.slice().reverse().map(r => `
         <div class="notebook-card">
-          <div class="notebook-card-ts">${formatWib(r.said_at)}</div>
+          <div class="notebook-card-ts">${new Date(r.said_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
           <div>${escapeHtml(r.content)}</div>
         </div>
       `).join("");
@@ -172,35 +163,47 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const message = input.value.trim();
   if (!message) return;
+
+  // Handle /pv command (ephemeral mode toggle)
+  if (message === "/pv") {
+    updatePvMode();
+    input.value = "";
+    resizeComposer();
+    return;
+  }
+
   input.value = "";
   input.disabled = true;
   send.disabled = true;
-  const user = add({role: "user", content: message});
-  const reply = add({role: "assistant"}).text;
+  add({role: "user", content: message});
   status.textContent = "thinking";
+  let reply = null;
   try {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({message}),
+      body: JSON.stringify({message, held_close_mode: heldCloseMode}),
     });
     if (!response.ok || !response.body) throw new Error("chat unavailable");
-    const eventId = response.headers.get("X-Sage-Event-ID");
-    if (eventId) addPrivacyControl(user.article, {
-      id: eventId,
-      held_close: response.headers.get("X-Sage-Held-Close") === "true",
-    });
+    const heldClose = response.headers.get("X-Sage-Held-Close") === "true";
+    if (!heldClose) reply = add({role: "assistant"}).text;
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     while (true) {
       const {done, value} = await reader.read();
       if (done) break;
-      reply.textContent += decoder.decode(value, {stream: true});
-      reply.parentElement.scrollIntoView({block: "end"});
+      if (reply) {
+        reply.textContent += decoder.decode(value, {stream: true});
+        reply.parentElement.scrollIntoView({block: "end"});
+      }
     }
-    reply.textContent += decoder.decode();
+    if (reply) reply.textContent += decoder.decode();
   } catch {
-    reply.textContent = "Sage could not reach the local server. Your message may have been saved.";
+    if (reply) {
+      reply.textContent = "Sage could not reach the local server. Your message may have been saved.";
+    } else {
+      add({role: "assistant", content: "Sage could not reach the local server. Your message may have been saved."});
+    }
   } finally {
     input.disabled = false;
     send.disabled = false;

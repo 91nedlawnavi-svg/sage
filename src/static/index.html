@@ -10,42 +10,49 @@
   <div id="app">
     <header id="header">
       <div id="header-left">
-        <span id="status-dot" class="cold" title="connecting"></span>
+        <span id="status-dot" class="cold" title="connecting" aria-hidden="true"></span>
         <span id="header-title">Sage</span>
-        <span id="status">connecting</span>
+        <span id="status" hidden>connecting</span>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <button id="notebook-toggle" type="button" aria-label="Notebook">
-          <span>Notebook</span>
-        </button>
-      </div>
+      <button id="notebook-toggle" type="button" aria-label="Open notebook">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 4.5h11.5A2.5 2.5 0 0 1 19 7v12.5H7.5A2.5 2.5 0 0 1 5 17V4.5Z"/><path d="M5 17a2.5 2.5 0 0 1 2.5-2.5H19M8 8h7M8 11h5"/></svg>
+        <span>Notebook</span>
+      </button>
     </header>
 
     <main id="messages" aria-live="polite">
       <div id="empty">
-        <div id="empty-glyph">&#9671;</div>
-        <div id="empty-sub">Begin when you're ready.</div>
+        <div id="empty-glyph" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 21 12l-9 9-9-9 9-9Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <p id="empty-sub">A quiet place to think together.</p>
       </div>
     </main>
 
     <form id="composer">
       <label for="message" class="sr-only">Message Sage</label>
+      <div id="pv-notice" class="composer-notice" role="status" aria-live="polite" hidden>Ephemeral mode: messages will be held close.</div>
       <div id="input-row">
-        <textarea id="message" rows="1" placeholder="Message Sage" required></textarea>
-        <button id="send-btn" aria-label="Send">Send</button>
+        <textarea id="message" rows="1" placeholder="What’s on your mind?" required></textarea>
+        <button id="send-btn" type="submit" aria-label="Send message">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          <span>Send</span>
+        </button>
       </div>
+      <div id="composer-hint">Enter for a new line <span aria-hidden="true">·</span> Ctrl / Cmd + Enter to send</div>
     </form>
   </div>
 
-  <aside id="drawer" aria-label="Notebook Drawer">
+  <div id="drawer-overlay" aria-hidden="true"></div>
+  <aside id="drawer" aria-label="Notebook Drawer" aria-labelledby="drawer-title">
     <div id="drawer-header">
-      <span id="drawer-title">Notebook</span>
-      <button id="drawer-close" type="button" aria-label="Close">&#10005;</button>
+      <div>
+        <span id="drawer-title">Notebook</span>
+      </div>
+      <button id="drawer-close" type="button" aria-label="Close notebook"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
     </div>
-    <div id="drawer-tabs">
-      <button class="drawer-tab active" data-tab="reflections">Reflections</button>
-      <button class="drawer-tab" data-tab="beliefs">Beliefs</button>
-      <button class="drawer-tab" data-tab="entities">Entities</button>
+    <div id="drawer-tabs" role="tablist" aria-label="Notebook sections">
+      <button class="drawer-tab active" data-tab="reflections" role="tab">Reflections</button>
+      <button class="drawer-tab" data-tab="beliefs" role="tab">Beliefs</button>
+      <button class="drawer-tab" data-tab="entities" role="tab">Entities</button>
     </div>
     <div id="drawer-content">Loading...</div>
   </aside>
