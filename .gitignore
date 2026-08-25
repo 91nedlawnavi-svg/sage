@@ -33,5 +33,5 @@ graphify-out/
 .idea/
 .DS_Store
 
-# Claude Code local state
+# Agent local state
 .claude/

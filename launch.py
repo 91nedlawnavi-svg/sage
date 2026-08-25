@@ -47,12 +47,12 @@ def main() -> None:
     scribe_router = RouterClient(args.scribe_alias)
     interior = InteriorStore(args.data_root)
 
-    # Start background heartbeat daemon
+    # Start permitted local background work.
     heartbeat = Heartbeat(store, interior, scribe_router, interval_seconds=120.0)
     heartbeat.start()
 
     server = SageServer(("127.0.0.1", args.port), store, router, interior)
-    print(f"Sage v3 online at http://127.0.0.1:{server.server_port}")
+    print(f"Sage online at http://127.0.0.1:{server.server_port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

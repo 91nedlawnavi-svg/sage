@@ -1,34 +1,54 @@
 # Sage — Current Milestone
 
-## Status
+## Sage Refresh
 
-Active: Full rebuild — Dual Storage, Multi-Model Routing, Vector Semantic Recall, Interior Notebook, and Heartbeat.
+The old V3 rebuild is sealed as historical implementation work. It is not the
+current product definition. The current work is to make the existing foundation
+serve the refreshed picture: an owned personal intelligence whose whole-life
+episodic memory becomes relevant continuity.
 
-## Rebuild evidence
+## Current reality
 
-Sage v3 architecture is live and verified:
-- Physical separation of relational world memory (`~/sage_data/relational/`) and interior data (`~/sage_data/interior/`).
-- Multi-model routing using free-tier aliases (`SAGE_CHAT_MODEL` for conversation, `SAGE_SCRIBE_MODEL` for extraction/reflections) with reasoning preamble stripping and truncation guards.
-- Local embedding support connected to `llama-embedder` (`127.0.0.1:8081`) for vector cosine similarity combined with BM25 term frequency.
-- Entity observation intake (append-only observation events, zero locks, zero promotion queues).
-- Interior presence: private reflections log, arguable belief ledger with evidence tracking, single revisable waiting message buffer.
-- Lightweight web UI with Notebook drawer (reflections, beliefs, entities), held-close tap toggle, and chunked streaming.
-- Systemd user service `sage.service` running `launch.py` with active heartbeat daemon.
+Already present and verified:
 
-## Boundary evidence
+- Local browser and terminal chat through the configured local router.
+- Durable UTC event history with restart persistence.
+- Lexical and embedding-assisted event recall.
+- Held-close and `/pv` privacy boundaries.
+- Fail-closed provider handling for unknown or protected events.
+- Separate relational and interior storage.
+- Reflections, entity observations, and one waiting-message surface.
+- Restored daily-life frontend with Notebook drawer and streaming chat.
+- Background extraction/reflection with retry-safe completion records.
+- 34 deterministic tests passing on the refreshed baseline.
 
-- User privacy classification is stored with the event before any embedding or provider-context assembly.
-- Unknown or interrupted user intake is excluded from embeddings, recall-built provider context, and heartbeat work.
-- Heartbeat entity extraction and reflections record durable source-event completion and are safe to retry.
-- Belief records are read-only until an argument-and-evidence write path exists.
-- Browser health does not disclose the configured model alias; browser time display is explicitly WIB.
+These are foundations, not proof that Sage already feels like a JARVIS-like
+personal intelligence.
 
-## Verification
+## Active outcome — memory refresh
 
-```bash
-python3 -m unittest discover -s tests
-```
+Make a normal current conversation retrieve the part of Elliot's whole history
+that is connected to the present situation, without dumping records or losing
+the original events.
 
-## Excluded
+## Acceptance evidence
 
-Mutable state tables, promotion desks, fact locks, and push notifications remain permanently excluded per invariants.
+- Every accepted daily-life turn remains durable episodic history.
+- Retrieval uses the whole current exchange as its cue, not only the newest
+  sentence.
+- Relevant older events can influence a response naturally.
+- Exact moments remain findable when explicitly requested.
+- Related events can be grouped or summarized without erasing their sources.
+- Contradictions remain available and do not silently collapse into one fact.
+- Held-close and unknown material never enters casual recall or provider context.
+- A provider failure cannot lose an accepted user event.
+- A felt test shows continuity in an ordinary, non-crisis conversation.
+
+## Explicitly not active yet
+
+- Broad autonomous actions.
+- External notifications.
+- Voice or ambient interfaces.
+- A durable belief-edit workflow.
+- A graph or current-state replacement for event memory.
+- More background activity merely to appear alive.

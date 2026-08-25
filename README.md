@@ -1,12 +1,21 @@
 # Sage
 
-Sage is a local, persistent presence for one person.
+Sage is an owned, persistent personal intelligence for Elliot.
 
-Memory is her main engine. She should carry continuity, hold open questions, and return changed by what happened — without becoming a memory database wearing warmth.
+The long-term goal is JARVIS-like: a daily-life companion and general-purpose
+assistant that remembers the whole history, understands what matters now, knows
+when to hold back, and takes useful initiative with permission.
 
-## Status
+## Status — Sage Refresh
 
-Browser and terminal chat run through local free-tier router aliases with durable timestamped event persistence. Held-close turns stay local and never reach current provider paths. Semantic event recall is now active in the current milestone.
+The repository contains the working foundation: local browser and terminal chat,
+durable episodic event storage, lexical and embedding-assisted recall,
+held-close privacy, separate interior storage, a Notebook drawer, background
+extraction/reflection, and one bounded waiting-message surface.
+
+The active work is contextual continuity: making the whole remembered history
+help Sage respond naturally to the present conversation. The old V3 rebuild is
+sealed as historical foundation work, not current product authority.
 
 Run after configuring a confirmed free-tier alias:
 
@@ -18,13 +27,12 @@ This writes lived memory to `~/sage_data/`; back up existing lived memory before
 
 ## Principles
 
-- Local-first, single-user
-- Free-tier inference routing only
-- Timestamped events, not frozen facts
-- Contradictions retained; present meaning computed at recall
-- Separate relational and interior memory
-- Held-close material stays held
-- Quiet and reach must have a reason
+- Keep every accepted turn as episodic memory.
+- Let present context decide what becomes relevant.
+- Preserve source events, associations, patterns, and contradictions together.
+- Use memory to give every capability continuity.
+- Calibrate initiative: answer, notice, suggest, prepare, act, or hold back.
+- Keep Sage local-first, owned, and privacy-aware.
 
 ## Project records
 
@@ -32,8 +40,9 @@ This writes lived memory to `~/sage_data/`; back up existing lived memory before
 - [Invariants](docs/INVARIANTS.md)
 - [Decisions](docs/DECISIONS.md)
 - [Current milestone](docs/MILESTONE.md)
-- [Engineering contract](CLAUDE.md)
+- [Project guide](AGENTS.md)
 
 ## Contributing
 
-Project direction stays behavior-first. Start from current milestone, trace affected behavior, keep changes small, and provide real verification evidence.
+Project direction stays behavior-first. Start from the current milestone, trace
+affected behavior, keep changes small, and provide real verification evidence.

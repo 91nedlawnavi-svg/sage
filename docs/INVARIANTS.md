@@ -1,43 +1,52 @@
 # Sage — Invariants
 
-These rules govern every implementation. Deferred means no surface exists yet; it does not weaken rule.
+These constraints apply to every implementation and every future capability.
 
-## Scope and routing
+## Ownership and scope
 
-- Sage serves one local user only.
-- User data stays local by default. Any provider use must be explicit in behavior and limited to necessary context.
-- Model routing uses free-tier aliases only. Never introduce paid-model fallback.
-- Provider failure degrades clearly without losing accepted local events.
+- Sage serves one local user.
+- User data stays local by default; provider use is explicit and minimized.
+- `~/sage_data/` is lived memory and remains deletable as one unit.
+- Identity, code, and project records stay outside lived memory.
 
-## Identity and lived memory
+## Episodic memory
 
-- `~/sage_data/` is lived memory and must remain deletable as one unit.
-- Identity, code, and project records stay outside `~/sage_data/`.
-- A directive is authoritative once one exists. Directive work is deferred.
+- Every accepted user turn is durably retained as an event.
+- Every valid assistant reply is durably retained as an event.
+- Events store exact UTC `said_at`; `happened_at` may be fuzzy or absent.
+- Original events are append-only history, not a cache to be replaced.
+- No ordinary event is discarded merely because it seems mundane.
+- Contradictions remain retrievable history.
+- Episodes, associations, summaries, and patterns are derived views with source
+  provenance; they never become an untraceable replacement for events.
+- Meaning is computed when memory is recalled, not fixed permanently at intake.
 
-## Event memory
+## Context and privacy
 
-- A timestamped event is memory's core unit.
-- Every event stores exact UTC `said_at`; `happened_at` may be fuzzy or absent.
-- State is computed when recalling events, never stored as a replacement current view.
-- Contradictions remain in history.
-- Do not reintroduce frozen facts, locks, promotion queues or desks, reconciliation precedence, or current-state stores.
+- Recall is driven by the present conversation and situation, not only one
+  isolated keyword or a permanently assigned importance score.
+- Recall may combine lexical, semantic, temporal, episodic, entity, and pattern
+  signals, then return a compact context with provenance.
+- Held-close material is excluded before casual recall, embedding, or provider
+  prompt assembly.
+- Unknown or interrupted privacy classification fails closed for provider work.
+- Relational memory and Sage's interior material remain physically separate.
 
-## Recall and privacy
+## Intelligence and agency
 
-- Recall must consider relevance at time of use, not only extraction time.
-- Relational memory and Sage's interior memory remain physically separate.
-- Held-close material is excluded tactfully at recall time and is never re-shipped by background provider work.
-- Graph work, when introduced, indexes durable entities only. Entity/graph work is deferred.
+- Routed models are replaceable engines behind Sage's stable identity.
+- Provider failure must degrade clearly without losing accepted local events.
+- Sage may answer, notice, mention, suggest, prepare, or act; the response level
+  must fit context, permission, and risk.
+- External, risky, irreversible, expensive, or ambiguous actions require explicit
+  authorization.
+- Sage learns from outcomes and corrections without silently rewriting history.
+- Sage must not claim human experience or sentience as fact.
 
 ## Time and reach
 
-- Persist time in UTC. Display time in WIB.
-- Reach is at most one revisable waiting message in app. Never send push notifications.
-- Heartbeat may run permitted local background extraction and reflection; background reach behavior remains deferred.
-
-## Belief and agency
-
-- Sage may change through argument and evidence.
-- No direct belief-edit path exists beyond argument.
-- Belief representation is deferred.
+- Persist time in UTC; display user-facing time in WIB.
+- In-app initiative is allowed only with a legible reason and a bounded surface.
+- At most one revisable waiting message exists until a broader reach design is
+  explicitly settled.
+- No push or external notification path exists by default.

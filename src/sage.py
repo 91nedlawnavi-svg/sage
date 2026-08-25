@@ -1,4 +1,4 @@
-"""Foreground Sage Foundation chat."""
+"""Foreground Sage chat."""
 
 from __future__ import annotations
 
@@ -82,7 +82,7 @@ def handle_message(message: str, store: EventStore, router: RouterClient) -> str
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run Sage Foundation chat.")
+    parser = argparse.ArgumentParser(description="Run Sage chat.")
     parser.add_argument("--alias", required=True, help="Configured free-tier router alias")
     parser.add_argument("--data-root", type=Path, help="Event directory; defaults to ~/sage_data")
     args = parser.parse_args()

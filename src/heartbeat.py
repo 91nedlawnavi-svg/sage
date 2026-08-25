@@ -1,4 +1,4 @@
-"""Background heartbeat process for reflections, entity extraction, and revisable reach."""
+"""Permitted local background work for reflections and entity observations."""
 
 from __future__ import annotations
 

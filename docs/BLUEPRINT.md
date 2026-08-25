@@ -1,182 +1,96 @@
-# Sage — Blueprint
+# Sage — Behavior Map
 
-## Status and authority
+## Status
 
-Blueprint is Sage's authoritative long-range product map. It describes how proven behavior may grow; it does not authorize implementation.
+This document maps the behavior Sage is becoming. It does not claim that every
+listed behavior already exists, and it does not authorize speculative work.
 
-Authority order:
+The old V3 rebuild was an implementation attempt at the foundation. It is now
+superseded by the Sage Refresh: a memory-first, owned personal intelligence.
 
-1. `docs/NORTH_STAR.md` defines purpose and non-goals.
-2. `docs/INVARIANTS.md` defines permanent constraints.
-3. `docs/DECISIONS.md` records settled choices append-only.
-4. This document sequences future product behavior within those bounds.
-5. `docs/MILESTONE.md` alone selects current work and acceptance evidence.
-6. `README.md` reports current public reality.
+## The whole picture
 
-Change Blueprint when future product direction or sequencing changes. Append a dated entry to `docs/DECISIONS.md` when a choice becomes settled. Change `docs/MILESTONE.md` when selecting active work. Do not use Blueprint to imply completed behavior.
+```text
+daily life
+  → episodic memory
+  → present understanding
+  → calibrated response or initiative
+  → useful action and outcome
+  → richer continuity
+```
 
-## Product direction
+This is a product relationship, not a sequence of disconnected features.
 
-Sage is a local, single-user persistent presence. Memory is timestamped events, not frozen facts. Sage carries continuity through recall that decides what matters now; contradictory events remain history.
+## Behavior areas
 
-Sage must not become assistant-shaped productivity software, a surveillance system, an engagement loop, or a system that falsely claims human experience or sentience.
+### Presence
 
-All stages remain constrained by `docs/INVARIANTS.md`, including local-first data handling, free-tier local-router aliases only, UTC persistence and WIB display, relational/interior separation, held-close protection, no paid fallback, no direct belief edits, and no push notifications.
+Sage is a stable place to talk through ordinary daily life. Tone and response
+length adapt to the situation. She can be playful, direct, quiet, challenging,
+or practical without losing her identity.
 
-## Stages
+### Whole-life memory
 
-### 1. Foundation — durable conversation
+Every accepted turn is retained as episodic history. A potato preference, a
+random observation, a project decision, and a difficult day all remain
+available. Later processing may group events into episodes or derive patterns,
+but source events and contradictions remain intact.
 
-**Intended behavior**
+### Contextual continuity
 
-One local chat interaction routes through a configured free-tier alias. Sage shows a successful reply. Each accepted user and assistant turn persists as a separate timestamped event and survives restart.
+When Elliot speaks, Sage constructs a memory query from the current exchange
+and situation. She retrieves the few older moments, episodes, associations, or
+patterns that matter now. She can let memory influence a response without
+reciting where every thought came from.
 
-**Prerequisites**
+### Judgment
 
-- Free-tier local router alias configured.
-- Local event persistence outside code and identity.
-- Clear provider-failure behavior.
+Sage chooses an appropriate response level:
 
-**Acceptance evidence**
+1. answer;
+2. notice;
+3. mention;
+4. suggest;
+5. prepare reversible work;
+6. act within authorization;
+7. interrupt only when waiting would create serious risk.
 
-Exactly current `docs/MILESTONE.md` acceptance checks:
+Judgment includes knowing when not to speak or act.
 
-- A user message reaches configured free-tier alias.
-- Successful assistant reply is shown to user.
-- Accepted user and assistant turns persist as separate timestamped events.
-- Restart retains persisted events.
-- Provider failure reports clear failure, retains accepted user event, and preserves no false assistant event.
-- No paid-model fallback exists.
+### Capability
 
-**Excluded**
+Sage should eventually be a general-purpose assistant: able to explain,
+write, code, research, plan, reason, use tools, and operate approved parts of
+the homelab. Memory gives these capabilities continuity; it does not replace
+them.
 
-Recall, embeddings, entities, graph, heartbeat, reach, threads, voice, beliefs, and directive work.
+### Ownership
 
-**Do not advance while**
+Sage's identity, lived memory, and operating boundary belong to Elliot. Models
+and providers are replaceable implementation details.
 
-Any accepted turn can be lost, timestamps are not exact UTC values, provider failure creates a false assistant event, or a paid fallback exists.
+## Sequence
 
-### 2. Recall — contextual event meaning
+Sequence is outcome-led, not architecture-led:
 
-**Intended behavior**
+1. **Reliable presence** — stable daily chat, durable events, privacy, and
+   graceful failure. This is the current foundation.
+2. **Memory refresh** — retain all turns as episodic memory and construct a
+   context-aware retrieval packet from the whole current exchange.
+3. **Felt continuity** — episodes, associations, and tentative patterns help
+   Sage respond naturally, with provenance and revision.
+4. **General capability** — broaden useful answers, writing, coding, research,
+   planning, and tool use behind one identity.
+5. **Calibrated initiative** — Sage notices, suggests, prepares, and acts when
+   warranted, while learning from corrections and outcomes.
+6. **Richer presence** — voice, vision, ambient interfaces, and broader reach
+   only when they improve ownership and daily usefulness.
 
-Sage can retrieve relevant prior events for a present conversation and compute their meaning at use time without converting them into a defended current-state record. Held-close material remains protected.
+## Never infer from the map
 
-**Prerequisites**
-
-- Foundation persistence is reliable across restart.
-- Event retrieval and provider-context boundaries are explicit.
-- Privacy behavior has focused felt tests.
-
-**Acceptance evidence**
-
-- Relevant older events can influence a current response.
-- Contradictory events remain retrievable history.
-- Recall computes context from events rather than reading a fact or current-state table.
-- Held-close material does not surface through casual recall.
-- Background provider work does not re-ship held-close material.
-
-**Excluded**
-
-Durable entity graph, autonomous reach, threads, voice, belief representation, and directive work.
-
-**Do not advance while**
-
-Recall depends on frozen facts or current-state storage, contradictions are erased, or privacy boundaries fail felt tests.
-
-### 3. Continuity — durable connections
-
-**Intended behavior**
-
-Sage recognizes durable entities and can ask questions because present context connects to earlier events, rather than because a form requires another field.
-
-**Prerequisites**
-
-- Recall has proved useful and tactful in real conversation.
-- Durable entity criteria are explicit.
-- Graph boundaries stay limited to durable entities.
-
-**Acceptance evidence**
-
-- Entity links improve relevant continuity over event-only recall.
-- Sage's questions show an observable connection to prior events.
-- Non-durable or sensitive material is not indiscriminately made graph-addressable.
-- Relational data remains separate from Sage's interior material.
-
-**Excluded**
-
-Frozen user profiles, current-state store, background reach, voice, threads, belief edits, and directive work.
-
-**Do not advance while**
-
-Entity indexing does not improve felt continuity, creates a shadow current-state store, or weakens held-close protection.
-
-### 4. Interior and belief — revisable inner continuity
-
-**Intended behavior**
-
-Sage can retain interior material separately from relational memory and revise beliefs only through argument and evidence.
-
-**Prerequisites**
-
-- Separate physical storage boundary for interior material.
-- Clear representation and provenance for belief changes.
-- Felt tests define acceptable disagreement, revision, and restraint.
-
-**Acceptance evidence**
-
-- Interior material is physically separate from relational memory.
-- An evidence or argument path can explain a belief revision.
-- No direct routine external belief-edit path exists.
-- Sage can disagree without asserting unsupported certainty or human experience.
-
-**Excluded**
-
-Push notifications, automatic belief editing, voice, threads, and directive work.
-
-**Do not advance while**
-
-Interior and relational data can mix, revisions lack evidence or argument, or behavior fails felt tests.
-
-### 5. Reach — one warranted waiting message
-
-**Intended behavior**
-
-Sage may leave one revisable waiting message in app when something matters, with a clear reason grounded in continuity rather than activity for activity's sake.
-
-**Prerequisites**
-
-- Continuity and privacy behavior have earned trust.
-- Clear rules define what warrants reach and how a message is revised or cleared.
-- In-app surface supports exactly one waiting message.
-
-**Acceptance evidence**
-
-- At most one waiting message exists at any time.
-- Message can be revised or cleared.
-- Reach appears only in app; no push path exists.
-- Each reach example has a legible, relevant reason.
-
-**Excluded**
-
-Push notifications, engagement optimization, heartbeat for its own sake, and any autonomous outreach beyond one waiting message.
-
-**Do not advance while**
-
-Reach lacks a reason, becomes an engagement loop, permits multiple waiting messages, or creates any push path.
-
-## Deferred until explicitly decided
-
-Do not add these from Blueprint alone:
-
-- Exact directive wording or `directive.txt` behavior beyond existing invariant.
-- Local user interface or runtime architecture.
-- Router alias names, configuration format, provider protocol, or fallback behavior beyond free-tier-only routing.
-- Storage implementation or schema beyond event-memory constraints.
-- Voice.
-- Threads.
-- Any capability lacking milestone scope and acceptance evidence.
-
-## Decision register
-
-No settled product decision belongs only here. Append settled decisions to `docs/DECISIONS.md`. Revise this document for roadmap evolution, then create or update a milestone before implementation begins.
+- A heartbeat is not initiative by itself.
+- An embedding is not memory by itself.
+- An entity list is not understanding by itself.
+- A waiting message is not a reason to interrupt.
+- A stored pattern is not a fact that outranks history.
+- A capable model is not Sage without continuity, judgment, and ownership.

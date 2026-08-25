@@ -1,4 +1,4 @@
-"""Local browser chat for Sage Foundation with Notebook and interior data APIs."""
+"""Local browser chat for Sage with Notebook and interior data APIs."""
 
 from __future__ import annotations
 

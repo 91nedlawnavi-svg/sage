@@ -14,6 +14,12 @@ const drawerContent = document.querySelector("#drawer-content");
 
 let activeTab = "reflections";
 
+const WIB_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Asia/Jakarta",
+});
+
 input.disabled = true;
 send.disabled = true;
 
@@ -28,7 +34,11 @@ function resizeComposer() {
 }
 
 let heldCloseMode = false;
-  const pvNotice = document.querySelector("#pv-notice");
+const pvNotice = document.querySelector("#pv-notice");
+
+function formatWib(timestamp) {
+  return `${WIB_TIME_FORMAT.format(new Date(timestamp))} WIB`;
+}
 
 function add(event) {
   if (empty) empty.style.display = "none";
@@ -114,7 +124,7 @@ async function loadDrawerTab(tab) {
       }
       drawerContent.innerHTML = list.slice().reverse().map(r => `
         <div class="notebook-card">
-          <div class="notebook-card-ts">${new Date(r.said_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+          <div class="notebook-card-ts">${formatWib(r.said_at)}</div>
           <div>${escapeHtml(r.content)}</div>
         </div>
       `).join("");
