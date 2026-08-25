@@ -39,6 +39,8 @@ class Event(TypedDict):
     said_at: str
     id: NotRequired[str]
     held_close: NotRequired[bool]
+    provider_excluded: NotRequired[bool]
+    privacy_carry_after: NotRequired[int]
 
 
 class PrivacyRecord(TypedDict):
@@ -57,6 +59,13 @@ class EntityObservation(TypedDict):
     observation: str
     said_at: str
     source_event_id: NotRequired[str]
+
+
+class HeartbeatCompletion(TypedDict):
+    kind: Literal["heartbeat"]
+    stage: Literal["entities", "reflection"]
+    source_event_id: str
+    said_at: str
 
 
 def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
@@ -78,6 +87,7 @@ class EventStore:
         self.path = self.data_root / "events.jsonl"
         self.embeddings_path = self.relational_dir / "embeddings.jsonl"
         self.entities_path = self.relational_dir / "entities.jsonl"
+        self.heartbeat_path = self.relational_dir / "heartbeat.jsonl"
         self.embedder = embedder
 
     def append(
@@ -86,6 +96,8 @@ class EventStore:
         content: str,
         *,
         save_embedding: bool = True,
+        initial_held_close: bool | None = None,
+        privacy_carry_after: int | None = None,
     ) -> Event:
         event: Event = {
             "id": str(uuid4()),
@@ -93,9 +105,22 @@ class EventStore:
             "content": content,
             "said_at": self._timestamp(),
         }
+        if role == "user":
+            event["provider_excluded"] = initial_held_close is None or initial_held_close
+            if event["provider_excluded"]:
+                save_embedding = False
+            if initial_held_close is not None:
+                event["held_close"] = initial_held_close
+                if privacy_carry_after is not None:
+                    event["privacy_carry_after"] = privacy_carry_after
+        elif initial_held_close is not None:
+            raise ValueError("Only user events can have privacy classification")
         self._append_record(event)
-        if save_embedding and self.embedder is not None:
-            self._save_embedding(event["id"], content)
+        if save_embedding and self.embedder is not None and not event.get("provider_excluded", False):
+            try:
+                self._save_embedding(event["id"], content)
+            except OSError:
+                pass
         return event
 
     def append_privacy(
@@ -127,6 +152,10 @@ class EventStore:
         source_event_id: str | None = None,
     ) -> EntityObservation:
         self.relational_dir.mkdir(parents=True, exist_ok=True)
+        if source_event_id is not None:
+            for existing in self.entity_observations():
+                if existing.get("source_event_id") == source_event_id and existing["entity_id"] == entity_id:
+                    return existing
         record: EntityObservation = {
             "kind": "entity_obs",
             "entity_id": entity_id,
@@ -143,30 +172,61 @@ class EventStore:
         return record
 
     def entity_observations(self) -> list[EntityObservation]:
-        if not self.entities_path.exists():
-            return []
-        records: list[EntityObservation] = []
-        with self.entities_path.open(encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    data = json.loads(line)
-                    if data.get("kind") == "entity_obs":
-                        records.append(data)
-                except json.JSONDecodeError:
-                    continue
-        return records
+        return [
+            record for record in self._read_jsonl(self.entities_path)
+            if isinstance(record, dict) and record.get("kind") == "entity_obs"
+        ]
+
+    def append_heartbeat_completion(
+        self,
+        stage: Literal["entities", "reflection"],
+        source_event_id: str,
+    ) -> HeartbeatCompletion:
+        record: HeartbeatCompletion = {
+            "kind": "heartbeat",
+            "stage": stage,
+            "source_event_id": source_event_id,
+            "said_at": self._timestamp(),
+        }
+        self.relational_dir.mkdir(parents=True, exist_ok=True)
+        with self.heartbeat_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        return record
+
+    def heartbeat_completed(self, stage: Literal["entities", "reflection"]) -> set[str]:
+        completed: set[str] = set()
+        for record in self._read_jsonl(self.heartbeat_path):
+            if (
+                isinstance(record, dict)
+                and record.get("kind") == "heartbeat"
+                and record.get("stage") == stage
+                and isinstance(record.get("source_event_id"), str)
+            ):
+                completed.add(record["source_event_id"])
+        return completed
 
     def history(self) -> list[Event]:
         records = self._read_records()
         privacy = self._privacy_status(records)
+        held_close_ids = {
+            record["target_id"]
+            for record in records
+            if isinstance(record, dict)
+            and record.get("kind") == "privacy"
+            and record.get("held_close") is True
+        }
         events: list[Event] = []
         for index, record in enumerate(records):
             if isinstance(record, dict) and record.get("kind") == "privacy":
                 continue
             event = self._parse_event(record, index)
-            event["held_close"] = privacy.get(event["id"], False)
+            event["held_close"] = privacy.get(event["id"], event.get("held_close", False))
+            event["provider_excluded"] = (
+                event.get("provider_excluded", event["role"] == "user")
+                or event["id"] in held_close_ids
+            )
             events.append(event)
         return events
 
@@ -183,18 +243,24 @@ class EventStore:
     def carry_before_next_user_event(self) -> int:
         carry = 0
         for record in self._read_records():
-            if not isinstance(record, dict) or record.get("kind") != "privacy":
-                continue
-            privacy = self._parse_privacy(record)
-            if privacy["source"] == "sensor":
-                carry = privacy.get("carry_after", 0)
+            if isinstance(record, dict) and record.get("kind") == "privacy":
+                privacy = self._parse_privacy(record)
+                if privacy["source"] == "sensor":
+                    carry = privacy.get("carry_after", 0)
+            elif isinstance(record, dict) and record.get("role") == "user":
+                carry = record.get("privacy_carry_after", carry)
         return carry
 
     def recall(self, query: str, limit: int = 8, *, exclude_event_id: str | None = None) -> list[Event]:
         if limit <= 0:
             return []
 
-        events = [event for event in self.history() if event["role"] in {"user", "assistant"} and not event["held_close"]]
+        events = [
+            event for event in self.history()
+            if event["role"] in {"user", "assistant"}
+            and not event["held_close"]
+            and not event.get("provider_excluded", False)
+        ]
         if exclude_event_id is not None:
             events = [event for event in events if event["id"] != exclude_event_id]
 
@@ -215,7 +281,10 @@ class EventStore:
         query_embedding: list[float] | None = None
         embeddings_map: dict[str, list[float]] = {}
         if self.embedder is not None:
-            query_embedding = self.embedder.embed(query)
+            try:
+                query_embedding = self.embedder.embed(query)
+            except Exception:
+                query_embedding = None
             if query_embedding:
                 embeddings_map = self._load_embeddings()
 
@@ -258,7 +327,10 @@ class EventStore:
     def _save_embedding(self, event_id: str, content: str) -> None:
         if self.embedder is None:
             return
-        vector = self.embedder.embed(content)
+        try:
+            vector = self.embedder.embed(content)
+        except Exception:
+            return
         if vector is None:
             return
         self.relational_dir.mkdir(parents=True, exist_ok=True)
@@ -271,15 +343,9 @@ class EventStore:
         if not self.embeddings_path.exists():
             return {}
         mapping: dict[str, list[float]] = {}
-        with self.embeddings_path.open(encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    record = json.loads(line)
-                    mapping[record["event_id"]] = record["vector"]
-                except (json.JSONDecodeError, KeyError):
-                    continue
+        for record in self._read_jsonl(self.embeddings_path):
+            if isinstance(record, dict) and "event_id" in record and "vector" in record:
+                mapping[record["event_id"]] = record["vector"]
         return mapping
 
     def _append_record(self, record: object) -> None:
@@ -295,9 +361,13 @@ class EventStore:
             self._fsync_directory(self.data_root)
 
     def _read_records(self) -> list[object]:
-        if not self.path.exists():
+        return self._read_jsonl(self.path)
+
+    @staticmethod
+    def _read_jsonl(path: Path) -> list[object]:
+        if not path.exists():
             return []
-        with self.path.open(encoding="utf-8") as events_file:
+        with path.open(encoding="utf-8") as events_file:
             lines = events_file.readlines()
         records: list[object] = []
         for index, line in enumerate(lines):
@@ -355,6 +425,12 @@ class EventStore:
             event["id"] = record["id"]
         else:
             event["id"] = f"legacy:{index}"
+        if isinstance(record.get("held_close"), bool):
+            event["held_close"] = record["held_close"]
+        if isinstance(record.get("provider_excluded"), bool):
+            event["provider_excluded"] = record["provider_excluded"]
+        if isinstance(record.get("privacy_carry_after"), int) and record["privacy_carry_after"] >= 0:
+            event["privacy_carry_after"] = record["privacy_carry_after"]
         return event
 
     @staticmethod

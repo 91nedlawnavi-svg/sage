@@ -20,6 +20,11 @@ class RecordingEmbedder:
         return [1.0]
 
 
+class FailingEmbeddingStore(EventStore):
+    def _save_embedding(self, event_id: str, content: str) -> None:
+        raise OSError("embedding storage unavailable")
+
+
 class PrivacyEmbeddingTests(unittest.TestCase):
     def test_held_close_input_never_reaches_embedder(self) -> None:
         with TemporaryDirectory() as directory:
@@ -42,6 +47,24 @@ class PrivacyEmbeddingTests(unittest.TestCase):
             self.assertIsNotNone(accepted)
             self.assertFalse(accepted.privacy.held_close)
             self.assertEqual(embedder.texts, ["Open project update"])
+
+    def test_unclassified_input_never_reaches_embedder(self) -> None:
+        with TemporaryDirectory() as directory:
+            embedder = RecordingEmbedder()
+            store = EventStore(Path(directory), embedder=embedder)
+
+            store.append("user", "Unknown privacy", initial_held_close=None)
+
+            self.assertEqual(embedder.texts, [])
+
+    def test_embedding_storage_failure_does_not_lose_user_event(self) -> None:
+        with TemporaryDirectory() as directory:
+            store = FailingEmbeddingStore(Path(directory), embedder=RecordingEmbedder())
+
+            accepted = accept_message("Public update", store)
+
+            self.assertIsNotNone(accepted)
+            self.assertEqual(store.read_all()[0]["content"], "Public update")
 
 
 if __name__ == "__main__":

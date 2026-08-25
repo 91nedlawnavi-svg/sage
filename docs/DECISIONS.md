@@ -71,3 +71,10 @@ Append dated decisions here. Do not rewrite earlier entries; add a later entry w
 - Heartbeat is active for local background entity extraction and private reflections.
 - Heartbeat provider prompts include only events currently classified as not held-close.
 - Autonomous reach and push notifications remain deferred; the waiting-message buffer remains the only in-app reach surface.
+
+## 2026-08-25 — Provider boundary and heartbeat durability
+
+- User privacy classification and provider exclusion are stored on the event before auxiliary embedding or privacy-log writes.
+- Events without a completed local privacy classification fail closed: they remain local history but do not enter embeddings, recall-built provider context, or heartbeat prompts.
+- Heartbeat completion is append-only and keyed by stage plus source event; entity observations and reflections are idempotent across retries.
+- The interior belief ledger remains read-only until an argument-and-evidence write path is implemented.

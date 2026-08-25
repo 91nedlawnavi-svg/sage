@@ -15,6 +15,14 @@ Sage v3 architecture is live and verified:
 - Lightweight web UI with Notebook drawer (reflections, beliefs, entities), held-close tap toggle, and chunked streaming.
 - Systemd user service `sage.service` running `launch.py` with active heartbeat daemon.
 
+## Boundary evidence
+
+- User privacy classification is stored with the event before any embedding or provider-context assembly.
+- Unknown or interrupted user intake is excluded from embeddings, recall-built provider context, and heartbeat work.
+- Heartbeat entity extraction and reflections record durable source-event completion and are safe to retry.
+- Belief records are read-only until an argument-and-evidence write path exists.
+- Browser health does not disclose the configured model alias; browser time display is explicitly WIB.
+
 ## Verification
 
 ```bash

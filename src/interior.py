@@ -15,6 +15,7 @@ class Reflection(TypedDict):
     content: str
     said_at: str
     category: NotRequired[str]
+    source_event_id: NotRequired[str]
 
 
 class Belief(TypedDict):
@@ -44,14 +45,26 @@ class InteriorStore:
     def _ensure_dir(self) -> None:
         self.interior_dir.mkdir(parents=True, exist_ok=True)
 
-    def append_reflection(self, content: str, category: str = "general") -> Reflection:
+    def append_reflection(
+        self,
+        content: str,
+        category: str = "general",
+        *,
+        source_event_id: str | None = None,
+    ) -> Reflection:
         self._ensure_dir()
+        if source_event_id is not None:
+            for existing in self.list_reflections(limit=10_000):
+                if existing.get("source_event_id") == source_event_id:
+                    return existing
         reflection: Reflection = {
             "id": str(uuid4()),
             "content": content,
             "said_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "category": category,
         }
+        if source_event_id is not None:
+            reflection["source_event_id"] = source_event_id
         with self.reflections_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(reflection, ensure_ascii=False) + "\n")
             f.flush()
@@ -62,53 +75,39 @@ class InteriorStore:
         if not self.reflections_path.exists():
             return []
         reflections: list[Reflection] = []
-        with self.reflections_path.open(encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    reflections.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
+        reflections = [record for record in self._read_jsonl(self.reflections_path) if isinstance(record, dict)]
         return reflections[-limit:]
 
-    def append_belief(
-        self,
-        topic: str,
-        stance: str,
-        evidence: str,
-        *,
-        revised_from: str | None = None,
-    ) -> Belief:
-        self._ensure_dir()
-        belief: Belief = {
-            "id": str(uuid4()),
-            "topic": topic,
-            "stance": stance,
-            "evidence": evidence,
-            "said_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        }
-        if revised_from is not None:
-            belief["revised_from"] = revised_from
-        with self.beliefs_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(belief, ensure_ascii=False) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
-        return belief
+    def has_reflection_for_source(self, source_event_id: str) -> bool:
+        return any(
+            isinstance(record, dict) and record.get("source_event_id") == source_event_id
+            for record in self._read_jsonl(self.reflections_path)
+        )
 
     def list_beliefs(self) -> list[Belief]:
         if not self.beliefs_path.exists():
             return []
         beliefs: list[Belief] = []
-        with self.beliefs_path.open(encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    beliefs.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
+        beliefs = [record for record in self._read_jsonl(self.beliefs_path) if isinstance(record, dict)]
         return beliefs
+
+    @staticmethod
+    def _read_jsonl(path: Path) -> list[object]:
+        if not path.exists():
+            return []
+        with path.open(encoding="utf-8") as data_file:
+            lines = data_file.readlines()
+        records: list[object] = []
+        for index, line in enumerate(lines):
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                if index == len(lines) - 1 and not line.endswith("\n"):
+                    break
+                raise
+        return records
 
     def get_waiting_message(self) -> WaitingMessage | None:
         if not self.waiting_message_path.exists():

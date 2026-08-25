@@ -13,6 +13,12 @@ const drawerContent = document.querySelector("#drawer-content");
 
 let activeTab = "reflections";
 
+const WIB_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Asia/Jakarta",
+});
+
 input.disabled = true;
 send.disabled = true;
 
@@ -68,6 +74,10 @@ function setHeldClose(article, control, heldClose) {
   control.setAttribute("aria-pressed", String(heldClose));
 }
 
+function formatWib(timestamp) {
+  return `${WIB_TIME_FORMAT.format(new Date(timestamp))} WIB`;
+}
+
 async function loadHistory() {
   const response = await fetch("/api/history");
   if (!response.ok) throw new Error("history unavailable");
@@ -113,7 +123,7 @@ async function loadDrawerTab(tab) {
       }
       drawerContent.innerHTML = list.slice().reverse().map(r => `
         <div class="notebook-card">
-          <div class="notebook-card-ts">${new Date(r.said_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+          <div class="notebook-card-ts">${formatWib(r.said_at)}</div>
           <div>${escapeHtml(r.content)}</div>
         </div>
       `).join("");

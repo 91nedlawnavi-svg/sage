@@ -60,13 +60,15 @@ class Heartbeat:
         self._reflection_pass()
 
     def _extract_entities_pass(self) -> None:
-        # Collect recent unheld events for entity observation extraction
-        history = [e for e in self.event_store.history() if not e.get("held_close", False)]
+        history = [
+            event
+            for event in self.event_store.history()
+            if not event.get("held_close", False) and not event.get("provider_excluded", False)
+        ]
         if not history:
             return
 
-        existing_obs = self.event_store.entity_observations()
-        processed_event_ids = {obs.get("source_event_id") for obs in existing_obs if obs.get("source_event_id")}
+        processed_event_ids = self.event_store.heartbeat_completed("entities")
 
         unprocessed = [e for e in history if e["id"] not in processed_event_ids][-5:]
         for event in unprocessed:
@@ -95,12 +97,24 @@ class Heartbeat:
                                     source_event_id=event["id"],
                                 )
                 except (json.JSONDecodeError, ValueError):
-                    pass
+                    continue
+                self.event_store.append_heartbeat_completion("entities", event["id"])
 
     def _reflection_pass(self) -> None:
         # Generate a private internal reflection if there is new history
-        history = [e for e in self.event_store.history() if not e.get("held_close", False)]
+        history = [
+            event
+            for event in self.event_store.history()
+            if not event.get("held_close", False) and not event.get("provider_excluded", False)
+        ]
         if len(history) < 2:
+            return
+
+        source_event_id = history[-1]["id"]
+        if source_event_id in self.event_store.heartbeat_completed("reflection"):
+            return
+        if self.interior_store.has_reflection_for_source(source_event_id):
+            self.event_store.append_heartbeat_completion("reflection", source_event_id)
             return
 
         recent_dialogue = "\n".join(f"{e['role']}: {e['content']}" for e in history[-6:])
@@ -112,5 +126,6 @@ class Heartbeat:
         )
         result = self.scribe_router.chat_with_messages([{"role": "user", "content": prompt}])
         if result.succeeded and result.reply:
-            self.interior_store.append_reflection(result.reply.strip())
+            self.interior_store.append_reflection(result.reply.strip(), source_event_id=source_event_id)
+            self.event_store.append_heartbeat_completion("reflection", source_event_id)
             self.last_reflection_ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")

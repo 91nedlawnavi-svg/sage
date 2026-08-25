@@ -70,7 +70,7 @@ class SageHandler(BaseHTTPRequestHandler):
         elif path == "/api/entities":
             self._json(HTTPStatus.OK, {"entities": self.server.store.entity_observations()})
         elif path == "/health":
-            self._json(HTTPStatus.OK, {"ok": True, "model": self.server.router.alias})
+            self._json(HTTPStatus.OK, {"ok": True})
         else:
             self.send_error(HTTPStatus.NOT_FOUND)
 
