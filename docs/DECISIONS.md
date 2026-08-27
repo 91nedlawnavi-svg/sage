@@ -34,3 +34,13 @@ product authority.
   router, but heartbeat activity is not itself initiative or proof of agency.
 - In-app waiting messages remain the only bounded initiative surface for now.
 - No direct belief-edit path, push path, or broad autonomous action path exists.
+
+## 2026-08-26 — Talk-model priority
+
+- Sage does not depend on one permanent talk model.
+- The current priority is Qwen 3.8 Max, DeepSeek V4 Pro, then DeepSeek V4
+  Flash.
+- A failed, empty, malformed, reasoning-only, or incomplete response falls
+  through to the next priority before an assistant event is saved.
+- The local embedder remains a separate fixed memory component; it is not part
+  of talk-model selection.

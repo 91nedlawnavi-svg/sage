@@ -13,7 +13,7 @@ from urllib.parse import unquote, urlparse
 from events import EventStore
 from interior import InteriorStore
 from router import EmbeddingClient, RouterClient
-from sage import HELD_CLOSE_ACKNOWLEDGEMENT, ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_messages
+from sage import HELD_CLOSE_ACKNOWLEDGEMENT, ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_messages, load_directive
 
 STATIC_ROOT = Path(__file__).with_name("static")
 MAX_REQUEST_BYTES = 64 * 1024
@@ -121,7 +121,12 @@ class SageHandler(BaseHTTPRequestHandler):
             return
         self._stream_reply(
             self.server.router.stream_with_messages(
-                build_router_messages(message, self.server.store, exclude_event_id=accepted.event["id"])
+                build_router_messages(
+                    message,
+                    self.server.store,
+                    exclude_event_id=accepted.event["id"],
+                    directive=load_directive(),
+                )
             ),
             headers,
             persist_reply=True,

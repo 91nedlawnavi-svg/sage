@@ -13,6 +13,7 @@ from router import RouterClient
 HELD_CLOSE_ACKNOWLEDGEMENT = "I'm holding this close."
 ROUTER_FAILURE = "Sage could not reach the local router. Your message was saved; no assistant reply was recorded."
 SAVE_FAILURE = "Sage could not save your message. Nothing was sent."
+DIRECTIVE_PATH = Path(__file__).resolve().parents[1] / "directive.txt"
 
 
 @dataclass(frozen=True)
@@ -54,13 +55,33 @@ def build_router_messages(
     *,
     max_context: int = 8,
     exclude_event_id: str | None = None,
+    directive: str | None = None,
 ) -> list[dict[str, str]]:
+    recent = [
+        event
+        for event in store.history()
+        if event["role"] in {"user", "assistant"}
+        and not event["held_close"]
+        and not event.get("provider_excluded", False)
+        and event["id"] != exclude_event_id
+    ][-4:]
+    recall_query = "\n".join(f"{event['role']}: {event['content']}" for event in (*recent, {"role": "user", "content": message}))
     messages = [
         {"role": event["role"], "content": event["content"]}
-        for event in store.recall(message, limit=max_context, exclude_event_id=exclude_event_id)
+        for event in store.recall(recall_query, limit=max_context, exclude_event_id=exclude_event_id)
     ]
+    if directive:
+        messages.insert(0, {"role": "system", "content": directive})
     messages.append({"role": "user", "content": message})
     return messages
+
+
+def load_directive(path: Path = DIRECTIVE_PATH) -> str:
+    try:
+        directive = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    return directive
 
 
 def handle_message(message: str, store: EventStore, router: RouterClient) -> str:
@@ -70,7 +91,14 @@ def handle_message(message: str, store: EventStore, router: RouterClient) -> str
     if accepted.privacy.held_close:
         return HELD_CLOSE_ACKNOWLEDGEMENT
 
-    result = router.chat_with_messages(build_router_messages(message, store, exclude_event_id=accepted.event["id"]))
+    result = router.chat_with_messages(
+        build_router_messages(
+            message,
+            store,
+            exclude_event_id=accepted.event["id"],
+            directive=load_directive(),
+        )
+    )
     if not result.succeeded:
         return ROUTER_FAILURE
 

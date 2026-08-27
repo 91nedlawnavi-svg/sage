@@ -12,6 +12,11 @@ from urllib.request import Request, urlopen
 
 ROUTER_BASE_URL: Final = "http://localhost:20128"
 EMBEDDER_BASE_URL: Final = "http://127.0.0.1:8081"
+DEFAULT_CHAT_MODELS: Final = (
+    "xk/qwen/qwen3.8-max:free",
+    "xk/deepseek/deepseek-v4-pro",
+    "xk/deepseek/deepseek-v4-flash",
+)
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
@@ -36,21 +41,33 @@ class RouterResult:
 class RouterClient:
     """Inference client for free-tier router aliases (chat model and scribe model)."""
 
-    def __init__(self, alias: str, base_url: str = ROUTER_BASE_URL) -> None:
-        if not alias.strip():
-            raise ValueError("Free-tier alias is required")
-        self.alias = alias.strip()
+    def __init__(self, alias: str | list[str] | tuple[str, ...], base_url: str = ROUTER_BASE_URL) -> None:
+        aliases = (alias,) if isinstance(alias, str) else tuple(alias)
+        self.aliases = tuple(item.strip() for item in aliases if item.strip())
+        if not self.aliases:
+            raise ValueError("At least one free-tier alias is required")
+        self.alias = self.aliases[0]
         self.endpoint = f"{base_url}/v1/chat/completions"
 
-    def _request(self, messages: list[dict[str, str]], *, stream: bool, temperature: float | None = None) -> Request:
+    def _request(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        stream: bool,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        alias: str | None = None,
+    ) -> Request:
         payload: dict[str, object] = {
-            "model": self.alias,
+            "model": alias or self.alias,
             "messages": messages,
         }
         if stream:
             payload["stream"] = True
         if temperature is not None:
             payload["temperature"] = temperature
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         encoded_payload = json.dumps(payload).encode()
         return Request(
             self.endpoint,
@@ -62,10 +79,35 @@ class RouterClient:
     def chat(self, message: str) -> RouterResult:
         return self.chat_with_messages([{"role": "user", "content": message}])
 
-    def chat_with_messages(self, messages: list[dict[str, str]], *, temperature: float | None = None) -> RouterResult:
+    def chat_with_messages(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float | None = None,
+        timeout: float = 60,
+        max_tokens: int | None = None,
+    ) -> RouterResult:
+        for alias in self.aliases:
+            result = self._chat_once(alias, messages, temperature=temperature, timeout=timeout, max_tokens=max_tokens)
+            if result.succeeded:
+                return result
+        return RouterResult(reply=None)
+
+    def _chat_once(
+        self,
+        alias: str,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float | None,
+        timeout: float,
+        max_tokens: int | None,
+    ) -> RouterResult:
         try:
-            with urlopen(self._request(messages, stream=False, temperature=temperature), timeout=60) as response:
-                body = json.load(response)
+            with urlopen(
+                self._request(messages, stream=False, temperature=temperature, max_tokens=max_tokens, alias=alias),
+                timeout=timeout,
+            ) as response:
+                body, _ = json.JSONDecoder().raw_decode(response.read().decode("utf-8").lstrip())
         except (HTTPError, URLError, OSError, IncompleteRead, UnicodeDecodeError, json.JSONDecodeError):
             return RouterResult(reply=None)
 
@@ -79,8 +121,6 @@ class RouterClient:
 
         if not isinstance(reply, str) or not reply.strip():
             return RouterResult(reply=None)
-
-        # Drop truncated mid-reasoning outputs
         if reasoning and reply.strip() == str(reasoning).strip():
             return RouterResult(reply=None)
 
@@ -91,13 +131,17 @@ class RouterClient:
         return self.stream_with_messages([{"role": "user", "content": message}])
 
     def stream_with_messages(self, messages: list[dict[str, str]], *, temperature: float = 0.7) -> Iterator[str]:
-        try:
-            response = urlopen(self._request(messages, stream=True, temperature=temperature), timeout=60)
-        except (HTTPError, URLError, OSError, IncompleteRead):
-            return
+        for alias in self.aliases:
+            try:
+                response = urlopen(self._request(messages, stream=True, temperature=temperature, alias=alias), timeout=60)
+            except (HTTPError, URLError, OSError, IncompleteRead):
+                continue
 
-        with response:
-            yield from self._stream_response(response)
+            with response:
+                chunks = list(self._stream_response(response))
+            if chunks and chunks[-1] == "" and any(chunks[:-1]):
+                yield from chunks
+                return
 
     @staticmethod
     def _stream_response(response: HTTPResponse) -> Iterator[str]:

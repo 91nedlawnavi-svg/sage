@@ -34,6 +34,7 @@ continuity, judgment, initiative, and local ownership.
 3. Make the smallest root-cause change.
 4. Run a deterministic check and report its real output.
 5. Review the diff separately.
+6. Commit and push each completed, verified behavior milestone.
 
 Do not write to lived memory, change `.env` or credentials, restart services,
 or perform destructive migrations without explicit user approval. Do not add

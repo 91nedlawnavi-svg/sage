@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from events import EventStore
 from interior import InteriorStore
 from router import ROUTER_BASE_URL, RouterClient, RouterResult
-from sage import HELD_CLOSE_ACKNOWLEDGEMENT, ROUTER_FAILURE, handle_message
+from sage import HELD_CLOSE_ACKNOWLEDGEMENT, ROUTER_FAILURE, build_router_messages, handle_message, load_directive
 from heartbeat import Heartbeat
 from web import SageServer
 
@@ -28,10 +28,17 @@ class FakeRouter(BaseHTTPRequestHandler):
     truncate_response = False
     stream_chunks = ["Hel", "lo."]
     truncate_stream = False
+    fail_models: set[str] = set()
+    seen_models: list[str] = []
 
     def do_POST(self) -> None:
         length = int(self.headers["Content-Length"])
         type(self).request_body = json.loads(self.rfile.read(length))
+        type(self).seen_models.append(type(self).request_body["model"])
+        if type(self).request_body["model"] in type(self).fail_models:
+            self.send_response(503)
+            self.end_headers()
+            return
         self.send_response(type(self).status)
         if type(self).request_body.get("stream"):
             self.send_header("Content-Type", "text/event-stream")
@@ -76,6 +83,8 @@ class FoundationTests(unittest.TestCase):
         FakeRouter.truncate_response = False
         FakeRouter.stream_chunks = ["Hel", "lo."]
         FakeRouter.truncate_stream = False
+        FakeRouter.fail_models = set()
+        FakeRouter.seen_models = []
         self.server = ThreadingHTTPServer(("localhost", 0), FakeRouter)
         self.thread = Thread(target=self.server.serve_forever)
         self.thread.start()
@@ -155,17 +164,37 @@ class FoundationTests(unittest.TestCase):
         reply = handle_message("Hello Sage", self.store, self.router)
 
         self.assertEqual(reply, "Hello.")
-        self.assertEqual(
-            FakeRouter.request_body,
-            {
-                "model": "free-tier-alias",
-                "messages": [{"role": "user", "content": "Hello Sage"}],
-            },
-        )
+        self.assertEqual(FakeRouter.request_body["model"], "free-tier-alias")
+        self.assertEqual(FakeRouter.request_body["messages"][0], {"role": "system", "content": load_directive()})
+        self.assertEqual(FakeRouter.request_body["messages"][-1], {"role": "user", "content": "Hello Sage"})
         events = EventStore(self.store.data_root).read_all()
         self.assertEqual([(event["role"], event["content"]) for event in events], [("user", "Hello Sage"), ("assistant", "Hello.")])
         for event in events:
             self.assertEqual(datetime.fromisoformat(event["said_at"].replace("Z", "+00:00")).utcoffset().total_seconds(), 0)
+
+    def test_prompt_recall_uses_recent_exchange_as_its_cue(self) -> None:
+        self.store.append("user", "I keep buying potatoes even when I plan to cook something else", initial_held_close=False)
+        self.store.append("assistant", "You seem to like having them around.")
+
+        messages = build_router_messages("I made them again tonight", self.store, directive=load_directive())
+
+        self.assertEqual(messages[0], {"role": "system", "content": load_directive()})
+        self.assertIn({"role": "user", "content": "I keep buying potatoes even when I plan to cook something else"}, messages)
+        self.assertEqual(messages[-1], {"role": "user", "content": "I made them again tonight"})
+
+    def test_router_fails_over_to_next_chat_model(self) -> None:
+        FakeRouter.fail_models = {"first-model"}
+        router = RouterClient(["first-model", "second-model"], self.base_url)
+
+        self.assertEqual(router.chat("Hello Sage").reply, "Hello.")
+        self.assertEqual(FakeRouter.seen_models, ["first-model", "second-model"])
+
+    def test_router_fails_over_to_next_streaming_model(self) -> None:
+        FakeRouter.fail_models = {"first-model"}
+        router = RouterClient(["first-model", "second-model"], self.base_url)
+
+        self.assertEqual(list(router.stream("Hello Sage")), ["Hel", "lo.", ""])
+        self.assertEqual(FakeRouter.seen_models, ["first-model", "second-model"])
 
     def test_held_close_terminal_never_reaches_router(self) -> None:
         reply = handle_message("I never told anyone about this confession", self.store, self.router)

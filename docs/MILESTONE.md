@@ -20,7 +20,10 @@ Already present and verified:
 - Reflections, entity observations, and one waiting-message surface.
 - Restored daily-life frontend with Notebook drawer and streaming chat.
 - Background extraction/reflection with retry-safe completion records.
-- 34 deterministic tests passing on the refreshed baseline.
+- Refreshed directive injected into foreground browser and terminal chat.
+- Ordered talk-model failover: Qwen 3.8 Max, DeepSeek V4 Pro, then DeepSeek V4 Flash.
+- Recall cues built from the recent eligible exchange plus the newest message.
+- 37 deterministic tests passing on the refreshed baseline.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
