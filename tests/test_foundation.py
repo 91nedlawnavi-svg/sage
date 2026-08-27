@@ -182,6 +182,44 @@ class FoundationTests(unittest.TestCase):
         self.assertIn({"role": "user", "content": "I keep buying potatoes even when I plan to cook something else"}, messages)
         self.assertEqual(messages[-1], {"role": "user", "content": "I made them again tonight"})
 
+    def test_prompt_context_keeps_recent_turns_and_adds_older_recall(self) -> None:
+        self.store.append("user", "I want to learn pottery this year", initial_held_close=False)
+        self.store.append("assistant", "That sounds like a good creative outlet.")
+        self.store.append("user", "Recent one", initial_held_close=False)
+        self.store.append("assistant", "Recent answer one")
+        self.store.append("user", "Recent two", initial_held_close=False)
+        self.store.append("assistant", "Recent answer two")
+
+        messages = build_router_messages("I tried pottery today", self.store, max_context=6)
+
+        self.assertEqual(
+            [message["content"] for message in messages],
+            [
+                "I want to learn pottery this year",
+                "Recent one",
+                "Recent answer one",
+                "Recent two",
+                "Recent answer two",
+                "I tried pottery today",
+            ],
+        )
+
+    def test_chat_sends_contradictory_public_history_without_held_close_match(self) -> None:
+        self.store.append("user", "I love hosting friends for dinner", initial_held_close=False)
+        self.store.append("assistant", "That usually makes the place feel alive.")
+        hidden = self.store.append("user", "I never told anyone hosting makes me panic", initial_held_close=False)
+        self.store.append_privacy(hidden["id"], True, "sensor")
+        self.store.append("user", "I fixed the loose shelf today", initial_held_close=False)
+        self.store.append("assistant", "Good, that is finally sorted.")
+        self.store.append("user", "After last weekend I need more quiet than I thought", initial_held_close=False)
+        self.store.append("assistant", "Both reactions can matter.")
+
+        handle_message("Should I host dinner again?", self.store, self.router)
+
+        contents = [message["content"] for message in FakeRouter.request_body["messages"]]
+        self.assertLess(contents.index("I love hosting friends for dinner"), contents.index("After last weekend I need more quiet than I thought"))
+        self.assertNotIn(hidden["content"], contents)
+
     def test_router_fails_over_to_next_chat_model(self) -> None:
         FakeRouter.fail_models = {"first-model"}
         router = RouterClient(["first-model", "second-model"], self.base_url)

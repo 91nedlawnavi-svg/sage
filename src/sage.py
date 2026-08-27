@@ -57,19 +57,23 @@ def build_router_messages(
     exclude_event_id: str | None = None,
     directive: str | None = None,
 ) -> list[dict[str, str]]:
-    recent = [
+    eligible_history = [
         event
         for event in store.history()
         if event["role"] in {"user", "assistant"}
         and not event["held_close"]
         and not event.get("provider_excluded", False)
         and event["id"] != exclude_event_id
-    ][-4:]
-    recall_query = "\n".join(f"{event['role']}: {event['content']}" for event in (*recent, {"role": "user", "content": message}))
-    messages = [
-        {"role": event["role"], "content": event["content"]}
-        for event in store.recall(recall_query, limit=max_context, exclude_event_id=exclude_event_id)
     ]
+    recent = eligible_history[-min(4, max_context):] if max_context > 0 else []
+    recall_query = "\n".join(f"{event['role']}: {event['content']}" for event in (*recent, {"role": "user", "content": message}))
+    recent_ids = {event["id"] for event in recent}
+    remaining = max_context - len(recent)
+    recalled = store.recall(recall_query, limit=len(eligible_history), exclude_event_id=exclude_event_id) if remaining > 0 else []
+    older_ids = [event["id"] for event in recalled if event["id"] not in recent_ids]
+    selected_ids = recent_ids | set(older_ids[:remaining])
+    context = [event for event in eligible_history if event["id"] in selected_ids]
+    messages = [{"role": event["role"], "content": event["content"]} for event in context]
     if directive:
         messages.insert(0, {"role": "system", "content": directive})
     messages.append({"role": "user", "content": message})
