@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="X-UA-Compatible" content="ie=edge" />
+<title>Markmap</title>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+}
+html {
+  font-family: ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+    'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+}
+#mindmap {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+.markmap-dark {
+  background: #27272a;
+  color: white;
+}
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/markmap-toolbar@0.18.12/dist/style.css">
+</head>
+<body>
+<svg id="mindmap"></svg>
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script><script src="https://cdn.jsdelivr.net/npm/markmap-view@0.18.12/dist/browser/index.js"></script><script src="https://cdn.jsdelivr.net/npm/markmap-toolbar@0.18.12/dist/index.js"></script><script>((r) => {
+          setTimeout(r);
+        })(() => {
+  const { markmap, mm } = window;
+  const toolbar = new markmap.Toolbar();
+  toolbar.attach(mm);
+  const el = toolbar.render();
+  el.setAttribute("style", "position:absolute;bottom:20px;right:20px");
+  document.body.append(el);
+})</script><script>((getMarkmap, getOptions, root2, jsonOptions) => {
+              const markmap = getMarkmap();
+              window.mm = markmap.Markmap.create(
+                "svg#mindmap",
+                (getOptions || markmap.deriveOptions)(jsonOptions),
+                root2
+              );
+              if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+                document.documentElement.classList.add("markmap-dark");
+              }
+            })(() => window.markmap,null,{"content":"Sage Development Timeline","children":[{"content":"Phase 1: Foundation (Aug 10-14)","children":[{"content":"Aug 10 &#x2014; Project Born","children":[{"content":"Established Sage baseline","children":[],"payload":{"tag":"li","lines":"4,5"}},{"content":"Defined core purpose: owned personal intelligence","children":[],"payload":{"tag":"li","lines":"5,6"}},{"content":"Set JARVIS-like vision as north star","children":[],"payload":{"tag":"li","lines":"6,8"}}],"payload":{"tag":"h3","lines":"3,4"}},{"content":"Aug 12 &#x2014; Blueprint + First Chat","children":[{"content":"Product blueprint documented","children":[],"payload":{"tag":"li","lines":"9,10"}},{"content":"Sage Foundation chat working","children":[],"payload":{"tag":"li","lines":"10,11"}},{"content":"Basic conversation capability live","children":[],"payload":{"tag":"li","lines":"11,13"}}],"payload":{"tag":"h3","lines":"8,9"}},{"content":"Aug 13-14 &#x2014; Hardening","children":[{"content":"Router failures fixed","children":[],"payload":{"tag":"li","lines":"14,15"}},{"content":"Workbench and delegation patterns recorded","children":[],"payload":{"tag":"li","lines":"15,16"}},{"content":"Stability improvements","children":[],"payload":{"tag":"li","lines":"16,18"}}],"payload":{"tag":"h3","lines":"13,14"}}],"payload":{"tag":"h2","lines":"2,3"}},{"content":"Phase 2: Browser Era (Aug 15)","children":[{"content":"Aug 15 &#x2014; Local Browser Chat","children":[{"content":"Browser interface launched","children":[],"payload":{"tag":"li","lines":"20,21"}},{"content":"Chat durability completed","children":[],"payload":{"tag":"li","lines":"21,22"}},{"content":"No longer terminal-only","children":[],"payload":{"tag":"li","lines":"22,24"}}],"payload":{"tag":"h3","lines":"19,20"}}],"payload":{"tag":"h2","lines":"18,19"}},{"content":"Phase 3: Memory &amp; Privacy (Aug 17)","children":[{"content":"Aug 17 &#x2014; Major Leap","children":[{"content":"Held-close firewall added (privacy layer)","children":[],"payload":{"tag":"li","lines":"26,27"}},{"content":"Semantic event recall working","children":[],"payload":{"tag":"li","lines":"27,28"}},{"content":"Scored term-frequency ranking","children":[],"payload":{"tag":"li","lines":"28,29"}},{"content":"Dual storage system complete","children":[],"payload":{"tag":"li","lines":"29,30"}},{"content":"Embedding-assisted recall live","children":[],"payload":{"tag":"li","lines":"30,31"}},{"content":"Interior notebook feature","children":[],"payload":{"tag":"li","lines":"31,32"}},{"content":"Heartbeat mechanism","children":[],"payload":{"tag":"li","lines":"32,33"}},{"content":"V3 rebuild finished","children":[],"payload":{"tag":"li","lines":"33,35"}}],"payload":{"tag":"h3","lines":"25,26"}}],"payload":{"tag":"h2","lines":"24,25"}},{"content":"Phase 4: Configuration (Aug 20)","children":[{"content":"Aug 20 &#x2014; Model Flexibility","children":[{"content":".env-based model config","children":[],"payload":{"tag":"li","lines":"37,38"}},{"content":"Easy alias swapping between models","children":[],"payload":{"tag":"li","lines":"38,39"}},{"content":"Provider failover support","children":[],"payload":{"tag":"li","lines":"39,41"}}],"payload":{"tag":"h3","lines":"36,37"}}],"payload":{"tag":"h2","lines":"35,36"}},{"content":"Phase 5: Privacy Polish (Aug 24-25)","children":[{"content":"Aug 24 &#x2014; Embedding Isolation","children":[{"content":"Held-close embeddings isolated","children":[],"payload":{"tag":"li","lines":"43,44"}},{"content":"Privacy boundary hardened","children":[],"payload":{"tag":"li","lines":"44,46"}}],"payload":{"tag":"h3","lines":"42,43"}},{"content":"Aug 25 &#x2014; Frontend Restore + Frame Refresh","children":[{"content":"Polished browser frontend restored","children":[],"payload":{"tag":"li","lines":"47,48"}},{"content":"Privacy and heartbeat boundaries tightened","children":[],"payload":{"tag":"li","lines":"48,49"}},{"content":"Product frame refreshed in docs","children":[],"payload":{"tag":"li","lines":"49,50"}},{"content":"Sage Refresh milestone declared","children":[],"payload":{"tag":"li","lines":"50,52"}}],"payload":{"tag":"h3","lines":"46,47"}}],"payload":{"tag":"h2","lines":"41,42"}},{"content":"Phase 6: Context Awareness (Aug 27)","children":[{"content":"Aug 27 &#x2014; Conversational Continuity","children":[{"content":"Resilient contextual chat added","children":[],"payload":{"tag":"li","lines":"54,55"}},{"content":"Recent context preservation fixed","children":[],"payload":{"tag":"li","lines":"55,56"}},{"content":"Whole exchange used as recall cue","children":[],"payload":{"tag":"li","lines":"56,57"}},{"content":"Memory refresh work begins","children":[],"payload":{"tag":"li","lines":"57,59"}}],"payload":{"tag":"h3","lines":"53,54"}}],"payload":{"tag":"h2","lines":"52,53"}},{"content":"Phase 7: Modern UI (Aug 29)","children":[{"content":"Aug 29 &#x2014; Mobile-First Redesign","children":[{"content":"Streaming responses","children":[],"payload":{"tag":"li","lines":"61,62"}},{"content":"New-chat functionality","children":[],"payload":{"tag":"li","lines":"62,63"}},{"content":"Viewport anchoring","children":[],"payload":{"tag":"li","lines":"63,64"}},{"content":"Mobile-optimized interface","children":[],"payload":{"tag":"li","lines":"64,66"}}],"payload":{"tag":"h3","lines":"60,61"}}],"payload":{"tag":"h2","lines":"59,60"}},{"content":"Current State","children":[{"content":"What Works","children":[{"content":"Local browser + terminal chat","children":[],"payload":{"tag":"li","lines":"68,69"}},{"content":"Durable episodic memory (UTC timestamps)","children":[],"payload":{"tag":"li","lines":"69,70"}},{"content":"Lexical + embedding recall","children":[],"payload":{"tag":"li","lines":"70,71"}},{"content":"Privacy firewall (held-close)","children":[],"payload":{"tag":"li","lines":"71,72"}},{"content":"Model failover chain","children":[],"payload":{"tag":"li","lines":"72,73"}},{"content":"Background reflection/extraction","children":[],"payload":{"tag":"li","lines":"73,74"}},{"content":"37 passing tests","children":[],"payload":{"tag":"li","lines":"74,76"}}],"payload":{"tag":"h3","lines":"67,68"}},{"content":"Active Work","children":[{"content":"Memory refresh: making history feel relevant naturally","children":[],"payload":{"tag":"li","lines":"77,78"}},{"content":"Not dumping records, but weaving continuity into conversation","children":[],"payload":{"tag":"li","lines":"78,80"}}],"payload":{"tag":"h3","lines":"76,77"}},{"content":"Not Yet","children":[{"content":"Autonomous actions","children":[],"payload":{"tag":"li","lines":"81,82"}},{"content":"External notifications","children":[],"payload":{"tag":"li","lines":"82,83"}},{"content":"Voice/ambient interfaces","children":[],"payload":{"tag":"li","lines":"83,84"}},{"content":"Belief editing","children":[],"payload":{"tag":"li","lines":"84,85"}},{"content":"Graph replacing events","children":[],"payload":{"tag":"li","lines":"85,87"}}],"payload":{"tag":"h3","lines":"80,81"}}],"payload":{"tag":"h2","lines":"66,67"}}],"payload":{"tag":"h1","lines":"0,1"}},null)</script>
+</body>
+</html>

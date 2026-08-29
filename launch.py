@@ -57,8 +57,8 @@ def main() -> None:
     heartbeat = Heartbeat(store, interior, scribe_router, interval_seconds=120.0)
     heartbeat.start()
 
-    server = SageServer(("127.0.0.1", args.port), store, router, interior)
-    print(f"Sage online at http://127.0.0.1:{server.server_port}")
+    server = SageServer(("0.0.0.0", args.port), store, router, interior)
+    print(f"Sage online on http://0.0.0.0:{server.server_port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
