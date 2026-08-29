@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
-from threading import Thread
+from threading import Event as ThreadEvent, Thread
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import unittest
@@ -30,6 +30,7 @@ class FakeRouter(BaseHTTPRequestHandler):
     truncate_stream = False
     fail_models: set[str] = set()
     seen_models: list[str] = []
+    stream_gate: ThreadEvent | None = None
 
     def do_POST(self) -> None:
         length = int(self.headers["Content-Length"])
@@ -43,9 +44,11 @@ class FakeRouter(BaseHTTPRequestHandler):
         if type(self).request_body.get("stream"):
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
-            for chunk in type(self).stream_chunks:
+            for index, chunk in enumerate(type(self).stream_chunks):
                 self.wfile.write(f'data: {{"choices":[{{"delta":{{"content":{json.dumps(chunk)}}}}}]}}\n\n'.encode())
                 self.wfile.flush()
+                if index == 0 and type(self).stream_gate is not None:
+                    type(self).stream_gate.wait(2)
             if not type(self).truncate_stream:
                 self.wfile.write(b"data: [DONE]\n\n")
             return
@@ -74,6 +77,9 @@ class FailingPrivacyStore(EventStore):
     def append_privacy(self, *args: object, **kwargs: object) -> object:
         raise OSError("privacy metadata unavailable")
 
+def read_stream(response: object) -> list[dict[str, str]]:
+    return [json.loads(line) for line in response.read().decode().splitlines()]
+
 
 class FoundationTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -85,6 +91,7 @@ class FoundationTests(unittest.TestCase):
         FakeRouter.truncate_stream = False
         FakeRouter.fail_models = set()
         FakeRouter.seen_models = []
+        FakeRouter.stream_gate = None
         self.server = ThreadingHTTPServer(("localhost", 0), FakeRouter)
         self.thread = Thread(target=self.server.serve_forever)
         self.thread.start()
@@ -204,6 +211,23 @@ class FoundationTests(unittest.TestCase):
             ],
         )
 
+    def test_new_chat_preserves_old_events_for_recall_after_restart(self) -> None:
+        self.store.append("user", "I keep buying potatoes", initial_held_close=False)
+        self.store.append("assistant", "They are a reliable default.")
+        self.store.append_chat_boundary()
+        reopened = EventStore(self.store.data_root)
+
+        self.assertEqual(reopened.visible_history(), [])
+        self.assertEqual(len(reopened.read_all()), 2)
+        self.assertEqual(reopened.recall("potatoes", fallback=False)[0]["content"], "I keep buying potatoes")
+        self.assertIn("chat_boundary", reopened.path.read_text())
+
+        messages = build_router_messages("I made potatoes again", reopened)
+
+        self.assertIn({"role": "user", "content": "I keep buying potatoes"}, messages)
+        self.assertEqual(messages[-1], {"role": "user", "content": "I made potatoes again"})
+        self.assertEqual(build_router_messages("Unrelated weather update", reopened), [{"role": "user", "content": "Unrelated weather update"}])
+
     def test_chat_sends_contradictory_public_history_without_held_close_match(self) -> None:
         self.store.append("user", "I love hosting friends for dinner", initial_held_close=False)
         self.store.append("assistant", "That usually makes the place feel alive.")
@@ -304,7 +328,10 @@ class FoundationTests(unittest.TestCase):
                 method="POST",
             )
             with urlopen(request) as response:
-                self.assertEqual(response.read().decode(), HELD_CLOSE_ACKNOWLEDGEMENT)
+                self.assertEqual(
+                    read_stream(response),
+                    [{"type": "delta", "content": HELD_CLOSE_ACKNOWLEDGEMENT}, {"type": "done"}],
+                )
                 self.assertEqual(response.headers["X-Sage-Held-Close"], "true")
             self.assertIsNone(FakeRouter.request_body)
             events = self.store.read_all()
@@ -328,7 +355,10 @@ class FoundationTests(unittest.TestCase):
                 method="POST",
             )
             with urlopen(request) as response:
-                self.assertEqual(response.read().decode(), HELD_CLOSE_ACKNOWLEDGEMENT)
+                self.assertEqual(
+                    read_stream(response),
+                    [{"type": "delta", "content": HELD_CLOSE_ACKNOWLEDGEMENT}, {"type": "done"}],
+                )
                 self.assertEqual(response.headers["X-Sage-Held-Close"], "true")
             self.assertIsNone(FakeRouter.request_body)
             event = self.store.read_all()[0]
@@ -389,14 +419,41 @@ class FoundationTests(unittest.TestCase):
             base_url = f"http://127.0.0.1:{web_server.server_port}"
             with urlopen(f"{base_url}/") as response:
                 self.assertIn(b"Message Sage", response.read())
+            with urlopen(f"{base_url}/static/app.css") as response:
+                self.assertIn(b"-webkit-tap-highlight-color: transparent", response.read())
             payload = json.dumps({"message": "Hello Sage"}).encode()
             request = Request(f"{base_url}/api/chat", data=payload, headers={"Content-Type": "application/json"}, method="POST")
             with urlopen(request) as response:
-                self.assertEqual(response.read().decode(), "Hello.")
+                self.assertEqual(
+                    read_stream(response),
+                    [{"type": "delta", "content": "Hel"}, {"type": "delta", "content": "lo."}, {"type": "done"}],
+                )
             with urlopen(f"{base_url}/api/history") as response:
                 events = json.load(response)["events"]
             self.assertEqual([(event["role"], event["content"]) for event in events], [("user", "Hello Sage"), ("assistant", "Hello.")])
             self.assertEqual(FakeRouter.request_body["stream"], True)
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_browser_clear_chat_preserves_events_and_resets_visible_history(self) -> None:
+        self.store.append("user", "Old visible chat", initial_held_close=False)
+        self.store.append("assistant", "Still remembered")
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            request = Request(f"{base_url}/api/chat/clear", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
+            with urlopen(request) as response:
+                self.assertEqual(json.load(response), {"ok": True})
+            with urlopen(f"{base_url}/api/history") as response:
+                self.assertEqual(json.load(response)["events"], [])
+            self.assertEqual(
+                [(event["role"], event["content"]) for event in EventStore(self.data_root).read_all()],
+                [("user", "Old visible chat"), ("assistant", "Still remembered")],
+            )
         finally:
             web_server.shutdown()
             web_thread.join()
@@ -489,6 +546,25 @@ class FoundationTests(unittest.TestCase):
             web_thread.join()
             web_server.server_close()
 
+    def test_browser_accepts_numeric_network_host_with_same_origin(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            host = f"192.168.1.20:{web_server.server_port}"
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/chat",
+                data=json.dumps({"message": "Hello Sage"}).encode(),
+                headers={"Content-Type": "application/json", "Host": host, "Origin": f"http://{host}"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                self.assertEqual(read_stream(response)[-1], {"type": "done"})
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
     def test_browser_rejects_missing_or_oversized_body(self) -> None:
         web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
         web_thread = Thread(target=web_server.serve_forever)
@@ -523,9 +599,56 @@ class FoundationTests(unittest.TestCase):
                 method="POST",
             )
             with urlopen(request) as response:
-                self.assertIn(ROUTER_FAILURE, response.read().decode())
+                events = read_stream(response)
+                self.assertEqual(events[-1], {"type": "error", "content": ROUTER_FAILURE})
             self.assertEqual([(event["role"], event["content"]) for event in self.store.read_all()], [("user", "Hello Sage")])
         finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_browser_stream_uses_http11_without_exposing_chunk_markers(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/chat",
+                data=json.dumps({"message": "Hello Sage"}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                self.assertEqual(response.version, 11)
+                self.assertEqual(response.headers["Content-Type"], "application/x-ndjson; charset=utf-8")
+                self.assertEqual(read_stream(response)[-1], {"type": "done"})
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_browser_stream_emits_first_delta_before_model_completes(self) -> None:
+        FakeRouter.stream_gate = ThreadEvent()
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        response = None
+        try:
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/chat",
+                data=json.dumps({"message": "Hello Sage"}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            response = urlopen(request)
+            self.assertEqual(json.loads(response.readline()), {"type": "delta", "content": "Hel"})
+            self.assertEqual([(event["role"], event["content"]) for event in self.store.read_all()], [("user", "Hello Sage")])
+            FakeRouter.stream_gate.set()
+            self.assertEqual(read_stream(response)[-1], {"type": "done"})
+        finally:
+            FakeRouter.stream_gate.set()
+            if response is not None:
+                response.close()
             web_server.shutdown()
             web_thread.join()
             web_server.server_close()
@@ -566,7 +689,7 @@ class FoundationTests(unittest.TestCase):
             payload = json.dumps({"message": "Yes, it did."}).encode()
             request = Request(f"{base_url}/api/chat", data=payload, headers={"Content-Type": "application/json"}, method="POST")
             with urlopen(request) as response:
-                self.assertEqual(response.read().decode(), "Hello.")
+                self.assertEqual(read_stream(response)[-1], {"type": "done"})
 
             self.assertIsNone(self.interior.get_waiting_message())
         finally:

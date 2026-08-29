@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -36,6 +37,7 @@ class SageServer(ThreadingHTTPServer):
 
 class SageHandler(BaseHTTPRequestHandler):
     server: SageServer
+    protocol_version = "HTTP/1.1"
 
     def do_GET(self) -> None:
         if not self._trusted_host():
@@ -49,7 +51,7 @@ class SageHandler(BaseHTTPRequestHandler):
         elif path == "/static/app.js":
             self._serve_static("app.js", "application/javascript; charset=utf-8")
         elif path == "/api/history":
-            events = self.server.store.read_all()
+            events = self.server.store.visible_history()
             waiting = self.server.interior.get_waiting_message()
             if waiting and not waiting.get("read"):
                 # Prepend waiting message as active turn
@@ -84,6 +86,15 @@ class SageHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/waiting-message/ack":
             self.server.interior.clear_waiting_message()
+            self._json(HTTPStatus.OK, {"ok": True})
+            return
+        if path == "/api/chat/clear":
+            try:
+                self.server.store.append_chat_boundary()
+                self.server.interior.clear_waiting_message()
+            except OSError:
+                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Sage could not start a new chat."})
+                return
             self._json(HTTPStatus.OK, {"ok": True})
             return
         event_id = self._privacy_target(path)
@@ -183,7 +194,7 @@ class SageHandler(BaseHTTPRequestHandler):
 
     def _stream_reply(self, chunks: Iterator[str], headers: dict[str, str], *, persist_reply: bool) -> None:
         self.send_response(HTTPStatus.OK)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
         self.send_header("Transfer-Encoding", "chunked")
         self.send_header("Cache-Control", "no-cache")
         for name, value in headers.items():
@@ -198,15 +209,17 @@ class SageHandler(BaseHTTPRequestHandler):
                     completed = True
                     break
                 reply.append(chunk)
-                self._write_chunk(chunk)
+                self._write_stream_event("delta", chunk)
             if not completed or not reply:
-                self._write_chunk(ROUTER_FAILURE)
+                self._write_stream_event("error", ROUTER_FAILURE)
                 return
             if persist_reply:
                 try:
                     self.server.store.append("assistant", "".join(reply))
                 except OSError:
-                    self._write_chunk(SAVE_REPLY_FAILURE)
+                    self._write_stream_event("error", SAVE_REPLY_FAILURE)
+                    return
+            self._write_stream_event("done")
         except (BrokenPipeError, ConnectionResetError):
             return
         finally:
@@ -218,7 +231,16 @@ class SageHandler(BaseHTTPRequestHandler):
 
     def _trusted_host(self) -> bool:
         host = self.headers.get("Host", "")
-        return host in {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
+        name, separator, port = host.rpartition(":")
+        if not separator or port != str(self.server.server_port):
+            return False
+        if name == "localhost":
+            return True
+        try:
+            ipaddress.ip_address(name.strip("[]"))
+        except ValueError:
+            return False
+        return True
 
     def _same_origin(self) -> bool:
         origin = self.headers.get("Origin")
@@ -229,6 +251,12 @@ class SageHandler(BaseHTTPRequestHandler):
         self.wfile.write(f"{len(data):X}\r\n".encode())
         self.wfile.write(data + b"\r\n")
         self.wfile.flush()
+
+    def _write_stream_event(self, event_type: str, content: str | None = None) -> None:
+        event = {"type": event_type}
+        if content is not None:
+            event["content"] = content
+        self._write_chunk(json.dumps(event, ensure_ascii=False) + "\n")
 
     def _json(self, status: HTTPStatus, body: object) -> None:
         data = json.dumps(body, ensure_ascii=False).encode()
@@ -247,6 +275,7 @@ class SageHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 
@@ -259,8 +288,8 @@ def run(alias: str, data_root: Path | None = None, port: int = 6969) -> None:
     store = EventStore(data_root, embedder=embedder)
     router = RouterClient(alias)
     interior = InteriorStore(data_root)
-    server = SageServer(("127.0.0.1", port), store, router, interior)
-    print(f"Sage listening at http://127.0.0.1:{server.server_port}")
+    server = SageServer(("0.0.0.0", port), store, router, interior)
+    print(f"Sage listening on http://0.0.0.0:{server.server_port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

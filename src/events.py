@@ -67,6 +67,10 @@ class HeartbeatCompletion(TypedDict):
     source_event_id: str
     said_at: str
 
+class ChatBoundary(TypedDict):
+    kind: Literal["chat_boundary"]
+    said_at: str
+
 
 def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     if not vec_a or not vec_b or len(vec_a) != len(vec_b):
@@ -140,6 +144,11 @@ class EventStore:
         }
         if carry_after is not None:
             record["carry_after"] = carry_after
+        self._append_record(record)
+        return record
+
+    def append_chat_boundary(self) -> ChatBoundary:
+        record: ChatBoundary = {"kind": "chat_boundary", "said_at": self._timestamp()}
         self._append_record(record)
         return record
 
@@ -219,7 +228,7 @@ class EventStore:
         }
         events: list[Event] = []
         for index, record in enumerate(records):
-            if isinstance(record, dict) and record.get("kind") == "privacy":
+            if isinstance(record, dict) and record.get("kind") in {"privacy", "chat_boundary"}:
                 continue
             event = self._parse_event(record, index)
             event["held_close"] = privacy.get(event["id"], event.get("held_close", False))
@@ -232,6 +241,19 @@ class EventStore:
 
     def read_all(self) -> list[Event]:
         return self.history()
+
+    def visible_history(self) -> list[Event]:
+        records = self._read_records()
+        boundary_index = max(
+            (index for index, record in enumerate(records) if isinstance(record, dict) and record.get("kind") == "chat_boundary"),
+            default=-1,
+        )
+        visible_ids = {
+            record.get("id", f"legacy:{index}")
+            for index, record in enumerate(records)
+            if index > boundary_index and isinstance(record, dict) and record.get("role") in {"user", "assistant"}
+        }
+        return [event for event in self.history() if event["id"] in visible_ids]
 
     def set_held_close(self, event_id: str, held_close: bool) -> bool:
         for event in self.history():
@@ -251,7 +273,14 @@ class EventStore:
                 carry = record.get("privacy_carry_after", carry)
         return carry
 
-    def recall(self, query: str, limit: int = 8, *, exclude_event_id: str | None = None) -> list[Event]:
+    def recall(
+        self,
+        query: str,
+        limit: int = 8,
+        *,
+        exclude_event_id: str | None = None,
+        fallback: bool = True,
+    ) -> list[Event]:
         if limit <= 0:
             return []
 
@@ -268,14 +297,14 @@ class EventStore:
             return []
 
         if not query.strip():
-            return events[-limit:]
+            return events[-limit:] if fallback else []
 
         raw_terms = self._tokenize(query, keep_stop_words=True)
         query_terms = self._tokenize(query, keep_stop_words=len(raw_terms) <= 1)
         normalized_query = query.strip().lower()
 
         if not query_terms:
-            return events[-limit:]
+            return events[-limit:] if fallback else []
 
         # Check for vector embedding similarity if embedder available
         query_embedding: list[float] | None = None
@@ -318,7 +347,7 @@ class EventStore:
             if total_score > 0:
                 scored.append((total_score, exact_match, index, event))
 
-        if not scored:
+        if not scored and fallback:
             return events[-limit:]
 
         scored.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)

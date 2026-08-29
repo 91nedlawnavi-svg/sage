@@ -137,15 +137,19 @@ class RouterClient:
             except (HTTPError, URLError, OSError, IncompleteRead):
                 continue
 
+            emitted = False
             with response:
-                chunks = list(self._stream_response(response))
-            if chunks and chunks[-1] == "" and any(chunks[:-1]):
-                yield from chunks
+                for chunk in self._stream_response(response):
+                    if chunk:
+                        emitted = True
+                    yield chunk
+            if emitted:
                 return
 
     @staticmethod
     def _stream_response(response: HTTPResponse) -> Iterator[str]:
         completed = False
+        emitted = False
         in_think_block = False
         try:
             for raw_line in response:
@@ -172,12 +176,12 @@ class RouterClient:
                         else:
                             content = ""
                     if content:
+                        emitted = True
                         yield content
         except (OSError, IncompleteRead, UnicodeDecodeError):
             return
-        if not completed:
-            return
-        yield ""
+        if completed and emitted:
+            yield ""
 
 
 class EmbeddingClient:
