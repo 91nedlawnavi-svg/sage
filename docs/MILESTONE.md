@@ -55,3 +55,14 @@ the original events.
 - A durable belief-edit workflow.
 - A graph or current-state replacement for event memory.
 - More background activity merely to appear alive.
+
+## Future acceptance evidence — memory refresh (open)
+
+These criteria are acknowledged but not yet implemented or verified. They remain
+open for a future upgrade:
+
+- Related events can be grouped or summarized without erasing their sources.
+  Current recall returns individual scored events; no grouping layer exists.
+- A felt test shows continuity in an ordinary, non-crisis conversation.
+  Requires a live conversational evaluation that is not captured by the
+  current deterministic test suite.
