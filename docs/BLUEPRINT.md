@@ -81,9 +81,12 @@ Sequence is outcome-led, not architecture-led:
    Sage respond naturally, with provenance and revision.
 4. **General capability** — broaden useful answers, writing, coding, research,
    planning, and tool use behind one identity.
-5. **Calibrated initiative** — Sage notices, suggests, prepares, and acts when
+5. **Wonder** — Sage recognizes gaps in her understanding and searches the web
+   to fill them, voicing uncertainty naturally in conversation and exploring
+   self-directedly between conversations, bounded by agency constraints.
+6. **Calibrated initiative** — Sage notices, suggests, prepares, and acts when
    warranted, while learning from corrections and outcomes.
-6. **Richer presence** — voice, vision, ambient interfaces, and broader reach
+7. **Richer presence** — voice, vision, ambient interfaces, and broader reach
    only when they improve ownership and daily usefulness.
 
 ## Never infer from the map

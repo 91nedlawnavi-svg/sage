@@ -1,6 +1,7 @@
 """Local browser chat for Sage with Notebook and interior data APIs."""
 
 from __future__ import annotations
+import re
 
 import argparse
 import ipaddress
@@ -15,6 +16,7 @@ from events import EventStore
 from interior import InteriorStore
 from router import EmbeddingClient, RouterClient
 from sage import HELD_CLOSE_ACKNOWLEDGEMENT, ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_messages, load_directive
+from search import search, format_search_context
 
 STATIC_ROOT = Path(__file__).with_name("static")
 MAX_REQUEST_BYTES = 64 * 1024
@@ -130,6 +132,25 @@ class SageHandler(BaseHTTPRequestHandler):
         if accepted.privacy.held_close:
             self._stream_reply(iter((HELD_CLOSE_ACKNOWLEDGEMENT, "")), headers, persist_reply=False)
             return
+
+        # Check if search is needed via lightweight router call
+        search_query = self._decide_search(message, accepted.event["id"])
+        search_context = ""
+        if search_query:
+            results = search(search_query)
+            if results:
+                search_context = format_search_context(results)
+                # Store search as episodic event with provenance
+                try:
+                    sources = "\n".join(r.url for r in results)
+                    self.server.store.append(
+                        "assistant",
+                        f"[Web search: {search_query}]\nSources: {sources}",
+                        save_embedding=True,
+                    )
+                except OSError:
+                    pass
+
         self._stream_reply(
             self.server.router.stream_with_messages(
                 build_router_messages(
@@ -137,11 +158,36 @@ class SageHandler(BaseHTTPRequestHandler):
                     self.server.store,
                     exclude_event_id=accepted.event["id"],
                     directive=load_directive(),
+                    search_context=search_context,
                 )
             ),
             headers,
             persist_reply=True,
         )
+
+    def _decide_search(self, message: str, exclude_event_id: str) -> str | None:
+        """Ask the model if web search is needed for this message."""
+        directive = load_directive()
+        decision_prompt = (
+            "Based on the user's message and your knowledge, do you need to search the web "
+            "to answer accurately? Reply with ONLY a search query if yes, or 'NO' if no.\n\n"
+            f"User message: {message}"
+        )
+        messages = [{"role": "system", "content": directive}, {"role": "user", "content": decision_prompt}]
+        result = self.server.router.chat_with_messages(messages, temperature=0.0, max_tokens=100)
+        if not result.succeeded:
+            return None
+        reply = result.reply.strip()
+        if reply.upper() == "NO" or not reply:
+            return None
+        # Extract query from [search: ...] tag or use raw reply
+        match = re.search(r"\[search:\s*(.+?)\]", reply, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+        # If reply looks like a query (no full sentences), use it
+        if len(reply) < 200 and "\n" not in reply and not reply.endswith("."):
+            return reply
+        return None
 
     def _privacy_override(self, event_id: str) -> None:
         body = self._json_body()

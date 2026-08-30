@@ -56,6 +56,7 @@ def build_router_messages(
     max_context: int = 8,
     exclude_event_id: str | None = None,
     directive: str | None = None,
+    search_context: str = "",
 ) -> list[dict[str, str]]:
     full_history = [
         event
@@ -83,6 +84,8 @@ def build_router_messages(
     messages = [{"role": event["role"], "content": event["content"]} for event in context]
     if directive:
         messages.insert(0, {"role": "system", "content": directive})
+    if search_context:
+        messages.append({"role": "system", "content": search_context})
     messages.append({"role": "user", "content": message})
     return messages
 

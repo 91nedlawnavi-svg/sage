@@ -28,28 +28,47 @@ Already present and verified:
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
 
-## Active outcome — memory refresh
+## Active outcome — conversational wonder
 
-Make a normal current conversation retrieve the part of Elliot's whole history
-that is connected to the present situation, without dumping records or losing
-the original events.
+Sage recognizes gaps in her understanding during conversation and can search
+the web to fill them, voicing uncertainty naturally and storing what she learns
+as episodic memory with source provenance.
 
-## Acceptance evidence
+## Acceptance evidence — conversational wonder
 
-- Every accepted daily-life turn remains durable episodic history.
-- Retrieval uses the whole current exchange as its cue, not only the newest
-  sentence.
-- Relevant older events can influence a response naturally.
-- Exact moments remain findable when explicitly requested.
-- Related events can be grouped or summarized without erasing their sources.
-- Contradictions remain available and do not silently collapse into one fact.
-- Held-close and unknown material never enters casual recall or provider context.
-- A provider failure cannot lose an accepted user event.
-- A felt test shows continuity in an ordinary, non-crisis conversation.
+- Sage explicitly voices uncertainty when she lacks knowledge (e.g., "I don't
+  actually know, let me search quickly").
+- A visible search tool activates mid-conversation, similar to ChatGPT's search
+  behavior.
+- Search results are stored as episodic events with source URLs and timestamps.
+- Search queries never include held-close material or protected context.
+- Retrieved information influences the response naturally without reciting
+  raw search output.
+- Sage does not claim to feel wonder; she acts on recognized ignorance.
+- No external actions (posting, signing in, purchasing) occur through search.
+- Provider failure during search degrades clearly without losing the
+  conversation turn.
+
+## Next sequenced outcome — autonomous metabolism
+
+Sage explores the web self-directedly between conversations when she recognizes
+gaps or curiosity, bounded by existing agency constraints.
+
+## Acceptance evidence — autonomous metabolism (not yet active)
+
+- Background exploration triggers only from recognized gaps or genuine
+  curiosity, not idle activity.
+- All autonomous searches produce episodic events with full provenance.
+- No external, risky, irreversible, or ambiguous actions occur without
+  explicit authorization.
+- Held-close material never enters autonomous search queries.
+- Exploration results are available for conversational recall when relevant.
+- Activity remains proportional to context and does not create noise.
+- A legible record of autonomous exploration exists for Elliot to review.
 
 ## Explicitly not active yet
 
-- Broad autonomous actions.
+- Broad autonomous actions beyond web search.
 - External notifications.
 - Voice or ambient interfaces.
 - A durable belief-edit workflow.

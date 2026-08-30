@@ -302,6 +302,10 @@ form.addEventListener("submit", async (event) => {
     const handleEvent = (line) => {
       if (!line) return;
       const streamEvent = JSON.parse(line);
+      if (streamEvent.type === "search") {
+        setStatus("Searching the web...");
+        return;
+      }
       if (streamEvent.type === "delta" && reply) {
         reply.indicator?.remove();
         reply.indicator = null;
