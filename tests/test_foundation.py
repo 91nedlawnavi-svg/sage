@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
 from threading import Event as ThreadEvent, Thread
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import unittest
@@ -321,6 +322,44 @@ class FoundationTests(unittest.TestCase):
     def test_blank_alias_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             RouterClient("   ")
+
+    def test_search_stream_events_do_not_corrupt_the_response(self) -> None:
+        class SearchingRouter:
+            aliases = ("stub",)
+
+            def chat_with_messages(self, messages, **kwargs):  # search decision
+                return RouterResult(reply="sage project status")
+
+            def stream_with_messages(self, messages, **kwargs):
+                return iter(("answer", ""))
+
+        web_server = SageServer(("127.0.0.1", 0), self.store, SearchingRouter())
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            payload = json.dumps({"message": "what shipped today"}).encode()
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with patch("web.search", return_value=[]):
+                with urlopen(request) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(
+                        read_stream(response),
+                        [
+                            {"type": "search", "content": "sage project status"},
+                            {"type": "search_error", "content": "Search returned no results"},
+                            {"type": "delta", "content": "answer"},
+                            {"type": "done"},
+                        ],
+                    )
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
 
     def test_browser_sensitive_never_reaches_router(self) -> None:
         web_server = SageServer(("127.0.0.1", 0), self.store, self.router)

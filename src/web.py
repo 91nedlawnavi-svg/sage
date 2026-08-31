@@ -129,8 +129,9 @@ class SageHandler(BaseHTTPRequestHandler):
             "X-Sage-Event-ID": accepted.event["id"],
             "X-Sage-Sensitive": str(accepted.privacy.sensitive).lower(),
         }
+        self._begin_stream(headers)
         if accepted.privacy.sensitive:
-            self._stream_reply(iter((SENSITIVE_ACKNOWLEDGEMENT, "")), headers, persist_reply=False)
+            self._stream_reply(iter((SENSITIVE_ACKNOWLEDGEMENT, "")), persist_reply=False)
             return
 
         # Decide and run search with visible stream events
@@ -167,7 +168,6 @@ class SageHandler(BaseHTTPRequestHandler):
                     search_context=search_context,
                 )
             ),
-            headers,
             persist_reply=True,
         )
 
@@ -245,7 +245,8 @@ class SageHandler(BaseHTTPRequestHandler):
         event_id = unquote(path[len(prefix):-len(suffix)])
         return event_id if event_id and "/" not in event_id else None
 
-    def _stream_reply(self, chunks: Iterator[str], headers: dict[str, str], *, persist_reply: bool) -> None:
+    def _begin_stream(self, headers: dict[str, str]) -> None:
+        """Send the response head before any stream event; chunks written earlier corrupt the response."""
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
         self.send_header("Transfer-Encoding", "chunked")
@@ -254,6 +255,7 @@ class SageHandler(BaseHTTPRequestHandler):
             self.send_header(name, value)
         self.end_headers()
 
+    def _stream_reply(self, chunks: Iterator[str], *, persist_reply: bool) -> None:
         reply: list[str] = []
         completed = False
         try:
