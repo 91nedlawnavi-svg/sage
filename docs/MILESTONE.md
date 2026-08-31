@@ -14,7 +14,7 @@ Already present and verified:
 - Local browser and terminal chat through the configured local router.
 - Durable UTC event history with restart persistence.
 - Lexical and embedding-assisted event recall.
-- Held-close and `/pv` privacy boundaries.
+- Sensitive and `/sensitive` privacy boundaries.
 - Fail-closed provider handling for unknown or protected events.
 - Separate relational and interior storage.
 - Reflections, entity observations, and one waiting-message surface.
@@ -41,7 +41,7 @@ as episodic memory with source provenance.
 - A visible search tool activates mid-conversation, similar to ChatGPT's search
   behavior.
 - Search results are stored as episodic events with source URLs and timestamps.
-- Search queries never include held-close material or protected context.
+- Search queries never include sensitive material or protected context.
 - Retrieved information influences the response naturally without reciting
   raw search output.
 - Sage does not claim to feel wonder; she acts on recognized ignorance.
@@ -61,7 +61,7 @@ gaps or curiosity, bounded by existing agency constraints.
 - All autonomous searches produce episodic events with full provenance.
 - No external, risky, irreversible, or ambiguous actions occur without
   explicit authorization.
-- Held-close material never enters autonomous search queries.
+- Sensitive material never enters autonomous search queries.
 - Exploration results are available for conversational recall when relevant.
 - Activity remains proportional to context and does not create noise.
 - A legible record of autonomous exploration exists for Elliot to review.

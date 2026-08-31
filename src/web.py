@@ -15,7 +15,7 @@ from urllib.parse import unquote, urlparse
 from events import EventStore
 from interior import InteriorStore
 from router import EmbeddingClient, RouterClient
-from sage import HELD_CLOSE_ACKNOWLEDGEMENT, ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_messages, load_directive
+from sage import SENSITIVE_ACKNOWLEDGEMENT, ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_messages, load_directive
 from search import search, format_search_context
 
 STATIC_ROOT = Path(__file__).with_name("static")
@@ -113,11 +113,11 @@ class SageHandler(BaseHTTPRequestHandler):
         if not isinstance(message, str) or not (message := message.strip()):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "message must be a nonblank string"})
             return
-        held_close_mode = body.get("held_close_mode", False)
-        if not isinstance(held_close_mode, bool):
-            self._json(HTTPStatus.BAD_REQUEST, {"error": "held_close_mode must be boolean"})
+        sensitive_mode = body.get("sensitive_mode", False)
+        if not isinstance(sensitive_mode, bool):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "sensitive_mode must be boolean"})
             return
-        accepted = accept_message(message, self.server.store, held_close=held_close_mode)
+        accepted = accept_message(message, self.server.store, sensitive=sensitive_mode)
         if accepted is None:
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_FAILURE})
             return
@@ -127,20 +127,22 @@ class SageHandler(BaseHTTPRequestHandler):
 
         headers = {
             "X-Sage-Event-ID": accepted.event["id"],
-            "X-Sage-Held-Close": str(accepted.privacy.held_close).lower(),
+            "X-Sage-Sensitive": str(accepted.privacy.sensitive).lower(),
         }
-        if accepted.privacy.held_close:
-            self._stream_reply(iter((HELD_CLOSE_ACKNOWLEDGEMENT, "")), headers, persist_reply=False)
+        if accepted.privacy.sensitive:
+            self._stream_reply(iter((SENSITIVE_ACKNOWLEDGEMENT, "")), headers, persist_reply=False)
             return
 
-        # Check if search is needed via lightweight router call
+        # Decide and run search with visible stream events
+        self._search_decision_failed = False
         search_query = self._decide_search(message, accepted.event["id"])
         search_context = ""
         if search_query:
+            self._write_stream_event("search", search_query)
             results = search(search_query)
             if results:
                 search_context = format_search_context(results)
-                # Store search as episodic event with provenance
+                self._write_stream_event("search_done", f"{len(results)} results")
                 try:
                     sources = "\n".join(r.url for r in results)
                     self.server.store.append(
@@ -150,6 +152,10 @@ class SageHandler(BaseHTTPRequestHandler):
                     )
                 except OSError:
                     pass
+            else:
+                self._write_stream_event("search_error", "Search returned no results")
+        elif self._search_decision_failed:
+            self._write_stream_event("search_error", "Could not decide whether to search")
 
         self._stream_reply(
             self.server.router.stream_with_messages(
@@ -166,7 +172,7 @@ class SageHandler(BaseHTTPRequestHandler):
         )
 
     def _decide_search(self, message: str, exclude_event_id: str) -> str | None:
-        """Ask the model if web search is needed for this message."""
+        """Ask the model if web search is needed. Sets _search_decision_failed on router error."""
         directive = load_directive()
         decision_prompt = (
             "Based on the user's message and your knowledge, do you need to search the web "
@@ -176,6 +182,7 @@ class SageHandler(BaseHTTPRequestHandler):
         messages = [{"role": "system", "content": directive}, {"role": "user", "content": decision_prompt}]
         result = self.server.router.chat_with_messages(messages, temperature=0.0, max_tokens=100)
         if not result.succeeded:
+            self._search_decision_failed = True
             return None
         reply = result.reply.strip()
         if reply.upper() == "NO" or not reply:
@@ -193,19 +200,19 @@ class SageHandler(BaseHTTPRequestHandler):
         body = self._json_body()
         if body is None:
             return
-        held_close = body.get("held_close")
-        if not isinstance(held_close, bool):
-            self._json(HTTPStatus.BAD_REQUEST, {"error": "held_close must be boolean"})
+        sensitive = body.get("sensitive")
+        if not isinstance(sensitive, bool):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "sensitive must be boolean"})
             return
         try:
-            updated = self.server.store.set_held_close(event_id, held_close)
+            updated = self.server.store.set_sensitive(event_id, sensitive)
         except OSError:
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Sage could not save privacy setting."})
             return
         if not updated:
             self._json(HTTPStatus.NOT_FOUND, {"error": "user event not found"})
             return
-        self._json(HTTPStatus.OK, {"event_id": event_id, "held_close": held_close})
+        self._json(HTTPStatus.OK, {"event_id": event_id, "sensitive": sensitive})
 
     def _json_body(self) -> dict[str, object] | None:
         if self.headers.get("Content-Type", "").split(";", 1)[0] != "application/json":

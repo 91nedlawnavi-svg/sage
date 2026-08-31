@@ -21,7 +21,7 @@ continuity, judgment, initiative, and local ownership.
 - Sage is single-user and local-first.
 - Lived memory is `~/sage_data/`; identity, code, and project records stay outside it.
 - Provider calls use the configured local router and only necessary context.
-- Held-close material never enters casual recall, embeddings, or background provider prompts.
+- Sensitive material never enters casual recall, embeddings, or background provider prompts.
 - Original events are not replaced by frozen facts or current-state tables.
 - Contradictory events remain history.
 - Risky, irreversible, external, or ambiguous actions require explicit authorization.

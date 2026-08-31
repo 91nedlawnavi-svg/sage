@@ -36,25 +36,23 @@ def main() -> None:
     load_dotenv()
     parser = argparse.ArgumentParser(description="Launch Sage service.")
     parser.add_argument("--alias", action="append", dest="aliases", help="Chat model alias; repeat to set priority")
-    parser.add_argument("--scribe-alias", default=os.getenv("SAGE_SCRIBE_MODEL", "sage-scribe"), help="Scribe model alias")
+    parser.add_argument("--extract-alias", default=os.getenv("SAGE_EXTRACT_MODEL", ""), help="Entity-extraction alias; defaults to the last chat alias")
     parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "6969")), help="Local web port")
     parser.add_argument("--data-root", type=Path, default=Path(os.getenv("SAGE_DATA_ROOT", str(Path.home() / "sage_data"))), help="Lived data root")
     args = parser.parse_args()
 
     configured_models = os.getenv("SAGE_CHAT_MODELS", "")
-    aliases = tuple(args.aliases or (item.strip() for item in configured_models.split(",") if item.strip()))
-    if not aliases:
-        legacy_alias = os.getenv("SAGE_CHAT_MODEL", "").strip()
-        aliases = (legacy_alias,) if legacy_alias else DEFAULT_CHAT_MODELS
+    aliases = tuple(args.aliases or (item.strip() for item in configured_models.split(",") if item.strip())) or DEFAULT_CHAT_MODELS
 
     embedder = EmbeddingClient()
     store = EventStore(args.data_root, embedder=embedder)
     router = RouterClient(aliases)
-    scribe_router = RouterClient(args.scribe_alias)
+    # Extraction is mechanical JSON: cheapest alias in the chain unless overridden.
+    extract_router = RouterClient(args.extract_alias.strip() or aliases[-1])
     interior = InteriorStore(args.data_root)
 
     # Start permitted local background work.
-    heartbeat = Heartbeat(store, interior, scribe_router, interval_seconds=120.0)
+    heartbeat = Heartbeat(store, interior, router, extract_router=extract_router, interval_seconds=120.0)
     heartbeat.start()
 
     server = SageServer(("0.0.0.0", args.port), store, router, interior)

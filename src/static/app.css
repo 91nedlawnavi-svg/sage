@@ -159,7 +159,7 @@ article.waiting::before {
   font-size: .75rem;
   font-weight: 600;
 }
-article.held-close { box-shadow: 0 0 0 1px var(--danger-border) inset; background: var(--danger-soft); }
+article.sensitive { box-shadow: 0 0 0 1px var(--danger-border) inset; background: var(--danger-soft); }
 article.assistant.responding p { min-height: 1.65em; }
 .response-loader {
   height: 1.65em;

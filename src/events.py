@@ -38,7 +38,7 @@ class Event(TypedDict):
     content: str
     said_at: str
     id: NotRequired[str]
-    held_close: NotRequired[bool]
+    sensitive: NotRequired[bool]
     provider_excluded: NotRequired[bool]
     privacy_carry_after: NotRequired[int]
 
@@ -46,7 +46,7 @@ class Event(TypedDict):
 class PrivacyRecord(TypedDict):
     kind: Literal["privacy"]
     target_id: str
-    held_close: bool
+    sensitive: bool
     source: Literal["sensor", "user"]
     carry_after: NotRequired[int]
     said_at: str
@@ -83,6 +83,11 @@ def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
+def _read_sensitive(record: dict) -> object:
+    """Read the sensitive flag, tolerating records written under the old `held_close` key."""
+    return record["sensitive"] if "sensitive" in record else record.get("held_close")
+
+
 class EventStore:
     def __init__(self, data_root: Path | None = None, embedder: EmbeddingClient | None = None) -> None:
         self.data_root = data_root or Path.home() / "sage_data"
@@ -100,7 +105,7 @@ class EventStore:
         content: str,
         *,
         save_embedding: bool = True,
-        initial_held_close: bool | None = None,
+        initial_sensitive: bool | None = None,
         privacy_carry_after: int | None = None,
     ) -> Event:
         event: Event = {
@@ -110,14 +115,14 @@ class EventStore:
             "said_at": self._timestamp(),
         }
         if role == "user":
-            event["provider_excluded"] = initial_held_close is None or initial_held_close
+            event["provider_excluded"] = initial_sensitive is None or initial_sensitive
             if event["provider_excluded"]:
                 save_embedding = False
-            if initial_held_close is not None:
-                event["held_close"] = initial_held_close
+            if initial_sensitive is not None:
+                event["sensitive"] = initial_sensitive
                 if privacy_carry_after is not None:
                     event["privacy_carry_after"] = privacy_carry_after
-        elif initial_held_close is not None:
+        elif initial_sensitive is not None:
             raise ValueError("Only user events can have privacy classification")
         self._append_record(event)
         if save_embedding and self.embedder is not None and not event.get("provider_excluded", False):
@@ -130,7 +135,7 @@ class EventStore:
     def append_privacy(
         self,
         target_id: str,
-        held_close: bool,
+        sensitive: bool,
         source: Literal["sensor", "user"],
         *,
         carry_after: int | None = None,
@@ -138,7 +143,7 @@ class EventStore:
         record: PrivacyRecord = {
             "kind": "privacy",
             "target_id": target_id,
-            "held_close": held_close,
+            "sensitive": sensitive,
             "source": source,
             "said_at": self._timestamp(),
         }
@@ -219,22 +224,22 @@ class EventStore:
     def history(self) -> list[Event]:
         records = self._read_records()
         privacy = self._privacy_status(records)
-        held_close_ids = {
+        sensitive_ids = {
             record["target_id"]
             for record in records
             if isinstance(record, dict)
             and record.get("kind") == "privacy"
-            and record.get("held_close") is True
+            and _read_sensitive(record) is True
         }
         events: list[Event] = []
         for index, record in enumerate(records):
             if isinstance(record, dict) and record.get("kind") in {"privacy", "chat_boundary"}:
                 continue
             event = self._parse_event(record, index)
-            event["held_close"] = privacy.get(event["id"], event.get("held_close", False))
+            event["sensitive"] = privacy.get(event["id"], event.get("sensitive", False))
             event["provider_excluded"] = (
                 event.get("provider_excluded", event["role"] == "user")
-                or event["id"] in held_close_ids
+                or event["id"] in sensitive_ids
             )
             events.append(event)
         return events
@@ -255,10 +260,10 @@ class EventStore:
         }
         return [event for event in self.history() if event["id"] in visible_ids]
 
-    def set_held_close(self, event_id: str, held_close: bool) -> bool:
+    def set_sensitive(self, event_id: str, sensitive: bool) -> bool:
         for event in self.history():
             if event["id"] == event_id and event["role"] == "user":
-                self.append_privacy(event_id, held_close, "user")
+                self.append_privacy(event_id, sensitive, "user")
                 return True
         return False
 
@@ -287,7 +292,7 @@ class EventStore:
         events = [
             event for event in self.history()
             if event["role"] in {"user", "assistant"}
-            and not event["held_close"]
+            and not event["sensitive"]
             and not event.get("provider_excluded", False)
         ]
         if exclude_event_id is not None:
@@ -416,7 +421,7 @@ class EventStore:
         for record in records:
             if isinstance(record, dict) and record.get("kind") == "privacy":
                 privacy = EventStore._parse_privacy(record)
-                status[privacy["target_id"]] = privacy["held_close"]
+                status[privacy["target_id"]] = privacy["sensitive"]
         return status
 
     @staticmethod
@@ -454,8 +459,8 @@ class EventStore:
             event["id"] = record["id"]
         else:
             event["id"] = f"legacy:{index}"
-        if isinstance(record.get("held_close"), bool):
-            event["held_close"] = record["held_close"]
+        if isinstance(_read_sensitive(record), bool):
+            event["sensitive"] = bool(_read_sensitive(record))
         if isinstance(record.get("provider_excluded"), bool):
             event["provider_excluded"] = record["provider_excluded"]
         if isinstance(record.get("privacy_carry_after"), int) and record["privacy_carry_after"] >= 0:
@@ -468,7 +473,7 @@ class EventStore:
             not isinstance(record, dict)
             or record.get("kind") != "privacy"
             or not isinstance(record.get("target_id"), str)
-            or not isinstance(record.get("held_close"), bool)
+            or not isinstance(_read_sensitive(record), bool)
             or record.get("source") not in {"sensor", "user"}
             or not isinstance(record.get("said_at"), str)
         ):
@@ -476,7 +481,7 @@ class EventStore:
         parsed: PrivacyRecord = PrivacyRecord(
             kind="privacy",
             target_id=record["target_id"],
-            held_close=record["held_close"],
+            sensitive=bool(_read_sensitive(record)),
             source=record["source"],
             said_at=record["said_at"],
         )

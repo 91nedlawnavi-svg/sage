@@ -13,10 +13,10 @@ const drawerClose = document.querySelector("#drawer-close");
 const drawerOverlay = document.querySelector("#drawer-overlay");
 const drawerTabs = [...document.querySelectorAll(".drawer-tab")];
 const drawerContent = document.querySelector("#drawer-content");
-const pvNotice = document.querySelector("#pv-notice");
+const sensitiveNotice = document.querySelector("#sensitive-notice");
 
 let activeTab = "reflections";
-let heldCloseMode = false;
+let sensitiveMode = false;
 let busy = true;
 let focusBeforeDrawer = null;
 let viewportFrame = 0;
@@ -89,7 +89,7 @@ function add(event) {
   const article = document.createElement("article");
   article.className = event.role;
   article.classList.toggle("waiting", event.kind === "waiting");
-  article.classList.toggle("held-close", event.held_close === true);
+  article.classList.toggle("sensitive", event.sensitive === true);
   const text = document.createElement("p");
   text.textContent = event.content || "";
   article.append(text);
@@ -108,9 +108,9 @@ function add(event) {
   return {article, text, indicator};
 }
 
-function updatePvMode() {
-  heldCloseMode = !heldCloseMode;
-  pvNotice.hidden = !heldCloseMode;
+function toggleSensitiveMode() {
+  sensitiveMode = !sensitiveMode;
+  sensitiveNotice.hidden = !sensitiveMode;
 }
 
 async function loadHistory() {
@@ -129,8 +129,8 @@ newChat.addEventListener("click", async () => {
     if (!response.ok) throw new Error("new chat unavailable");
     messages.querySelectorAll("article").forEach((article) => article.remove());
     empty.hidden = false;
-    heldCloseMode = false;
-    pvNotice.hidden = true;
+    sensitiveMode = false;
+    sensitiveNotice.hidden = true;
     input.value = "";
     resizeComposer();
     updateSendState();
@@ -270,8 +270,8 @@ form.addEventListener("submit", async (event) => {
   const message = input.value.trim();
   if (!message || busy) return;
 
-  if (message === "/pv") {
-    updatePvMode();
+  if (message === "/sensitive") {
+    toggleSensitiveMode();
     input.value = "";
     resizeComposer();
     updateSendState();
@@ -283,7 +283,7 @@ form.addEventListener("submit", async (event) => {
   input.disabled = true;
   updateSendState();
   resizeComposer();
-  add({role: "user", content: message, held_close: heldCloseMode});
+  add({role: "user", content: message, sensitive: sensitiveMode});
   setStatus("Thinking");
   let reply = null;
   let streamFinished = false;
@@ -291,11 +291,11 @@ form.addEventListener("submit", async (event) => {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({message, held_close_mode: heldCloseMode}),
+      body: JSON.stringify({message, sensitive_mode: sensitiveMode}),
     });
     if (!response.ok || !response.body) throw new Error("chat unavailable");
-    const heldClose = response.headers.get("X-Sage-Held-Close") === "true";
-    if (!heldClose) reply = add({role: "assistant", responding: true});
+    const sensitive = response.headers.get("X-Sage-Sensitive") === "true";
+    if (!sensitive) reply = add({role: "assistant", responding: true});
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -303,7 +303,15 @@ form.addEventListener("submit", async (event) => {
       if (!line) return;
       const streamEvent = JSON.parse(line);
       if (streamEvent.type === "search") {
-        setStatus("Searching the web...");
+        setStatus(`Searching: ${streamEvent.content || "web"}...`);
+        return;
+      }
+      if (streamEvent.type === "search_done") {
+        setStatus(`Found ${streamEvent.content || "results"}`);
+        return;
+      }
+      if (streamEvent.type === "search_error") {
+        setStatus(streamEvent.content || "Search failed");
         return;
       }
       if (streamEvent.type === "delta" && reply) {

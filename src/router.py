@@ -39,7 +39,7 @@ class RouterResult:
 
 
 class RouterClient:
-    """Inference client for free-tier router aliases (chat model and scribe model)."""
+    """Inference client for free-tier router aliases, with ordered failover."""
 
     def __init__(self, alias: str | list[str] | tuple[str, ...], base_url: str = ROUTER_BASE_URL) -> None:
         aliases = (alias,) if isinstance(alias, str) else tuple(alias)

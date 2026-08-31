@@ -10,7 +10,7 @@ when to hold back, and takes useful initiative with permission.
 
 The repository contains the working foundation: local browser and terminal chat,
 durable episodic event storage, lexical and embedding-assisted recall,
-held-close privacy, separate interior storage, a Notebook drawer, background
+sensitive-material privacy, separate interior storage, a Notebook drawer, background
 extraction/reflection, and one bounded waiting-message surface.
 
 The active work is contextual continuity: making the whole remembered history

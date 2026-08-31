@@ -131,7 +131,7 @@ def prepare_dense_cases(embedder_url: str) -> tuple[PreparedDenseCase, ...]:
         for entry in DENSE_MEMORY:
             event = store.append(
                 entry.role, entry.content,
-                initial_held_close=False if entry.role == "user" else None,
+                initial_sensitive=False if entry.role == "user" else None,
             )
             event_ids[event["id"]] = entry.id
 

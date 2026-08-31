@@ -26,7 +26,7 @@ class FailingEmbeddingStore(EventStore):
 
 
 class PrivacyEmbeddingTests(unittest.TestCase):
-    def test_held_close_input_never_reaches_embedder(self) -> None:
+    def test_sensitive_input_never_reaches_embedder(self) -> None:
         with TemporaryDirectory() as directory:
             embedder = RecordingEmbedder()
             store = EventStore(Path(directory), embedder=embedder)
@@ -34,10 +34,10 @@ class PrivacyEmbeddingTests(unittest.TestCase):
             accepted = accept_message("I never told anyone about this", store)
 
             self.assertIsNotNone(accepted)
-            self.assertTrue(accepted.privacy.held_close)
+            self.assertTrue(accepted.privacy.sensitive)
             self.assertEqual(embedder.texts, [])
 
-    def test_non_held_input_still_reaches_embedder(self) -> None:
+    def test_non_sensitive_input_still_reaches_embedder(self) -> None:
         with TemporaryDirectory() as directory:
             embedder = RecordingEmbedder()
             store = EventStore(Path(directory), embedder=embedder)
@@ -45,7 +45,7 @@ class PrivacyEmbeddingTests(unittest.TestCase):
             accepted = accept_message("Open project update", store)
 
             self.assertIsNotNone(accepted)
-            self.assertFalse(accepted.privacy.held_close)
+            self.assertFalse(accepted.privacy.sensitive)
             self.assertEqual(embedder.texts, ["Open project update"])
 
     def test_unclassified_input_never_reaches_embedder(self) -> None:
@@ -53,7 +53,7 @@ class PrivacyEmbeddingTests(unittest.TestCase):
             embedder = RecordingEmbedder()
             store = EventStore(Path(directory), embedder=embedder)
 
-            store.append("user", "Unknown privacy", initial_held_close=None)
+            store.append("user", "Unknown privacy", initial_sensitive=None)
 
             self.assertEqual(embedder.texts, [])
 

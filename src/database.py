@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS events (
     role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
     content TEXT NOT NULL,
     said_at TEXT NOT NULL,
-    held_close INTEGER NOT NULL DEFAULT 0,
+    sensitive INTEGER NOT NULL DEFAULT 0,
     provider_excluded INTEGER NOT NULL DEFAULT 0,
     privacy_carry_after INTEGER
 );
@@ -31,7 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_events_role ON events(role);
 CREATE TABLE IF NOT EXISTS privacy_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     target_id TEXT NOT NULL,
-    held_close INTEGER NOT NULL,
+    sensitive INTEGER NOT NULL,
     source TEXT NOT NULL CHECK(source IN ('sensor', 'user')),
     carry_after INTEGER,
     said_at TEXT NOT NULL

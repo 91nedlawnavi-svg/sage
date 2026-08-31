@@ -47,7 +47,7 @@ flowchart LR
 - Append-only UTC episodic event history.
 - Durable assistant replies and provider-failure preservation.
 - Local Qwen3 embedding recall.
-- Held-close and unknown-privacy exclusion.
+- Sensitive and unknown-privacy exclusion.
 - Separate relational memory and interior material.
 - Notebook, reflections, entities, and bounded waiting message.
 - Background extraction with retry-safe completion records.
@@ -84,7 +84,7 @@ flowchart LR
 ## Guardrails
 
 - No model replaces the event record.
-- No provider receives held-close or unknown material.
+- No provider receives sensitive or unknown material.
 - No model failure loses an accepted user event.
 - No derived view silently outranks contradictory history.
 - No external, risky, irreversible, or ambiguous action happens without permission.

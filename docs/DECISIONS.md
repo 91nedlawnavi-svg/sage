@@ -20,7 +20,7 @@ product authority.
   They retain provenance and can be revised by later evidence.
 - Sage's agency is calibrated: she may answer, notice, mention, suggest,
   prepare, or act. Authorization and risk determine the boundary.
-- Local ownership, held-close privacy, graceful provider failure, and the
+- Local ownership, sensitive-material privacy, graceful provider failure, and the
   separation of lived memory from code remain permanent constraints.
 - The old V3 rebuild is sealed as historical foundation work. The Sage Refresh
   supersedes its product framing without discarding its useful implementation

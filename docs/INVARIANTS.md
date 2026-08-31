@@ -27,7 +27,7 @@ These constraints apply to every implementation and every future capability.
   isolated keyword or a permanently assigned importance score.
 - Recall may combine lexical, semantic, temporal, episodic, entity, and pattern
   signals, then return a compact context with provenance.
-- Held-close material is excluded before casual recall, embedding, or provider
+- Sensitive material is excluded before casual recall, embedding, or provider
   prompt assembly.
 - Unknown or interrupted privacy classification fails closed for provider work.
 - Relational memory and Sage's interior material remain physically separate.

@@ -21,18 +21,36 @@ class Heartbeat:
         self,
         event_store: EventStore,
         interior_store: InteriorStore,
-        scribe_router: RouterClient,
+        reflection_router: RouterClient,
         *,
+        extract_router: RouterClient | None = None,
         interval_seconds: float = 60.0,
     ) -> None:
         self.event_store = event_store
         self.interior_store = interior_store
-        self.scribe_router = scribe_router
+        # Reflection is Sage's interior voice, so it runs on the chat chain and gets its
+        # failover. Entity extraction is mechanical JSON and runs on a cheaper alias.
+        self.reflection_router = reflection_router
+        self.extract_router = extract_router or reflection_router
         self.interval_seconds = interval_seconds
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self.last_beat_ts: str | None = None
         self.last_reflection_ts: str | None = None
+        self.failure_counts: dict[str, int] = {}
+
+    def _record_outcome(self, pass_name: str, router: RouterClient, succeeded: bool) -> None:
+        """Background inference fails invisibly by nature; log it loudly instead.
+
+        ponytail: log-only surface, add a status endpoint if failures still go unnoticed.
+        """
+        if succeeded:
+            self.failure_counts[pass_name] = 0
+            return
+        count = self.failure_counts.get(pass_name, 0) + 1
+        self.failure_counts[pass_name] = count
+        aliases = getattr(router, "aliases", "unknown")
+        logger.error(f"{pass_name} pass got no reply from {aliases} ({count} consecutive failures)")
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -63,7 +81,7 @@ class Heartbeat:
         history = [
             event
             for event in self.event_store.history()
-            if not event.get("held_close", False) and not event.get("provider_excluded", False)
+            if not event.get("sensitive", False) and not event.get("provider_excluded", False)
         ]
         if not history:
             return
@@ -78,7 +96,8 @@ class Heartbeat:
                 "If no durable entity is present, return [].\n\n"
                 f"Message: {event['content']}"
             )
-            result = self.scribe_router.chat_with_messages([{"role": "user", "content": prompt}])
+            result = self.extract_router.chat_with_messages([{"role": "user", "content": prompt}])
+            self._record_outcome("entity extraction", self.extract_router, result.succeeded)
             if result.succeeded and result.reply:
                 try:
                     cleaned = result.reply.strip()
@@ -97,6 +116,7 @@ class Heartbeat:
                                     source_event_id=event["id"],
                                 )
                 except (json.JSONDecodeError, ValueError):
+                    logger.warning(f"entity extraction returned unparseable JSON for event {event['id']}")
                     continue
                 self.event_store.append_heartbeat_completion("entities", event["id"])
 
@@ -105,7 +125,7 @@ class Heartbeat:
         history = [
             event
             for event in self.event_store.history()
-            if not event.get("held_close", False) and not event.get("provider_excluded", False)
+            if not event.get("sensitive", False) and not event.get("provider_excluded", False)
         ]
         if len(history) < 2:
             return
@@ -124,7 +144,8 @@ class Heartbeat:
             "Do not address the user. This is your private notebook.\n\n"
             f"Recent dialogue:\n{recent_dialogue}"
         )
-        result = self.scribe_router.chat_with_messages([{"role": "user", "content": prompt}])
+        result = self.reflection_router.chat_with_messages([{"role": "user", "content": prompt}])
+        self._record_outcome("reflection", self.reflection_router, result.succeeded)
         if result.succeeded and result.reply:
             self.interior_store.append_reflection(result.reply.strip(), source_event_id=source_event_id)
             self.event_store.append_heartbeat_completion("reflection", source_event_id)

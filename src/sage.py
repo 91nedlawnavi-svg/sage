@@ -7,10 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from events import Event, EventStore
-from held_close import PrivacyDecision, classify
+from sensitive import PrivacyDecision, classify
 from router import RouterClient
 
-HELD_CLOSE_ACKNOWLEDGEMENT = "I'm holding this close."
+SENSITIVE_ACKNOWLEDGEMENT = "I'm holding this close."
 ROUTER_FAILURE = "Sage could not reach the local router. Your message was saved; no assistant reply was recorded."
 SAVE_FAILURE = "Sage could not save your message. Nothing was sent."
 DIRECTIVE_PATH = Path(__file__).resolve().parents[1] / "directive.txt"
@@ -22,25 +22,25 @@ class AcceptedMessage:
     privacy: PrivacyDecision
 
 
-def accept_message(message: str, store: EventStore, held_close: bool = False) -> AcceptedMessage | None:
+def accept_message(message: str, store: EventStore, sensitive: bool = False) -> AcceptedMessage | None:
     """Persist and classify user input before any provider can receive it."""
     try:
         privacy = classify(message, store.carry_before_next_user_event())
-        if held_close:
+        if sensitive:
             privacy = PrivacyDecision(True, privacy.tier, 0)
         event = store.append(
             "user",
             message,
-            save_embedding=not privacy.held_close,
-            initial_held_close=privacy.held_close,
+            save_embedding=not privacy.sensitive,
+            initial_sensitive=privacy.sensitive,
             privacy_carry_after=privacy.carry_after,
         )
         try:
             store.append_privacy(
                 event["id"],
-                privacy.held_close,
-                "user" if held_close else "sensor",
-                carry_after=None if held_close else privacy.carry_after,
+                privacy.sensitive,
+                "user" if sensitive else "sensor",
+                carry_after=None if sensitive else privacy.carry_after,
             )
         except OSError:
             pass
@@ -62,7 +62,7 @@ def build_router_messages(
         event
         for event in store.history()
         if event["role"] in {"user", "assistant"}
-        and not event["held_close"]
+        and not event["sensitive"]
         and not event.get("provider_excluded", False)
         and event["id"] != exclude_event_id
     ]
@@ -102,8 +102,8 @@ def handle_message(message: str, store: EventStore, router: RouterClient) -> str
     accepted = accept_message(message, store)
     if accepted is None:
         return SAVE_FAILURE
-    if accepted.privacy.held_close:
-        return HELD_CLOSE_ACKNOWLEDGEMENT
+    if accepted.privacy.sensitive:
+        return SENSITIVE_ACKNOWLEDGEMENT
 
     result = router.chat_with_messages(
         build_router_messages(

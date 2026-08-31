@@ -1,4 +1,4 @@
-"""Local held-close intake classifier."""
+"""Local sensitive intake classifier."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ CARRY_TURNS = 4
 
 @dataclass(frozen=True)
 class PrivacyDecision:
-    held_close: bool
+    sensitive: bool
     tier: int
     carry_after: int
 
