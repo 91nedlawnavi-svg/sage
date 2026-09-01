@@ -4,10 +4,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import logging
 import os
 from pathlib import Path
-from typing import Literal, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from database import Database
+
+_log = logging.getLogger(__name__)
 
 
 class Reflection(TypedDict):
@@ -35,12 +41,13 @@ class WaitingMessage(TypedDict):
 
 
 class InteriorStore:
-    def __init__(self, data_root: Path | None = None) -> None:
+    def __init__(self, data_root: Path | None = None, *, mirror: Database | None = None) -> None:
         self.data_root = data_root or Path.home() / "sage_data"
         self.interior_dir = self.data_root / "interior"
         self.reflections_path = self.interior_dir / "reflections.jsonl"
         self.beliefs_path = self.interior_dir / "beliefs.jsonl"
         self.waiting_message_path = self.interior_dir / "waiting_message.json"
+        self._mirror = mirror
 
     def _ensure_dir(self) -> None:
         self.interior_dir.mkdir(parents=True, exist_ok=True)
@@ -69,6 +76,7 @@ class InteriorStore:
             f.write(json.dumps(reflection, ensure_ascii=False) + "\n")
             f.flush()
             os.fsync(f.fileno())
+        self._mirror_reflection(reflection)
         return reflection
 
     def list_reflections(self, limit: int = 20) -> list[Reflection]:
@@ -136,6 +144,7 @@ class InteriorStore:
             json.dump(msg, f, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())
+        self._mirror_waiting_message(msg)
         return msg
 
     def clear_waiting_message(self) -> None:
@@ -154,3 +163,39 @@ class InteriorStore:
                     self.waiting_message_path.unlink(missing_ok=True)
                 except OSError:
                     pass
+        self._mirror_clear_waiting_message()
+
+    # -- fail-soft SQLite mirror writes --
+
+    def _mirror_reflection(self, reflection: Reflection) -> None:
+        if self._mirror is None:
+            return
+        try:
+            self._mirror.execute(
+                "INSERT OR IGNORE INTO reflections (id, content, said_at, category, source_event_id) VALUES (?, ?, ?, ?, ?)",
+                (reflection["id"], reflection["content"], reflection["said_at"],
+                 reflection.get("category", "general"), reflection.get("source_event_id")),
+            )
+        except Exception:
+            _log.warning("mirror: failed to write reflection %s", reflection.get("id"), exc_info=True)
+
+    def _mirror_waiting_message(self, msg: WaitingMessage) -> None:
+        if self._mirror is None:
+            return
+        try:
+            self._mirror.execute(
+                "INSERT OR REPLACE INTO waiting_message (id, content, said_at, revised_at, read) VALUES (1, ?, ?, ?, ?)",
+                (msg["content"], msg["said_at"], msg.get("revised_at"), int(msg.get("read", False))),
+            )
+        except Exception:
+            _log.warning("mirror: failed to write waiting message", exc_info=True)
+
+    def _mirror_clear_waiting_message(self) -> None:
+        if self._mirror is None:
+            return
+        try:
+            self._mirror.execute(
+                "UPDATE waiting_message SET read = 1 WHERE id = 1",
+            )
+        except Exception:
+            _log.warning("mirror: failed to clear waiting message", exc_info=True)

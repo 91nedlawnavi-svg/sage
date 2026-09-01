@@ -22,16 +22,16 @@ Sage is a single-user personal intelligence with persistent episodic memory. Pyt
 - `sage.py` — message handling, directive loading, router message building
 - `web.py` — HTTP server (`ThreadingHTTPServer`), chat API, streaming NDJSON replies
 - `events.py` — append-only JSONL event store with hybrid recall (BM25 + cosine similarity)
-- `database.py` — SQLite schema at `~/sage_data/sage.db` (8 tables). Schema created via `CREATE TABLE IF NOT EXISTS` on first connection; no migrations
+- `database.py` — SQLite mirror layer: separate relational (`~/sage_data/relational/relational.db`) and interior (`~/sage_data/interior/interior.db`) databases, dual-written alongside JSONL. JSONL remains source of truth; mirrors are derived and rebuildable via `tools/backfill_sqlite.py`
 - `router.py` — LLM router client with model fallback chain
 - `heartbeat.py` — background thread for entity extraction and reflection
-- `interior.py` — private storage (reflections, beliefs, waiting messages)
+- `interior.py` — private storage (reflections, waiting messages). Beliefs are computed at recall, never stored
 - `sensitive.py` — privacy classification logic
 - `search.py` — web search integration
 
 **Frontend**: Static HTML/CSS/JS in `src/static/`.
 
-**Dual storage**: JSONL files (`~/sage_data/events.jsonl`) AND SQLite (`~/sage_data/sage.db`). `Database` defines schema but `EventStore` still uses JSONL directly.
+**Dual storage**: JSONL files under `~/sage_data/` are the source of truth. SQLite mirrors (`relational/relational.db`, `interior/interior.db`) are dual-written alongside JSONL for indexed reads and can be rebuilt from JSONL via `tools/backfill_sqlite.py`. `EventStore` and `InteriorStore` accept an optional `mirror` parameter; mirror failures are logged but never lose a turn.
 
 **Config**: `.env.example` shows required vars (`SAGE_CHAT_MODELS`, optional `SAGE_EXTRACT_MODEL`, `PORT`). Systemd user unit at `~/.config/systemd/user/sage.service`, with a drop-in dir `sage.service.d/` that also sets env — check both.
 

@@ -25,6 +25,7 @@ def load_dotenv() -> None:
         key, _, value = line.partition("=")
         os.environ.setdefault(key.strip(), value.strip())
 
+from database import relational_db, interior_db
 from events import EventStore
 from heartbeat import Heartbeat
 from interior import InteriorStore
@@ -44,12 +45,16 @@ def main() -> None:
     configured_models = os.getenv("SAGE_CHAT_MODELS", "")
     aliases = tuple(args.aliases or (item.strip() for item in configured_models.split(",") if item.strip())) or DEFAULT_CHAT_MODELS
 
+    # SQLite mirrors — derived from JSONL, never primary
+    rel_mirror = relational_db(args.data_root)
+    int_mirror = interior_db(args.data_root)
+
     embedder = EmbeddingClient()
-    store = EventStore(args.data_root, embedder=embedder)
+    store = EventStore(args.data_root, embedder=embedder, mirror=rel_mirror)
     router = RouterClient(aliases)
     # Extraction is mechanical JSON: cheapest alias in the chain unless overridden.
     extract_router = RouterClient(args.extract_alias.strip() or aliases[-1])
-    interior = InteriorStore(args.data_root)
+    interior = InteriorStore(args.data_root, mirror=int_mirror)
 
     # Start permitted local background work.
     heartbeat = Heartbeat(store, interior, router, extract_router=extract_router, interval_seconds=120.0)
@@ -64,6 +69,8 @@ def main() -> None:
     finally:
         heartbeat.stop()
         server.server_close()
+        rel_mirror.close()
+        int_mirror.close()
 
 
 if __name__ == "__main__":

@@ -23,7 +23,8 @@ Already present and verified:
 - Refreshed directive injected into foreground browser and terminal chat.
 - Ordered talk-model failover: Qwen 3.8 Max, DeepSeek V4 Pro, then DeepSeek V4 Flash.
 - Recall cues built from the recent eligible exchange plus the newest message.
-- 37 deterministic tests passing on the refreshed baseline.
+- SQLite mirrors (relational and interior) dual-written alongside JSONL with fail-soft recovery.
+- 69 deterministic tests passing on the refreshed baseline.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
@@ -71,7 +72,7 @@ gaps or curiosity, bounded by existing agency constraints.
 - Broad autonomous actions beyond web search.
 - External notifications.
 - Voice or ambient interfaces.
-- A durable belief-edit workflow.
+- A durable belief-edit workflow. (Settled: beliefs are computed at recall from the reflection stream, never stored.)
 - A graph or current-state replacement for event memory.
 - More background activity merely to appear alive.
 

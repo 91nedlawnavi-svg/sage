@@ -7,7 +7,10 @@ These constraints apply to every implementation and every future capability.
 - Sage serves one local user.
 - User data stays local by default; provider use is explicit and minimized.
 - `~/sage_data/` is lived memory and remains deletable as one unit.
-- Identity, code, and project records stay outside lived memory.
+- Identity has two layers: the seed (`directive.txt`, git-tracked, outside
+  lived memory) sets initial conditions; earned identity entries live inside
+  lived memory (`~/sage_data/interior/`). Wiping lived memory returns Sage to
+  the seed, not to nothing. Code and project records stay outside lived memory.
 
 ## Episodic memory
 

@@ -4,14 +4,20 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import logging
 import math
 import os
 import re
 from pathlib import Path
-from typing import Literal, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 from uuid import uuid4
 
 from router import EmbeddingClient
+
+if TYPE_CHECKING:
+    from database import Database
+
+_log = logging.getLogger(__name__)
 
 _STOP_WORDS = {
     "a",
@@ -89,7 +95,13 @@ def _read_sensitive(record: dict) -> object:
 
 
 class EventStore:
-    def __init__(self, data_root: Path | None = None, embedder: EmbeddingClient | None = None) -> None:
+    def __init__(
+        self,
+        data_root: Path | None = None,
+        embedder: EmbeddingClient | None = None,
+        *,
+        mirror: Database | None = None,
+    ) -> None:
         self.data_root = data_root or Path.home() / "sage_data"
         self.relational_dir = self.data_root / "relational"
         self.interior_dir = self.data_root / "interior"
@@ -98,6 +110,7 @@ class EventStore:
         self.entities_path = self.relational_dir / "entities.jsonl"
         self.heartbeat_path = self.relational_dir / "heartbeat.jsonl"
         self.embedder = embedder
+        self._mirror = mirror
 
     def append(
         self,
@@ -125,6 +138,7 @@ class EventStore:
         elif initial_sensitive is not None:
             raise ValueError("Only user events can have privacy classification")
         self._append_record(event)
+        self._mirror_event(event)
         if save_embedding and self.embedder is not None and not event.get("provider_excluded", False):
             try:
                 self._save_embedding(event["id"], content)
@@ -150,11 +164,13 @@ class EventStore:
         if carry_after is not None:
             record["carry_after"] = carry_after
         self._append_record(record)
+        self._mirror_privacy(record)
         return record
 
     def append_chat_boundary(self) -> ChatBoundary:
         record: ChatBoundary = {"kind": "chat_boundary", "said_at": self._timestamp()}
         self._append_record(record)
+        self._mirror_chat_boundary(record)
         return record
 
     def append_entity_observation(
@@ -183,6 +199,7 @@ class EventStore:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
             f.flush()
             os.fsync(f.fileno())
+        self._mirror_entity_observation(record)
         return record
 
     def entity_observations(self) -> list[EntityObservation]:
@@ -207,6 +224,7 @@ class EventStore:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
             f.flush()
             os.fsync(f.fileno())
+        self._mirror_heartbeat_completion(record)
         return record
 
     def heartbeat_completed(self, stage: Literal["entities", "reflection"]) -> set[str]:
@@ -372,8 +390,17 @@ class EventStore:
             f.write(json.dumps({"event_id": event_id, "vector": vector}) + "\n")
             f.flush()
             os.fsync(f.fileno())
+        self._mirror_embedding(event_id, vector)
 
     def _load_embeddings(self) -> dict[str, list[float]]:
+        # ponytail: try SQLite first (indexed), fall back to full JSONL parse
+        if self._mirror is not None:
+            try:
+                result = self._mirror.load_embedding_vectors()
+                if result:
+                    return result
+            except Exception:
+                _log.warning("mirror: failed to load embeddings, falling back to JSONL", exc_info=True)
         if not self.embeddings_path.exists():
             return {}
         mapping: dict[str, list[float]] = {}
@@ -381,6 +408,78 @@ class EventStore:
             if isinstance(record, dict) and "event_id" in record and "vector" in record:
                 mapping[record["event_id"]] = record["vector"]
         return mapping
+
+    # -- fail-soft SQLite mirror writes --
+
+    def _mirror_event(self, event: Event) -> None:
+        if self._mirror is None:
+            return
+        try:
+            sens = event.get("sensitive")
+            pe = event.get("provider_excluded")
+            self._mirror.execute(
+                "INSERT OR IGNORE INTO events (id, role, content, said_at, sensitive, provider_excluded, privacy_carry_after) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (event["id"], event["role"], event["content"], event["said_at"],
+                 int(sens) if isinstance(sens, bool) else None,
+                 int(pe) if isinstance(pe, bool) else None,
+                 event.get("privacy_carry_after")),
+            )
+        except Exception:
+            _log.warning("mirror: failed to write event %s", event.get("id"), exc_info=True)
+
+    def _mirror_privacy(self, record: PrivacyRecord) -> None:
+        if self._mirror is None:
+            return
+        try:
+            self._mirror.execute(
+                "INSERT OR IGNORE INTO privacy_records (target_id, sensitive, source, carry_after, said_at) VALUES (?, ?, ?, ?, ?)",
+                (record["target_id"], int(record["sensitive"]), record["source"],
+                 record.get("carry_after"), record["said_at"]),
+            )
+        except Exception:
+            _log.warning("mirror: failed to write privacy record", exc_info=True)
+
+    def _mirror_chat_boundary(self, record: ChatBoundary) -> None:
+        if self._mirror is None:
+            return
+        try:
+            self._mirror.execute(
+                "INSERT OR IGNORE INTO chat_boundaries (said_at) VALUES (?)",
+                (record["said_at"],),
+            )
+        except Exception:
+            _log.warning("mirror: failed to write chat boundary", exc_info=True)
+
+    def _mirror_entity_observation(self, record: EntityObservation) -> None:
+        if self._mirror is None:
+            return
+        try:
+            self._mirror.execute(
+                "INSERT OR IGNORE INTO entity_observations (entity_id, name, observation, said_at, source_event_id) VALUES (?, ?, ?, ?, ?)",
+                (record["entity_id"], record["name"], record["observation"],
+                 record["said_at"], record.get("source_event_id")),
+            )
+        except Exception:
+            _log.warning("mirror: failed to write entity observation", exc_info=True)
+
+    def _mirror_heartbeat_completion(self, record: HeartbeatCompletion) -> None:
+        if self._mirror is None:
+            return
+        try:
+            self._mirror.execute(
+                "INSERT OR IGNORE INTO heartbeat_completions (stage, source_event_id, said_at) VALUES (?, ?, ?)",
+                (record["stage"], record["source_event_id"], record["said_at"]),
+            )
+        except Exception:
+            _log.warning("mirror: failed to write heartbeat completion", exc_info=True)
+
+    def _mirror_embedding(self, event_id: str, vector: list[float]) -> None:
+        if self._mirror is None:
+            return
+        try:
+            self._mirror.store_embedding_vector(event_id, vector)
+        except Exception:
+            _log.warning("mirror: failed to write embedding %s", event_id, exc_info=True)
 
     def _append_record(self, record: object) -> None:
         created = not self.path.exists()
