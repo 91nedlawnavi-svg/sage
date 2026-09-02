@@ -1,6 +1,6 @@
 # Autonomous Metabolism — Design
 
-**Status:** Draft 2026-09-02. Not yet reviewed.
+**Status:** Reviewed 2026-09-02. Open questions settled. Ready for implementation.
 
 ## Problem
 
@@ -19,10 +19,11 @@ default outcome; a waiting message is earned, not scheduled.
 ## Trigger
 
 A metabolism cycle starts when Sage detects **conversation silence**: no new
-user turn arrives within 5 minutes of the last one. This is checked by the
-heartbeat, which already runs on a 2-minute interval. If the heartbeat sees that
-the most recent user event is >5 minutes old and no metabolism cycle has run for
-that event, it triggers one.
+user turn arrives within a configurable delay (`SAGE_METABOLISM_DELAY` env var,
+default 300 seconds). This is checked by the heartbeat, which already runs on a
+2-minute interval. If the heartbeat sees that the most recent user event is
+older than the delay and no metabolism cycle has run for that event, it triggers
+one.
 
 A metabolism cycle runs **at most once per conversation silence**. The
 completion record ties to the last user event id before silence fell, so
@@ -191,11 +192,12 @@ A metabolism cycle's completion is tracked via
 7. Tests for each stage and the full pipeline.
 8. Update MILESTONE and spec status.
 
-## Open questions
+## Settled questions
 
-1. Should the 5-minute silence threshold be configurable (env var)? Or is
-   hardcoded fine for a single-user system?
-2. Should metabolism reflections (`category: "metabolism"`) get their own
-   Notebook tab, or are they fine mixed into Reflections?
-3. Should there be a `/api/metabolism` GET endpoint to see gap scans and
-   exploration history?
+1. **Silence threshold:** configurable via `SAGE_METABOLISM_DELAY` env var,
+   default 300 seconds. Loaded in `launch.py` alongside other env config.
+2. **Metabolism reflections:** mixed into the Reflections tab with
+   `category: "metabolism"`. No separate tab.
+3. **Metabolism API:** `GET /api/metabolism` returns the last N metabolism
+   records from `metabolism.jsonl` (gap scans, explorations, reach decisions)
+   for review. Read-only, same trust/origin checks as other GET endpoints.
