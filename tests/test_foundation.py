@@ -18,7 +18,7 @@ from events import EventStore
 from interior import InteriorStore
 from router import ROUTER_BASE_URL, RouterClient, RouterResult
 from sage import SENSITIVE_ACKNOWLEDGEMENT, ROUTER_FAILURE, build_router_messages, handle_message, load_directive
-from heartbeat import Heartbeat
+from heartbeat import Heartbeat, parse_reflection
 from web import SageServer
 
 
@@ -64,14 +64,15 @@ class FakeRouter(BaseHTTPRequestHandler):
 
 
 class FakeScribe:
-    def __init__(self) -> None:
+    def __init__(self, reflection_reply: str = "A reflection about the current conversation.") -> None:
         self.messages: list[list[dict[str, str]]] = []
+        self.reflection_reply = reflection_reply
 
     def chat_with_messages(self, messages: list[dict[str, str]]) -> RouterResult:
         self.messages.append(messages)
         if messages[0]["content"].startswith("Extract key durable entities"):
             return RouterResult("[]")
-        return RouterResult("A reflection about the current conversation.")
+        return RouterResult(self.reflection_reply)
 
 
 class DeadRouter:
@@ -791,6 +792,47 @@ class FoundationTests(unittest.TestCase):
         self.assertGreaterEqual(heartbeat.failure_counts["entity extraction"], 2)
         self.assertEqual(self.interior.list_reflections(), [])
 
+    def test_reflection_marker_sets_self_category(self) -> None:
+        self.assertEqual(
+            parse_reflection("SELF: I reused the opener I promised to drop."),
+            ("self", "I reused the opener I promised to drop."),
+        )
+        # Bold, lowercase and a missing space are all drift a small model actually produces.
+        self.assertEqual(parse_reflection('  **self:**I reused it.  '), ("self", "I reused it."))
+        self.assertEqual(parse_reflection("SELF:\nI reused it."), ("self", "I reused it."))
+
+    def test_unmarked_reflection_stays_general(self) -> None:
+        plain = "Elliot moved from a greeting to existential doubt in three beats."
+        self.assertEqual(parse_reflection(plain), ("general", plain))
+        # A quoted marker inside the reflection must never mint a self-claim.
+        quoted = 'He pasted "SELF: I always hedge" back at me from the notebook.'
+        self.assertEqual(parse_reflection(quoted), ("general", quoted))
+
+    def test_stray_label_is_stripped_without_marking_self(self) -> None:
+        self.assertEqual(parse_reflection("CONTEXT: The rhythm reset."), ("general", "The rhythm reset."))
+
+    def test_bare_marker_stores_nothing_and_stays_retryable(self) -> None:
+        self.assertEqual(parse_reflection("SELF:"), ("self", ""))
+        self.store.append("user", "Something worth reflecting on", initial_sensitive=False)
+        self.store.append("assistant", "Noted")
+        heartbeat = Heartbeat(self.store, self.interior, FakeScribe("SELF:"))
+
+        heartbeat.beat()
+
+        self.assertEqual(self.interior.list_reflections(), [])
+        self.assertEqual(self.store.heartbeat_completed("reflection"), set())
+
+    def test_heartbeat_stores_self_category_with_marker_stripped(self) -> None:
+        self.store.append("user", "You said you would drop that opener", initial_sensitive=False)
+        self.store.append("assistant", "Noted")
+        heartbeat = Heartbeat(self.store, self.interior, FakeScribe("SELF: I used the opener again."))
+
+        heartbeat.beat()
+
+        reflections = self.interior.list_reflections()
+        self.assertEqual(len(reflections), 1)
+        self.assertEqual(reflections[0]["category"], "self")
+        self.assertEqual(reflections[0]["content"], "I used the opener again.")
 
 if __name__ == "__main__":
     unittest.main()
