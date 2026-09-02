@@ -834,5 +834,209 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(reflections[0]["category"], "self")
         self.assertEqual(reflections[0]["content"], "I used the opener again.")
 
+    def test_identity_ruling_folds_last_verdict_over_intact_proposal(self) -> None:
+        proposal = self.interior.append_identity_proposal(
+            "I restate an intention and then contradict it inside the same exchange",
+            evidence=["reflection-1", "reflection-2"],
+        )
+        self.assertEqual([entry["status"] for entry in self.interior.list_identity()], ["proposed"])
+
+        self.interior.append_identity_ruling(proposal["id"], "ratified")
+        self.interior.append_identity_ruling(proposal["id"], "retired")
+
+        entries = self.interior.list_identity()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["status"], "retired")
+        self.assertEqual(entries[0]["evidence"], ["reflection-1", "reflection-2"])
+        # Rulings are appended; the proposal line itself is never rewritten.
+        lines = self.interior.identity_path.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(lines), 3)
+        self.assertEqual(json.loads(lines[0]), proposal)
+
+    def test_identity_ruling_for_unknown_proposal_is_ignored(self) -> None:
+        self.interior.append_identity_ruling("no-such-proposal", "ratified")
+        self.assertEqual(self.interior.list_identity(), [])
+
+    def test_identity_write_rejects_blank_claim_and_unknown_verdict(self) -> None:
+        with self.assertRaises(ValueError):
+            self.interior.append_identity_proposal("   ", evidence=["reflection-1"])
+        proposal = self.interior.append_identity_proposal("I hedge before answering", evidence=[])
+        with self.assertRaises(ValueError):
+            self.interior.append_identity_ruling(proposal["id"], "approved")
+
+    def test_no_identity_proposal_without_a_self_observation(self) -> None:
+        self.store.append("user", "Working on the pressure model", initial_sensitive=False)
+        self.store.append("assistant", "Noted")
+        scribe = FakeScribe("Elliot is testing the edges of his own reality.")
+        heartbeat = Heartbeat(self.store, self.interior, scribe)
+
+        heartbeat.beat()
+
+        self.assertEqual(self.interior.list_identity(), [])
+        # Resting state costs no model call of its own.
+        self.assertFalse(any("claim about yourself" in m[0]["content"] for m in scribe.messages))
+
+    def test_self_observation_becomes_a_proposal_awaiting_ratification(self) -> None:
+        self.store.append("user", "You said you would drop that opener", initial_sensitive=False)
+        self.store.append("assistant", "Noted")
+        scribe = FakeScribe("SELF: I used the opener again.")
+        heartbeat = Heartbeat(self.store, self.interior, scribe)
+
+        heartbeat.beat()
+
+        reflection = self.interior.list_reflections()[0]
+        entries = self.interior.list_identity()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["claim"], "I used the opener again.")
+        self.assertEqual(entries[0]["evidence"], [reflection["id"]])
+        self.assertEqual(entries[0]["status"], "proposed")
+
+    def test_an_already_proposed_observation_is_not_proposed_again(self) -> None:
+        self.store.append("user", "You said you would drop that opener", initial_sensitive=False)
+        self.store.append("assistant", "Noted")
+        scribe = FakeScribe("SELF: I used the opener again.")
+        heartbeat = Heartbeat(self.store, self.interior, scribe)
+
+        heartbeat.beat()
+        heartbeat.beat()
+
+        self.assertEqual(len(self.interior.list_identity()), 1)
+
+    def test_compose_identity_block_empty_when_no_ratified(self) -> None:
+        """No ratified entries means empty block."""
+        from sage import compose_identity_block
+        self.assertEqual(compose_identity_block(self.interior), "")
+        # A proposal alone is not enough
+        self.interior.append_identity_proposal("I am kind", ["r1"])
+        self.assertEqual(compose_identity_block(self.interior), "")
+
+    def test_compose_identity_block_includes_ratified_claims(self) -> None:
+        from sage import compose_identity_block
+        p1 = self.interior.append_identity_proposal("I tend to over-explain", ["r1"])
+        self.interior.append_identity_ruling(p1["id"], "ratified")
+        block = compose_identity_block(self.interior)
+        self.assertIn("Things I have noticed about myself", block)
+        self.assertIn("- I tend to over-explain", block)
+
+    def test_compose_identity_block_caps_at_ten_newest(self) -> None:
+        from sage import compose_identity_block
+        ids = []
+        for i in range(15):
+            p = self.interior.append_identity_proposal(f"Trait {i}", [f"r{i}"])
+            self.interior.append_identity_ruling(p["id"], "ratified")
+            ids.append(p["id"])
+        block = compose_identity_block(self.interior)
+        # Should have exactly 10 entries
+        self.assertEqual(block.count("- Trait"), 10)
+        # Newest (Trait 14) should appear, oldest (Trait 0) should not
+        self.assertIn("Trait 14", block)
+        self.assertNotIn("Trait 0", block)
+
+    def test_load_directive_appends_identity_block(self) -> None:
+        from sage import load_directive
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:
+            f.write("I am Sage.")
+            tmp = f.name
+        try:
+            result = load_directive(Path(tmp), identity_block="\n\n---\nExtra")
+            self.assertEqual(result, "I am Sage.\n\n---\nExtra")
+            # Without identity_block, original behavior
+            result2 = load_directive(Path(tmp))
+            self.assertEqual(result2, "I am Sage.")
+        finally:
+            Path(tmp).unlink()
+
+    def test_compose_identity_block_failsoft_on_broken_interior(self) -> None:
+        """If interior.list_identity() raises, compose returns empty string."""
+        from sage import compose_identity_block
+        class BrokenInterior:
+            def list_identity(self):
+                raise RuntimeError("disk on fire")
+        self.assertEqual(compose_identity_block(BrokenInterior()), "")
+
+    def test_api_identity_returns_empty_list(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router, self.interior)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            with urlopen(f"{base_url}/api/identity") as response:
+                data = json.load(response)
+            self.assertEqual(data, {"identity": []})
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_api_identity_returns_proposals_with_status(self) -> None:
+        p = self.interior.append_identity_proposal("I over-explain", ["r1"])
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router, self.interior)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            with urlopen(f"{base_url}/api/identity") as response:
+                data = json.load(response)
+            entries = data["identity"]
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0]["claim"], "I over-explain")
+            self.assertEqual(entries[0]["status"], "proposed")
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_api_ratify_identity_entry(self) -> None:
+        p = self.interior.append_identity_proposal("I over-explain", ["r1"])
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router, self.interior)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            req = Request(f"{base_url}/api/identity/{p['id']}/ratify", method="POST", data=b"")
+            with urlopen(req) as response:
+                result = json.load(response)
+            self.assertEqual(result["verdict"], "ratified")
+            # Verify it took effect
+            with urlopen(f"{base_url}/api/identity") as response:
+                entries = json.load(response)["identity"]
+            self.assertEqual(entries[0]["status"], "ratified")
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_api_reject_identity_entry(self) -> None:
+        p = self.interior.append_identity_proposal("Bad trait", ["r1"])
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router, self.interior)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            req = Request(f"{base_url}/api/identity/{p['id']}/reject", method="POST", data=b"")
+            with urlopen(req) as response:
+                result = json.load(response)
+            self.assertEqual(result["verdict"], "rejected")
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_api_identity_ruling_unknown_id_returns_404(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router, self.interior)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            req = Request(f"{base_url}/api/identity/bogus-id/ratify", method="POST", data=b"")
+            with self.assertRaises(HTTPError) as ctx:
+                urlopen(req)
+            self.assertEqual(ctx.exception.code, 404)
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
 if __name__ == "__main__":
     unittest.main()

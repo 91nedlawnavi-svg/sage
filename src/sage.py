@@ -90,12 +90,28 @@ def build_router_messages(
     return messages
 
 
-def load_directive(path: Path = DIRECTIVE_PATH) -> str:
+def compose_identity_block(interior) -> str:
+    """Build the ratified-identity suffix for the directive, or "" on any failure."""
+    try:
+        entries = interior.list_identity()
+    except Exception:
+        return ""
+    ratified = [e for e in entries if e.get("status") == "ratified"]
+    if not ratified:
+        return ""
+    # Newest first, capped at 10
+    ratified.sort(key=lambda e: e.get("said_at", ""), reverse=True)
+    ratified = ratified[:10]
+    claims = "\n".join(f"- {e['claim']}" for e in ratified)
+    return f"\n\n---\n\nThings I have noticed about myself, and Elliot has confirmed:\n\n{claims}"
+
+
+def load_directive(path: Path = DIRECTIVE_PATH, *, identity_block: str = "") -> str:
     try:
         directive = path.read_text(encoding="utf-8").strip()
     except OSError:
         return ""
-    return directive
+    return directive + identity_block
 
 
 def handle_message(message: str, store: EventStore, router: RouterClient) -> str:

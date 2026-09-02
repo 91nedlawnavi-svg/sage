@@ -148,6 +148,7 @@ def backfill_interior(db: Database, data_root: Path) -> dict[str, int]:
     """Backfill interior.db from JSONL/JSON files. Returns table->row_count."""
     reflections_path = data_root / "interior" / "reflections.jsonl"
     waiting_path = data_root / "interior" / "waiting_message.json"
+    identity_path = data_root / "interior" / "identity.jsonl"
 
     counts: dict[str, int] = {}
 
@@ -158,6 +159,19 @@ def backfill_interior(db: Database, data_root: Path) -> dict[str, int]:
             (r["id"], r["content"], r["said_at"], r.get("category", "general"), r.get("source_event_id")),
         )
     counts["reflections"] = db.count("reflections")
+
+    # --- identity proposals and rulings (one table, folded at read time) ---
+    for r in _read_jsonl(identity_path):
+        if not r.get("id"):
+            continue
+        db.execute(
+            "INSERT OR IGNORE INTO identity_entries (id, kind, claim, evidence, target_id, verdict, said_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (r["id"], r.get("kind"), r.get("claim"),
+             json.dumps(r["evidence"]) if isinstance(r.get("evidence"), list) else None,
+             r.get("target_id"), r.get("verdict"), r.get("said_at")),
+        )
+    counts["identity_entries"] = db.count("identity_entries")
 
     # --- waiting_message (single-row table) ---
     if waiting_path.exists():
@@ -216,6 +230,12 @@ def verify(rel_counts: dict[str, int], int_counts: dict[str, int], data_root: Pa
         expected = len(_read_jsonl(reflections_path))
         if int_counts.get("reflections", 0) != expected:
             mismatches.append(f"reflections: expected {expected}, got {int_counts.get('reflections', 0)}")
+
+    identity_path = data_root / "interior" / "identity.jsonl"
+    if identity_path.exists():
+        expected = sum(1 for r in _read_jsonl(identity_path) if r.get("id"))
+        if int_counts.get("identity_entries", 0) != expected:
+            mismatches.append(f"identity_entries: expected {expected}, got {int_counts.get('identity_entries', 0)}")
 
     return mismatches
 

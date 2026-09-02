@@ -33,6 +33,34 @@ class Belief(TypedDict):
     revised_from: NotRequired[str]
 
 
+IDENTITY_VERDICTS = ("ratified", "rejected", "retired")
+
+
+class IdentityProposal(TypedDict):
+    kind: Literal["proposal"]
+    id: str
+    claim: str
+    evidence: list[str]
+    said_at: str
+
+
+class IdentityRuling(TypedDict):
+    kind: Literal["ruling"]
+    id: str
+    target_id: str
+    verdict: str
+    said_at: str
+
+
+class IdentityEntry(TypedDict):
+    """A proposal folded together with the verdict of its latest ruling."""
+    id: str
+    claim: str
+    evidence: list[str]
+    said_at: str
+    status: str
+
+
 class WaitingMessage(TypedDict):
     content: str
     said_at: str
@@ -46,6 +74,7 @@ class InteriorStore:
         self.interior_dir = self.data_root / "interior"
         self.reflections_path = self.interior_dir / "reflections.jsonl"
         self.beliefs_path = self.interior_dir / "beliefs.jsonl"
+        self.identity_path = self.interior_dir / "identity.jsonl"
         self.waiting_message_path = self.interior_dir / "waiting_message.json"
         self._mirror = mirror
 
@@ -91,6 +120,66 @@ class InteriorStore:
             isinstance(record, dict) and record.get("source_event_id") == source_event_id
             for record in self._read_jsonl(self.reflections_path)
         )
+
+    # -- self-authored identity: proposals Elliot rules on, folded at read time --
+
+    def append_identity_proposal(self, claim: str, evidence: list[str]) -> IdentityProposal:
+        if not claim.strip():
+            raise ValueError("identity proposal needs a claim")
+        proposal: IdentityProposal = {
+            "kind": "proposal",
+            "id": str(uuid4()),
+            "claim": claim.strip(),
+            "evidence": list(evidence),
+            "said_at": self._timestamp(),
+        }
+        self._append_identity(proposal)
+        return proposal
+
+    def append_identity_ruling(self, target_id: str, verdict: str) -> IdentityRuling:
+        if verdict not in IDENTITY_VERDICTS:
+            raise ValueError(f"unknown identity verdict: {verdict!r}")
+        ruling: IdentityRuling = {
+            "kind": "ruling",
+            "id": str(uuid4()),
+            "target_id": target_id,
+            "verdict": verdict,
+            "said_at": self._timestamp(),
+        }
+        self._append_identity(ruling)
+        return ruling
+
+    def list_identity(self) -> list[IdentityEntry]:
+        """Proposals in file order, each carrying its latest verdict. Records stay intact."""
+        records = [r for r in self._read_jsonl(self.identity_path) if isinstance(r, dict)]
+        verdicts = {
+            r["target_id"]: r["verdict"]
+            for r in records
+            if r.get("kind") == "ruling" and r.get("target_id") and r.get("verdict")
+        }
+        return [
+            {
+                "id": r["id"],
+                "claim": r.get("claim", ""),
+                "evidence": r.get("evidence") or [],
+                "said_at": r.get("said_at", ""),
+                "status": verdicts.get(r["id"], "proposed"),
+            }
+            for r in records
+            if r.get("kind") == "proposal" and r.get("id")
+        ]
+
+    def _append_identity(self, record: IdentityProposal | IdentityRuling) -> None:
+        self._ensure_dir()
+        with self.identity_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        self._mirror_identity(record)
+
+    @staticmethod
+    def _timestamp() -> str:
+        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     def list_beliefs(self) -> list[Belief]:
         if not self.beliefs_path.exists():
@@ -178,6 +267,21 @@ class InteriorStore:
             )
         except Exception:
             _log.warning("mirror: failed to write reflection %s", reflection.get("id"), exc_info=True)
+
+    def _mirror_identity(self, record: IdentityProposal | IdentityRuling) -> None:
+        if self._mirror is None:
+            return
+        data = dict(record)
+        try:
+            self._mirror.execute(
+                "INSERT OR IGNORE INTO identity_entries (id, kind, claim, evidence, target_id, verdict, said_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (data["id"], data["kind"], data.get("claim"),
+                 json.dumps(data["evidence"]) if "evidence" in data else None,
+                 data.get("target_id"), data.get("verdict"), data["said_at"]),
+            )
+        except Exception:
+            _log.warning("mirror: failed to write identity entry %s", data.get("id"), exc_info=True)
 
     def _mirror_waiting_message(self, msg: WaitingMessage) -> None:
         if self._mirror is None:

@@ -79,6 +79,25 @@ class BackfillTests(unittest.TestCase):
         rel.close()
 
 
+    def test_backfill_identity_idempotent_and_verified(self) -> None:
+        """Identity proposals and rulings both mirror, and --verify stays quiet."""
+        with (self.root / "interior" / "identity.jsonl").open("w") as f:
+            f.write(json.dumps({"kind": "proposal", "id": "p1", "claim": "I hedge first",
+                                "evidence": ["r1"], "said_at": "2026-01-01T00:00:00Z"}) + "\n")
+            f.write(json.dumps({"kind": "ruling", "id": "u1", "target_id": "p1",
+                                "verdict": "ratified", "said_at": "2026-01-01T00:00:01Z"}) + "\n")
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+        from backfill_sqlite import backfill_interior, verify
+
+        intr = interior_db(self.root)
+        c1 = backfill_interior(intr, self.root)
+        c2 = backfill_interior(intr, self.root)
+        self.assertEqual(c1["identity_entries"], 2)
+        self.assertEqual(c1, c2)
+        self.assertEqual(verify({}, c2, self.root), [])
+        intr.close()
+
+
 class DualWriteTests(unittest.TestCase):
     """Dual-write from stores to SQLite mirrors."""
 
@@ -141,6 +160,19 @@ class DualWriteTests(unittest.TestCase):
         self.interior.clear_waiting_message()
         row = self.intr.fetchone("SELECT * FROM waiting_message WHERE id = 1")
         self.assertEqual(row["read"], 1)
+
+    def test_identity_dual_write(self) -> None:
+        proposal = self.interior.append_identity_proposal("I hedge first", evidence=["r1", "r2"])
+        self.interior.append_identity_ruling(proposal["id"], "ratified")
+
+        self.assertEqual(self.intr.count("identity_entries"), 2)
+        row = self.intr.fetchone("SELECT * FROM identity_entries WHERE id = ?", (proposal["id"],))
+        self.assertEqual(row["kind"], "proposal")
+        self.assertEqual(row["claim"], "I hedge first")
+        self.assertEqual(json.loads(row["evidence"]), ["r1", "r2"])
+        ruling = self.intr.fetchone("SELECT * FROM identity_entries WHERE kind = 'ruling'")
+        self.assertEqual(ruling["target_id"], proposal["id"])
+        self.assertEqual(ruling["verdict"], "ratified")
 
     def test_mirror_failure_does_not_lose_jsonl(self) -> None:
         """A broken mirror must not prevent JSONL writes."""

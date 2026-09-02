@@ -400,3 +400,15 @@ textarea:disabled { opacity: .65; }
 @keyframes pulse { 50% { opacity: .45; } }
 @keyframes response-dot { 0%, 60%, 100% { opacity: .35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 @keyframes response-caret { 50% { opacity: 0; } }
+.identity-status { display: inline-block; margin-bottom: 6px; padding: 2px 8px; border-radius: 4px; font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.identity-proposed { background: #3a3520; color: #d4b85c; }
+.identity-ratified { background: #1e3326; color: #6abf8a; }
+.identity-rejected { background: #352020; color: #bf6a6a; }
+.identity-retired { background: var(--surface); color: var(--muted); }
+.identity-actions { display: flex; gap: 8px; margin-top: 10px; }
+.identity-btn { min-width: 0; min-height: 32px; padding: 4px 14px; border-radius: 6px; font-size: .8rem; font-weight: 600; }
+.identity-btn.ratify { background: #1e3326; color: #6abf8a; }
+.identity-btn.ratify:hover { background: #264030; }
+.identity-btn.reject { background: #352020; color: #bf6a6a; }
+.identity-btn.reject:hover { background: #402828; }
+.identity-btn:disabled { opacity: .5; cursor: default; }

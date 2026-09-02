@@ -51,7 +51,9 @@ Older V3 commits are implementation history, not current authority.
 - Lived memory is `~/sage_data/`; identity, code, project records stay outside it
 - Sensitive material never enters casual recall, embeddings, or background provider prompts
 - Original events are not replaced by frozen facts or current-state tables
-- No writes to lived memory, `.env`, credentials, service restarts, or destructive migrations without explicit approval
+- No writes to lived memory, `.env`, credentials, or destructive migrations without explicit approval
+- Systemd user-service commands for Sage (`systemctl --user start|stop|restart|status sage`, `journalctl --user -u sage`)
+  are pre-authorized. Run them mid-session without asking — including restarts.
 - No speculative abstractions or unrelated refactors
 
 </content>

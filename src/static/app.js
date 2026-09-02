@@ -159,7 +159,7 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key !== "Tab") return;
-  const focusable = [drawerClose, drawer.querySelector(".drawer-tab.active")];
+  const focusable = [drawerClose, drawer.querySelector(".drawer-tab.active"), ...drawer.querySelectorAll(".identity-btn")].filter(Boolean);
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
   if (event.shiftKey && document.activeElement === first) {
@@ -203,6 +203,21 @@ drawerTabs.forEach((tab, index) => {
   });
 });
 
+drawerContent.addEventListener("click", async (event) => {
+  const btn = event.target.closest("[data-identity-id]");
+  if (!btn) return;
+  const id = btn.dataset.identityId;
+  const action = btn.dataset.action;
+  btn.disabled = true;
+  try {
+    const response = await fetch(`/api/identity/${encodeURIComponent(id)}/${action}`, {method: "POST"});
+    if (!response.ok) throw new Error("ruling failed");
+    loadDrawerTab("identity");
+  } catch {
+    btn.disabled = false;
+  }
+});
+
 function selectDrawerTab(selected, focus = false) {
   for (const tab of drawerTabs) {
     const active = tab === selected;
@@ -222,7 +237,7 @@ function drawerState(message) {
 async function loadDrawerTab(tab) {
   drawerState("Loading…");
   try {
-    const endpoint = tab === "reflections" ? "/api/reflections" : tab === "beliefs" ? "/api/beliefs" : "/api/entities";
+    const endpoint = tab === "reflections" ? "/api/reflections" : tab === "beliefs" ? "/api/beliefs" : tab === "identity" ? "/api/identity" : "/api/entities";
     const response = await fetch(endpoint);
     if (!response.ok) throw new Error("notebook unavailable");
     const data = await response.json();
@@ -244,6 +259,19 @@ async function loadDrawerTab(tab) {
           <strong>${escapeHtml(belief.topic)}</strong>
           <div>${escapeHtml(belief.stance)}</div>
           <div class="notebook-evidence">Evidence: ${escapeHtml(belief.evidence)}</div>
+        </div>
+      `).join("");
+    } else if (tab === "identity") {
+      drawerContent.innerHTML = list.map((entry) => `
+        <div class="notebook-card identity-card">
+          <div class="identity-status identity-${entry.status}">${escapeHtml(entry.status)}</div>
+          <div>${escapeHtml(entry.claim)}</div>
+          ${entry.status === "proposed" ? `
+            <div class="identity-actions">
+              <button class="identity-btn ratify" data-identity-id="${entry.id}" data-action="ratify">Ratify</button>
+              <button class="identity-btn reject" data-identity-id="${entry.id}" data-action="reject">Reject</button>
+            </div>
+          ` : ""}
         </div>
       `).join("");
     } else {

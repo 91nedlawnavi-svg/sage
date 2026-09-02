@@ -90,6 +90,18 @@ CREATE TABLE IF NOT EXISTS reflections (
 
 CREATE INDEX IF NOT EXISTS idx_reflections_source ON reflections(source_event_id);
 
+CREATE TABLE IF NOT EXISTS identity_entries (
+    id TEXT PRIMARY KEY NOT NULL,
+    kind TEXT,
+    claim TEXT,
+    evidence TEXT,
+    target_id TEXT,
+    verdict TEXT,
+    said_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_identity_target ON identity_entries(target_id);
+
 CREATE TABLE IF NOT EXISTS waiting_message (
     id INTEGER PRIMARY KEY CHECK(id = 1),
     content TEXT NOT NULL,

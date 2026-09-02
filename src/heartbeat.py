@@ -33,6 +33,14 @@ Output the reflection text only: no labels, no headings, no quotation marks arou
 Recent dialogue:
 {dialogue}"""
 
+IDENTITY_PROPOSAL_PROMPT = """You are Sage. Below are private notes you wrote about your own behaviour in conversation with Elliot.
+
+{notes}
+
+Write ONE claim about yourself that these notes support: first person, present tense, one sentence. Name the behaviour, not a feeling — something a reader could catch you doing again. Elliot decides whether it becomes part of who you are, so claim only what the notes show.
+
+Output the claim only: no labels, no preamble, no quotation marks, nothing about the notes themselves."""
+
 # Tolerates case, bold, a missing space after the colon, and a newline before the body.
 # Anchored at ^ so a quoted SELF: inside a transcript line can never mint a self-claim.
 _REFLECTION_MARKER = re.compile(r'^[\s*"#]*(self|context|general)\s*:\**\s*', re.I)
@@ -113,6 +121,7 @@ class Heartbeat:
         self.last_beat_ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         self._extract_entities_pass()
         self._reflection_pass()
+        self._identity_proposal_pass()
 
     def _extract_entities_pass(self) -> None:
         history = [
@@ -187,3 +196,36 @@ class Heartbeat:
             self.interior_store.append_reflection(content, category, source_event_id=source_event_id)
             self.event_store.append_heartbeat_completion("reflection", source_event_id)
             self.last_reflection_ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    def _identity_proposal_pass(self) -> None:
+        """Turn unproposed self-observations into one claim for Elliot to rule on.
+
+        Silence is the resting state: with nothing new to propose this costs no model
+        call. A proposal never enters her identity on its own, so there is no rate
+        limit here beyond Elliot's review.
+        """
+        proposed = {
+            reflection_id
+            for entry in self.interior_store.list_identity()
+            for reflection_id in entry["evidence"]
+        }
+        candidates = [
+            reflection
+            for reflection in self.interior_store.list_reflections(limit=10_000)
+            if reflection.get("category") == "self" and reflection["id"] not in proposed
+        ][-10:]
+        if not candidates:
+            return
+
+        notes = "\n".join(f"- {reflection['content']}" for reflection in candidates)
+        result = self.reflection_router.chat_with_messages(
+            [{"role": "user", "content": IDENTITY_PROPOSAL_PROMPT.format(notes=notes)}]
+        )
+        self._record_outcome("identity proposal", self.reflection_router, result.succeeded)
+        if not (result.succeeded and result.reply):
+            return
+        # Reuse the reflection parser so a stray SELF:/CONTEXT: label never lands in a claim.
+        _, claim = parse_reflection(result.reply)
+        if not claim:
+            return
+        self.interior_store.append_identity_proposal(claim, [r["id"] for r in candidates])

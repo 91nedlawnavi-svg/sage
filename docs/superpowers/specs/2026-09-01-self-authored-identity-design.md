@@ -1,8 +1,9 @@
 # Self-Authored Identity — Design
 
 **Status:** Reviewed 2026-09-02. Automatic recurrence detection rejected on measured
-evidence; **ratification model approved by Elliot**. Reflection-stream change is
-implemented; identity storage, composition and surfaces are still design.
+evidence; **ratification model approved by Elliot**. Implemented: reflection stream,
+identity storage with fold, mirror table, backfill, and the proposal pass (steps 1-2).
+Composition into the prompt and the web/UI surfaces (steps 3-5) are still design.
 **Authority:** Elliot — "She BUILDS her own identity overtime, over conversations, experiences"
 
 ## Problem
@@ -277,14 +278,45 @@ the correct fix is a shared-secret header on state-changing routes.
 
 ## Implementation order
 
-1. `identity.jsonl` + `InteriorStore` append/list/fold + mirror table + backfill + tests.
-2. Proposal pass in the heartbeat, gated on unproposed `self` reflections.
-3. Composition in `load_directive()`, fail-soft, capped.
-4. `GET /api/identity`, then the ratify/reject POSTs.
-5. Notebook tab with the focus-trap fix.
+1. ~~`identity.jsonl` + `InteriorStore` append/list/fold + mirror table + backfill + tests.~~
+   **Done 2026-09-02.**
+2. ~~Proposal pass in the heartbeat, gated on unproposed `self` reflections.~~
+   **Done 2026-09-02.**
+3. ~~Composition in `load_directive()`, fail-soft, capped.~~  **Done 2026-09-02.**
+4. ~~`GET /api/identity`, then the ratify/reject POSTs.~~  **Done 2026-09-02.**
+5. ~~Notebook tab with the focus-trap fix.~~  **Done 2026-09-02.**
 
 Steps 1–2 are inert without 3: proposals accumulate and nothing reaches the prompt. That
 is a safe place to stop and look at real candidates before wiring composition.
+
+## As built — steps 1 and 2, 2026-09-02
+
+Three deviations from the shape above, all forced by SQLite behaviour rather than
+preference:
+
+- **Ruling records carry their own `id`.** The example ruling had none. A TEXT primary
+  key accepts NULL in SQLite and NULLs compare distinct, so `INSERT OR IGNORE` would
+  have duplicated every ruling on each backfill run. The fold is unaffected: it still
+  keys on `target_id` and file order.
+- **One table holds both kinds.** `identity_entries` mirrors proposals *and* rulings,
+  with `kind` naming which, so the mirror stays a faithful copy of the file instead of a
+  view that cannot answer what her identity currently is. Nothing mutates a written row.
+- **`verify` counts every record carrying an `id`**, not proposals only. Backfill skips
+  id-less records to protect idempotency, and the expectation matches that rule, so
+  `--verify` has no false mismatch to report.
+
+The only constraint in the mirror DDL is the primary key. No `CHECK`, no `NOT NULL`
+elsewhere, per the swallow warning above. Validation lives in Python where it can raise:
+`append_identity_proposal` rejects a blank claim, `append_identity_ruling` rejects a
+verdict outside `IDENTITY_VERDICTS`.
+
+The proposal pass reuses `parse_reflection` to strip a stray `SELF:`/`CONTEXT:` label
+from a claim, caps a single proposal's evidence at the 10 newest unproposed `self`
+reflections, and drops an empty generation so the next beat retries it. Failures are
+counted under the pass name `identity proposal`.
+
+8 tests: 3 for the fold and its write guards, 2 for mirror dual-write and backfill,
+3 for the proposal pass (silence, firing, no re-proposal). Suite is 82.
 
 ## Open questions
 

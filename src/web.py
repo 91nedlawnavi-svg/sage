@@ -15,7 +15,7 @@ from urllib.parse import unquote, urlparse
 from events import EventStore
 from interior import InteriorStore
 from router import EmbeddingClient, RouterClient
-from sage import SENSITIVE_ACKNOWLEDGEMENT, ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_messages, load_directive
+from sage import SENSITIVE_ACKNOWLEDGEMENT, ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_messages, compose_identity_block, load_directive
 from search import search, format_search_context
 
 STATIC_ROOT = Path(__file__).with_name("static")
@@ -73,6 +73,8 @@ class SageHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.OK, {"beliefs": self.server.interior.list_beliefs()})
         elif path == "/api/entities":
             self._json(HTTPStatus.OK, {"entities": self.server.store.entity_observations()})
+        elif path == "/api/identity":
+            self._json(HTTPStatus.OK, {"identity": self.server.interior.list_identity()})
         elif path == "/health":
             self._json(HTTPStatus.OK, {"ok": True})
         else:
@@ -98,6 +100,10 @@ class SageHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Sage could not start a new chat."})
                 return
             self._json(HTTPStatus.OK, {"ok": True})
+            return
+        identity_target = self._identity_target(path)
+        if identity_target is not None:
+            self._identity_ruling(*identity_target)
             return
         event_id = self._privacy_target(path)
         if event_id is not None:
@@ -164,7 +170,7 @@ class SageHandler(BaseHTTPRequestHandler):
                     message,
                     self.server.store,
                     exclude_event_id=accepted.event["id"],
-                    directive=load_directive(),
+                    directive=load_directive(identity_block=compose_identity_block(self.server.interior)),
                     search_context=search_context,
                 )
             ),
@@ -173,7 +179,7 @@ class SageHandler(BaseHTTPRequestHandler):
 
     def _decide_search(self, message: str, exclude_event_id: str) -> str | None:
         """Ask the model if web search is needed. Sets _search_decision_failed on router error."""
-        directive = load_directive()
+        directive = load_directive(identity_block=compose_identity_block(self.server.interior))
         decision_prompt = (
             "Based on the user's message and your knowledge, do you need to search the web "
             "to answer accurately? Reply with ONLY a search query if yes, or 'NO' if no.\n\n"
@@ -214,6 +220,19 @@ class SageHandler(BaseHTTPRequestHandler):
             return
         self._json(HTTPStatus.OK, {"event_id": event_id, "sensitive": sensitive})
 
+    def _identity_ruling(self, entry_id: str, action: str) -> None:
+        verdict = "ratified" if action == "ratify" else "rejected"
+        entries = self.server.interior.list_identity()
+        if not any(e["id"] == entry_id for e in entries):
+            self._json(HTTPStatus.NOT_FOUND, {"error": "identity entry not found"})
+            return
+        try:
+            self.server.interior.append_identity_ruling(entry_id, verdict)
+        except (OSError, ValueError) as exc:
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
+            return
+        self._json(HTTPStatus.OK, {"id": entry_id, "verdict": verdict})
+
     def _json_body(self) -> dict[str, object] | None:
         if self.headers.get("Content-Type", "").split(";", 1)[0] != "application/json":
             self._json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "content type must be application/json"})
@@ -244,6 +263,23 @@ class SageHandler(BaseHTTPRequestHandler):
             return None
         event_id = unquote(path[len(prefix):-len(suffix)])
         return event_id if event_id and "/" not in event_id else None
+
+    @staticmethod
+    def _identity_target(path: str) -> tuple[str, str] | None:
+        """Parse /api/identity/<id>/ratify or /api/identity/<id>/reject."""
+        prefix = "/api/identity/"
+        if not path.startswith(prefix):
+            return None
+        rest = path[len(prefix):]
+        if rest.endswith("/ratify"):
+            entry_id = unquote(rest[:-len("/ratify")])
+            action = "ratify"
+        elif rest.endswith("/reject"):
+            entry_id = unquote(rest[:-len("/reject")])
+            action = "reject"
+        else:
+            return None
+        return (entry_id, action) if entry_id and "/" not in entry_id else None
 
     def _begin_stream(self, headers: dict[str, str]) -> None:
         """Send the response head before any stream event; chunks written earlier corrupt the response."""
