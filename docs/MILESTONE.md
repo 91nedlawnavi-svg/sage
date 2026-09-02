@@ -24,7 +24,7 @@ Already present and verified:
 - Ordered talk-model failover: Qwen 3.8 Max, DeepSeek V4 Pro, then DeepSeek V4 Flash.
 - Recall cues built from the recent eligible exchange plus the newest message.
 - SQLite mirrors (relational and interior) dual-written alongside JSONL with fail-soft recovery.
-- 69 deterministic tests passing on the refreshed baseline.
+- 74 deterministic tests passing on the refreshed baseline.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
