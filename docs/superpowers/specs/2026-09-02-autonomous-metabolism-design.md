@@ -1,6 +1,6 @@
 # Autonomous Metabolism — Design
 
-**Status:** Reviewed 2026-09-02. Open questions settled. Ready for implementation.
+**Status:** Implemented 2026-09-03.
 
 ## Problem
 
@@ -181,16 +181,16 @@ A metabolism cycle's completion is tracked via
 
 ## Implementation order
 
-1. Widen `heartbeat_completed` to accept `"metabolism"` stage. Add
+1. ✅ Widen `heartbeat_completed` to accept `"metabolism"` stage. Add
    `metabolism.jsonl` path to `InteriorStore`. Add metabolism trigger check to
    heartbeat.
-2. Gap scan function + storage.
-3. Explore function + episodic event storage.
-4. Digest function + metabolism reflection.
-5. Reach function + waiting message.
-6. Wire the pipeline into the heartbeat trigger.
-7. Tests for each stage and the full pipeline.
-8. Update MILESTONE and spec status.
+2. ✅ Gap scan function + storage.
+3. ✅ Explore function + episodic event storage.
+4. ✅ Digest function + metabolism reflection.
+5. ✅ Reach function + waiting message.
+6. ✅ Wire the pipeline into the heartbeat trigger.
+7. ✅ Tests for each stage and the full pipeline.
+8. ✅ Update MILESTONE and spec status.
 
 ## Settled questions
 
