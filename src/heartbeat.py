@@ -12,6 +12,7 @@ from pathlib import Path
 
 from events import EventStore
 from interior import InteriorStore
+from metabolism import run_metabolism_cycle
 from router import RouterClient
 
 logger = logging.getLogger("sage.heartbeat")
@@ -124,6 +125,7 @@ class Heartbeat:
         self._extract_entities_pass()
         self._reflection_pass()
         self._identity_proposal_pass()
+        self._metabolism_pass()
 
     def _extract_entities_pass(self) -> None:
         history = [
@@ -231,3 +233,35 @@ class Heartbeat:
         if not claim:
             return
         self.interior_store.append_identity_proposal(claim, [r["id"] for r in candidates])
+
+    def _metabolism_pass(self) -> None:
+        """Trigger metabolism if conversation has been silent long enough."""
+        history = [
+            e for e in self.event_store.history()
+            if e["role"] == "user"
+            and not e.get("sensitive", False)
+            and not e.get("provider_excluded", False)
+        ]
+        if not history:
+            return
+        last_user = history[-1]
+        try:
+            last_time = datetime.fromisoformat(last_user["said_at"].replace("Z", "+00:00"))
+        except (ValueError, KeyError):
+            return
+        elapsed = (datetime.now(timezone.utc) - last_time).total_seconds()
+        if elapsed < self.metabolism_delay:
+            return
+        if last_user["id"] in self.event_store.heartbeat_completed("metabolism"):
+            return
+        try:
+            run_metabolism_cycle(
+                self.event_store,
+                self.interior_store,
+                self.reflection_router,
+                last_user["id"],
+            )
+        except Exception as exc:
+            logger.warning(f"metabolism cycle failed: {exc}")
+        finally:
+            self.event_store.append_heartbeat_completion("metabolism", last_user["id"])

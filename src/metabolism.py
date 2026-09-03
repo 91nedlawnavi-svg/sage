@@ -219,3 +219,32 @@ def reach(
         "content": text,
     })
     return True
+
+
+def run_metabolism_cycle(
+    store: EventStore,
+    interior: InteriorStore,
+    router: RouterClient,
+    source_event_id: str,
+) -> None:
+    """Run the full metabolism pipeline. Each stage gates the next."""
+    events = [
+        e for e in store.history()
+        if not e.get("sensitive", False) and not e.get("provider_excluded", False)
+    ]
+    if not events:
+        return
+    # Stage 1: gap scan
+    gaps = gap_scan(events, router, interior, source_event_id)
+    if not gaps:
+        return
+    # Stage 2: explore
+    explored = explore(gaps, store, interior, source_event_id)
+    if not explored:
+        return
+    # Stage 3: digest
+    digest_text = digest(explored, router, interior, source_event_id)
+    if not digest_text:
+        return
+    # Stage 4: reach
+    reach(digest_text, router, interior, source_event_id)

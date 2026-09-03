@@ -1160,6 +1160,73 @@ class FoundationTests(unittest.TestCase):
         self.assertFalse(result)
         self.assertIsNone(self.interior.get_waiting_message())
 
+    def test_metabolism_pipeline_end_to_end(self) -> None:
+        from metabolism import run_metabolism_cycle
+        from unittest.mock import patch
+        from search import SearchResult
+        import json as _json
+
+        responses = iter([
+            '[{"gap": "WIB offset", "query": "WIB timezone"}]',
+            "WIB is UTC+7. That connects to the scheduling question.",
+            "NO_MESSAGE",
+        ])
+        class SequenceRouter:
+            aliases = ("seq",)
+            def chat_with_messages(self, messages, **kwargs):
+                from router import RouterResult
+                try:
+                    reply = next(responses)
+                    return RouterResult(reply)
+                except StopIteration:
+                    return RouterResult(reply=None)
+
+        self.store.append("user", "What time zone is WIB?", initial_sensitive=False)
+        self.store.append("assistant", "I am not certain of the offset.")
+        fake_results = [SearchResult(title="WIB", snippet="UTC+7", url="https://example.com")]
+        with patch("metabolism.search", return_value=fake_results):
+            run_metabolism_cycle(self.store, self.interior, SequenceRouter(), "evt-1")
+
+        reflections = self.interior.list_reflections(limit=100)
+        metabolism_refs = [r for r in reflections if r.get("category") == "metabolism"]
+        self.assertEqual(len(metabolism_refs), 1)
+        self.assertIsNone(self.interior.get_waiting_message())
+        records = [_json.loads(line) for line in self.interior.metabolism_path.read_text().splitlines()]
+        kinds = [r["kind"] for r in records]
+        self.assertIn("gap_scan", kinds)
+        self.assertIn("exploration", kinds)
+        self.assertIn("reach", kinds)
+
+    def test_metabolism_pipeline_stops_on_empty_gap_scan(self) -> None:
+        from metabolism import run_metabolism_cycle
+        self.store.append("user", "Hi", initial_sensitive=False)
+        self.store.append("assistant", "Hello")
+        scribe = FakeScribe("[]")
+        run_metabolism_cycle(self.store, self.interior, scribe, "evt-1")
+        self.assertFalse(self.interior.metabolism_path.exists())
+        self.assertEqual(self.interior.list_reflections(limit=100), [])
+
+    def test_api_metabolism_returns_records(self) -> None:
+        import json as _json
+        from metabolism import _append_metabolism
+        _append_metabolism(self.interior, {
+            "kind": "gap_scan", "id": "test-1", "source_event_id": "evt-1",
+            "said_at": "2026-09-02T12:00:00Z", "gaps": [{"gap": "test", "query": "test"}],
+        })
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router, self.interior)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            with urlopen(f"{base_url}/api/metabolism") as response:
+                data = json.load(response)
+            self.assertEqual(len(data["metabolism"]), 1)
+            self.assertEqual(data["metabolism"][0]["kind"], "gap_scan")
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
     def test_reach_writes_metabolism_record(self) -> None:
         from metabolism import reach
         import json as _json

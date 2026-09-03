@@ -75,6 +75,15 @@ class SageHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.OK, {"entities": self.server.store.entity_observations()})
         elif path == "/api/identity":
             self._json(HTTPStatus.OK, {"identity": self.server.interior.list_identity()})
+        elif path == "/api/metabolism":
+            records = []
+            if self.server.interior.metabolism_path.exists():
+                for line in self.server.interior.metabolism_path.read_text(encoding="utf-8").splitlines():
+                    try:
+                        records.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+            self._json(HTTPStatus.OK, {"metabolism": records[-20:]})
         elif path == "/health":
             self._json(HTTPStatus.OK, {"ok": True})
         else:
