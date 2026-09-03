@@ -81,12 +81,17 @@ Sequence is outcome-led, not architecture-led:
    Sage respond naturally, with provenance and revision.
 4. **General capability** — broaden useful answers, writing, coding, research,
    planning, and tool use behind one identity.
-5. **Wonder** — Sage recognizes gaps in her understanding and searches the web
-   to fill them, voicing uncertainty naturally in conversation and exploring
-   self-directedly between conversations, bounded by agency constraints.
-6. **Calibrated initiative** — Sage notices, suggests, prepares, and acts when
+5. **Wonder** (present) — Sage recognizes gaps in her understanding and
+   searches the web to fill them, voicing uncertainty naturally in
+   conversation. Between conversations, autonomous metabolism scans for gaps,
+   explores the web, writes digest reflections, and optionally reaches out
+   with a waiting message. Each stage gates the next; silence is the default.
+6. **Self-authored identity** (present) — Sage observes her own behavior and
+   proposes identity claims. Elliot ratifies or rejects each claim. Ratified
+   claims compose into the system prompt.
+7. **Calibrated initiative** — Sage notices, suggests, prepares, and acts when
    warranted, while learning from corrections and outcomes.
-7. **Richer presence** — voice, vision, ambient interfaces, and broader reach
+8. **Richer presence** — voice, vision, ambient interfaces, and broader reach
    only when they improve ownership and daily usefulness.
 
 ## Never infer from the map

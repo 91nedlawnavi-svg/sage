@@ -2,65 +2,120 @@
 
 Sage is an owned, persistent personal intelligence for Elliot.
 
-The long-term goal is JARVIS-like: a daily-life companion and general-purpose
-assistant that remembers the whole history, understands what matters now, knows
-when to hold back, and takes useful initiative with permission.
+The long-term goal is JARVIS-like: a daily-life companion that remembers
+everything, understands what matters now, knows when to hold back, and takes
+useful initiative with permission. Single user, local-first, free-tier models
+only.
 
-## Status — Sage Refresh
+## What Sage does today
 
-The repository contains the working foundation: local browser and terminal chat,
-durable episodic event storage, lexical and embedding-assisted recall,
-sensitive-material privacy, separate interior storage, a Notebook drawer, background
-extraction/reflection, and one bounded waiting-message surface.
+**Conversation** — browser chat (mobile and desktop) with streaming replies,
+sensitive-mode privacy, and new-chat boundaries.
 
-The active work is contextual continuity: making the whole remembered history
-help Sage respond naturally to the present conversation. The old V3 rebuild is
-sealed as historical foundation work, not current product authority.
+**Episodic memory** — every accepted turn is appended as a timestamped event
+in JSONL. Recall combines BM25 lexical search with cosine-similarity
+embeddings, scored against the current exchange. Nothing is discarded for
+being mundane.
 
-Run after configuring the local router:
+**Self-authored identity** — Sage observes her own behavior during background
+heartbeat passes and proposes identity claims. Elliot ratifies or rejects each
+claim through the Notebook UI. Ratified claims compose into the system prompt,
+giving Sage a self-description she earned rather than one that was written for
+her.
+
+**Autonomous metabolism** — after a configurable silence window (default 5
+minutes), Sage scans the last conversation for gaps in her understanding,
+searches the web to explore them, writes a digest reflection, and optionally
+leaves a waiting message for Elliot's return. Each stage gates the next;
+silence is the default outcome.
+
+**Conversational search** — during a live conversation, Sage can decide to
+search the web when she recognizes she lacks knowledge. Results are stored as
+episodic events with source URLs.
+
+**Privacy** — sensitive messages are excluded from recall, embeddings, provider
+prompts, and background processing. Unknown privacy classification fails
+closed.
+
+**Interior storage** — reflections, entity observations, identity proposals,
+metabolism records, beliefs, and one bounded waiting-message surface live in
+`~/sage_data/interior/`, separate from relational event history.
+
+**SQLite mirrors** — relational and interior databases are dual-written
+alongside JSONL for indexed reads. JSONL remains the source of truth; mirrors
+are derived and rebuildable.
+
+**Background heartbeat** — runs every 120 seconds: entity extraction,
+reflection, identity proposal, and metabolism trigger check, each with
+retry-safe completion records.
+
+**108 deterministic tests** covering the full foundation.
+
+## Running
+
+Configure `.env` from `.env.example`, then:
 
 ```bash
 python3 launch.py
 ```
 
-This writes lived memory to `~/sage_data/`; back up existing lived memory before first use.
+Sage starts on port 6969 with a heartbeat thread. Lived memory writes to
+`~/sage_data/`; back up existing data before first use.
 
-Sage uses an ordered talk-model priority: Qwen 3.8 Max, DeepSeek V4 Pro, then
-DeepSeek V4 Flash. Set `SAGE_CHAT_MODELS` as a comma-separated list, or repeat
-`--alias` to override the priority for a run. A failed or unusable model falls
-through to the next one before Sage records an assistant reply.
+The systemd user service at `~/.config/systemd/user/sage.service` manages
+production operation.
+
+## Models
+
+Free-tier only. The talk-model priority chain:
+
+1. Qwen 3.8 Max (free)
+2. DeepSeek V4 Pro
+3. DeepSeek V4 Flash
+
+A failed or unusable response falls through to the next model before an
+assistant reply is recorded. Set `SAGE_CHAT_MODELS` as a comma-separated list
+in `.env`. The local embedder is a separate fixed component.
 
 ## Model audition
 
-Run the fixed Sage situations against one or more local-router aliases without
-touching lived memory:
+Test fixed Sage situations against router aliases without touching lived
+memory:
 
 ```bash
 python3 tools/model_audition.py <alias> [<alias> ...] --output workbench/audition.json
 ```
 
-Review each reply for continuity, warmth, restraint, honesty, naturalness, and
-fit. The fixed set is also available without a router using `--self-check`.
+Use `--self-check` to run without a router.
 
-## Principles
+## Architecture
 
-- Keep every accepted turn as episodic memory.
-- Let present context decide what becomes relevant.
-- Preserve source events, associations, patterns, and contradictions together.
-- Use memory to give every capability continuity.
-- Calibrate initiative: answer, notice, suggest, prepare, act, or hold back.
-- Keep Sage local-first, owned, and privacy-aware.
+Python 3, stdlib only, no external dependencies.
+
+- `launch.py` — entry point: loads `.env`, wires stores/router/heartbeat
+- `src/sage.py` — message handling, directive loading, router message building
+- `src/web.py` — HTTP server, chat API, streaming NDJSON replies
+- `src/events.py` — append-only JSONL event store with hybrid recall
+- `src/interior.py` — interior storage (reflections, identity, metabolism, waiting messages)
+- `src/metabolism.py` — four-stage post-conversation pipeline
+- `src/heartbeat.py` — background extraction, reflection, identity, metabolism
+- `src/router.py` — LLM router client with model fallback chain
+- `src/database.py` — SQLite mirror layer
+- `src/search.py` — web search integration (SearXNG)
+- `src/static/` — frontend HTML/CSS/JS
+- `tests/test_foundation.py` — 108 deterministic tests
+
+## Tests
+
+```bash
+python3 -m pytest tests/
+```
 
 ## Project records
 
-- [North Star](docs/NORTH_STAR.md)
-- [Invariants](docs/INVARIANTS.md)
-- [Decisions](docs/DECISIONS.md)
-- [Current milestone](docs/MILESTONE.md)
-- [Long-hold roadmap and whiteboard](docs/ROADMAP.md)
-- [Project guide](AGENTS.md)
-
-## Contributing
-
-Project direction stays behavior-first. Start from the current milestone, trace
-affected behavior, keep changes small, and provide real verification evidence.
+- [North Star](docs/NORTH_STAR.md) — purpose and felt outcome
+- [Invariants](docs/INVARIANTS.md) — permanent constraints
+- [Decisions](docs/DECISIONS.md) — settled choices
+- [Milestone](docs/MILESTONE.md) — current work and acceptance evidence
+- [Blueprint](docs/BLUEPRINT.md) — behavior map
+- [Roadmap](docs/ROADMAP.md) — long-hold visual roadmap

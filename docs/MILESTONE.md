@@ -24,49 +24,26 @@ Already present and verified:
 - Ordered talk-model failover: Qwen 3.8 Max, DeepSeek V4 Pro, then DeepSeek V4 Flash.
 - Recall cues built from the recent eligible exchange plus the newest message.
 - SQLite mirrors (relational and interior) dual-written alongside JSONL with fail-soft recovery.
-- Autonomous metabolism: post-conversation gap scan, web exploration, digest reflection, and waiting-message reach.
+- Conversational web search: Sage decides mid-conversation when to search, stores results as episodic events with source URLs.
+- Self-authored identity: heartbeat proposes identity claims from self-observation, Elliot ratifies/rejects via Notebook UI, ratified claims compose into system prompt.
+- Autonomous metabolism: post-conversation gap scan, web exploration, digest reflection, and waiting-message reach. Each stage gates the next; silence is the default.
 - 108 deterministic tests passing on the refreshed baseline.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
 
-## Active outcome — conversational wonder
+## Active outcome — felt continuity
 
-Sage recognizes gaps in her understanding during conversation and can search
-the web to fill them, voicing uncertainty naturally and storing what she learns
-as episodic memory with source provenance.
+Sage's remembered history influences replies naturally in ordinary, non-crisis
+conversations. Related events can be grouped or summarized without erasing
+their sources.
 
-## Acceptance evidence — conversational wonder
+## Acceptance evidence — felt continuity
 
-- Sage explicitly voices uncertainty when she lacks knowledge (e.g., "I don't
-  actually know, let me search quickly").
-- A visible search tool activates mid-conversation, similar to ChatGPT's search
-  behavior.
-- Search results are stored as episodic events with source URLs and timestamps.
-- Search queries never include sensitive material or protected context.
-- Retrieved information influences the response naturally without reciting
-  raw search output.
-- Sage does not claim to feel wonder; she acts on recognized ignorance.
-- No external actions (posting, signing in, purchasing) occur through search.
-- Provider failure during search degrades clearly without losing the
-  conversation turn.
-
-## Next sequenced outcome — autonomous metabolism
-
-Sage explores the web self-directedly between conversations when she recognizes
-gaps or curiosity, bounded by existing agency constraints.
-
-## Acceptance evidence — autonomous metabolism (not yet active)
-
-- Background exploration triggers only from recognized gaps or genuine
-  curiosity, not idle activity.
-- All autonomous searches produce episodic events with full provenance.
-- No external, risky, irreversible, or ambiguous actions occur without
-  explicit authorization.
-- Sensitive material never enters autonomous search queries.
-- Exploration results are available for conversational recall when relevant.
-- Activity remains proportional to context and does not create noise.
-- A legible record of autonomous exploration exists for Elliot to review.
+- Relevant older moments influence replies without sounding like search.
+- Contradictions remain available without forced resolution.
+- A felt test shows continuity in an ordinary conversation.
+- The selected priority chain is evaluated in real daily use.
 
 ## Explicitly not active yet
 
@@ -76,14 +53,3 @@ gaps or curiosity, bounded by existing agency constraints.
 - A durable belief-edit workflow. (Settled: beliefs are computed at recall from the reflection stream, never stored.)
 - A graph or current-state replacement for event memory.
 - More background activity merely to appear alive.
-
-## Future acceptance evidence — memory refresh (open)
-
-These criteria are acknowledged but not yet implemented or verified. They remain
-open for a future upgrade:
-
-- Related events can be grouped or summarized without erasing their sources.
-  Current recall returns individual scored events; no grouping layer exists.
-- A felt test shows continuity in an ordinary, non-crisis conversation.
-  Requires a live conversational evaluation that is not captured by the
-  current deterministic test suite.

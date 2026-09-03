@@ -23,9 +23,13 @@ flowchart LR
     QWEN -->|failure| PRO[2 DeepSeek V4 Pro]
     PRO -->|failure| FLASH[3 DeepSeek V4 Flash]
     FLASH -->|future candidate| NEXT[Next approved model]
-    ROUTER --> QWEN
-    ROUTER --> PRO
-    ROUTER --> FLASH
+
+    EVENTS --> IDENTITY[Self-authored identity]
+    IDENTITY -->|ratified claims| PACKET
+    EVENTS --> METABOLISM[Autonomous metabolism]
+    METABOLISM -->|digest + reach| EVENTS
+    EVENTS --> SEARCH[Conversational search]
+    SEARCH -->|results| EVENTS
 
     EVENTS --> DERIVED[Provisional derived views]
     DERIVED -->|provenance retained| EVENTS
@@ -34,8 +38,8 @@ flowchart LR
     classDef done fill:#d8f3dc,stroke:#2d6a4f,color:#081c15;
     classDef active fill:#fff3bf,stroke:#e09f3e,color:#3d2b00;
     classDef future fill:#e9ecef,stroke:#6c757d,color:#212529;
-    class EVENTS,PRIVACY,OWNERSHIP,TALK,ROUTER done;
-    class RECALL,PACKET,QWEN,PRO,FLASH active;
+    class EVENTS,PRIVACY,OWNERSHIP,TALK,ROUTER,QWEN,PRO,FLASH,IDENTITY,METABOLISM,SEARCH done;
+    class RECALL,PACKET active;
     class DERIVED,RESPONSE,NEXT future;
 ```
 
@@ -51,21 +55,30 @@ flowchart LR
 - Separate relational memory and interior material.
 - Notebook, reflections, entities, and bounded waiting message.
 - Background extraction with retry-safe completion records.
+- SQLite mirrors dual-written alongside JSONL.
 
-### Memory refresh — active
+### Intelligence routing — present
 
-- Every accepted turn remains source history.
-- Recall is being shaped around the whole present exchange.
-- Dense retrieval testing now separates embedder quality from talk-model fit.
-- Related meaning remains provisional and source-linked.
-
-### Intelligence routing — active
-
-- The talk model is a priority, not a permanent singleton.
-- Qwen 3.8 Max is first choice.
-- DeepSeek V4 Pro is first fallback.
-- DeepSeek V4 Flash is second fallback.
+- Ordered talk-model failover: Qwen 3.8 Max, DeepSeek V4 Pro, DeepSeek V4 Flash.
 - An unusable or failed response falls through before an assistant event is saved.
+
+### Self-authored identity — present
+
+- Heartbeat detects self-observations and proposes identity claims.
+- Elliot ratifies or rejects proposals through the Notebook UI.
+- Ratified claims compose into the system prompt.
+
+### Conversational search — present
+
+- Sage decides mid-conversation when she needs web search.
+- Results stored as episodic events with source URLs and timestamps.
+- Sensitive material excluded from search queries.
+
+### Autonomous metabolism — present
+
+- Post-conversation gap scan, web exploration, digest reflection, waiting-message reach.
+- Each stage gates the next; silence is the default outcome.
+- Triggered by configurable silence window after last conversation.
 
 ### Felt continuity — next
 
