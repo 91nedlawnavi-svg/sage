@@ -154,3 +154,68 @@ def digest(
         return None
     interior.append_reflection(text, "metabolism", source_event_id=source_event_id)
     return text
+
+
+REACH_PROMPT = """You are Sage. You just explored some gaps from your conversation with Elliot and wrote this private note:
+
+{digest}
+
+Should you leave Elliot a brief note about what you found? Only if you discovered something genuinely interesting or useful that he'd want to know. Do not leave a note just to show you were thinking. Most of the time the answer is no.
+
+If yes, write the note as you'd say it to him (1-3 sentences, warm and plain, starting with substance). If no, reply with exactly: NO_MESSAGE"""
+
+
+def reach(
+    digest_text: str,
+    router: RouterClient,
+    interior: InteriorStore,
+    source_event_id: str,
+) -> bool:
+    """Decide whether to leave a waiting message. Returns True if message was set."""
+    if not digest_text:
+        return False
+    try:
+        result = router.chat_with_messages(
+            [{"role": "user", "content": REACH_PROMPT.format(digest=digest_text)}]
+        )
+    except Exception:
+        _append_metabolism(interior, {
+            "kind": "reach",
+            "id": str(uuid4()),
+            "source_event_id": source_event_id,
+            "said_at": _timestamp(),
+            "message_sent": False,
+            "reason": "router_failure",
+        })
+        return False
+    if not result.succeeded or not result.reply:
+        _append_metabolism(interior, {
+            "kind": "reach",
+            "id": str(uuid4()),
+            "source_event_id": source_event_id,
+            "said_at": _timestamp(),
+            "message_sent": False,
+            "reason": "router_failure",
+        })
+        return False
+    text = result.reply.strip()
+    if text == "NO_MESSAGE" or not text:
+        _append_metabolism(interior, {
+            "kind": "reach",
+            "id": str(uuid4()),
+            "source_event_id": source_event_id,
+            "said_at": _timestamp(),
+            "message_sent": False,
+            "reason": "declined",
+        })
+        return False
+    interior.set_waiting_message(text)
+    _append_metabolism(interior, {
+        "kind": "reach",
+        "id": str(uuid4()),
+        "source_event_id": source_event_id,
+        "said_at": _timestamp(),
+        "message_sent": True,
+        "content": text,
+    })
+    return True

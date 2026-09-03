@@ -1139,5 +1139,36 @@ class FoundationTests(unittest.TestCase):
         )
         self.assertIsNone(result)
 
+    def test_reach_sets_waiting_message_when_warranted(self) -> None:
+        from metabolism import reach
+        scribe = FakeScribe("WIB is UTC+7, which means your 9am there is 2am UTC.")
+        result = reach("I learned WIB is UTC+7.", scribe, self.interior, "evt-1")
+        self.assertTrue(result)
+        msg = self.interior.get_waiting_message()
+        self.assertIsNotNone(msg)
+
+    def test_reach_no_message_when_model_declines(self) -> None:
+        from metabolism import reach
+        scribe = FakeScribe("NO_MESSAGE")
+        result = reach("Nothing interesting found.", scribe, self.interior, "evt-2")
+        self.assertFalse(result)
+        self.assertIsNone(self.interior.get_waiting_message())
+
+    def test_reach_no_message_on_router_failure(self) -> None:
+        from metabolism import reach
+        result = reach("Some digest.", DeadRouter(), self.interior, "evt-3")
+        self.assertFalse(result)
+        self.assertIsNone(self.interior.get_waiting_message())
+
+    def test_reach_writes_metabolism_record(self) -> None:
+        from metabolism import reach
+        import json as _json
+        scribe = FakeScribe("NO_MESSAGE")
+        reach("Some digest.", scribe, self.interior, "evt-4")
+        records = [_json.loads(line) for line in self.interior.metabolism_path.read_text().splitlines()]
+        reach_records = [r for r in records if r["kind"] == "reach"]
+        self.assertEqual(len(reach_records), 1)
+        self.assertFalse(reach_records[0]["message_sent"])
+
 if __name__ == "__main__":
     unittest.main()
