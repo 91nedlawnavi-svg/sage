@@ -1045,5 +1045,44 @@ class FoundationTests(unittest.TestCase):
         completed = self.store.heartbeat_completed("metabolism")
         self.assertIn(event["id"], completed)
 
+    def test_gap_scan_returns_empty_on_no_gaps(self) -> None:
+        from metabolism import gap_scan
+        scribe = FakeScribe("[]")
+        result = gap_scan(
+            [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello"}],
+            scribe,
+            self.interior,
+            "evt-1",
+        )
+        self.assertEqual(result, [])
+        self.assertFalse(self.interior.metabolism_path.exists())
+
+    def test_gap_scan_returns_gaps_and_writes_record(self) -> None:
+        from metabolism import gap_scan
+        import json as _json
+        scribe = FakeScribe('[{"gap": "What is WIB timezone offset?", "query": "WIB timezone UTC offset"}]')
+        result = gap_scan(
+            [{"role": "user", "content": "What time is it in WIB?"}, {"role": "assistant", "content": "I am not sure of the exact offset."}],
+            scribe,
+            self.interior,
+            "evt-2",
+        )
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["gap"], "What is WIB timezone offset?")
+        self.assertTrue(self.interior.metabolism_path.exists())
+        records = [_json.loads(line) for line in self.interior.metabolism_path.read_text().splitlines()]
+        self.assertEqual(records[0]["kind"], "gap_scan")
+        self.assertEqual(records[0]["source_event_id"], "evt-2")
+
+    def test_gap_scan_returns_empty_on_router_failure(self) -> None:
+        from metabolism import gap_scan
+        result = gap_scan(
+            [{"role": "user", "content": "Hi"}],
+            DeadRouter(),
+            self.interior,
+            "evt-3",
+        )
+        self.assertEqual(result, [])
+
 if __name__ == "__main__":
     unittest.main()
