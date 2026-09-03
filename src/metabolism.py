@@ -8,8 +8,10 @@ import os
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from events import EventStore
 from interior import InteriorStore
 from router import RouterClient
+from search import search
 
 _log = logging.getLogger("sage.metabolism")
 
@@ -74,3 +76,38 @@ def gap_scan(
         "gaps": valid,
     })
     return valid
+
+
+def explore(
+    gaps: list[dict],
+    store: EventStore,
+    interior: InteriorStore,
+    source_event_id: str,
+) -> list[dict]:
+    """Search the web for each gap. Store results as episodic events. Returns gaps with results."""
+    if not gaps:
+        return []
+    explored = []
+    for gap in gaps[:3]:
+        query = gap["query"]
+        try:
+            results = search(query)
+        except Exception:
+            continue
+        if not results:
+            continue
+        sources = "\n".join(r.url for r in results)
+        content = f"[Metabolism search: {query}]\nSources: {sources}"
+        store.append("assistant", content)
+        explored.append({**gap, "results": [{"title": r.title, "snippet": r.snippet, "url": r.url} for r in results]})
+    if not explored:
+        return []
+    _append_metabolism(interior, {
+        "kind": "exploration",
+        "id": str(uuid4()),
+        "source_event_id": source_event_id,
+        "said_at": _timestamp(),
+        "gaps_explored": len(explored),
+        "queries": [g["query"] for g in explored],
+    })
+    return explored

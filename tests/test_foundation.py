@@ -1084,5 +1084,35 @@ class FoundationTests(unittest.TestCase):
         )
         self.assertEqual(result, [])
 
+    def test_explore_searches_gaps_and_stores_events(self) -> None:
+        from metabolism import explore
+        from unittest.mock import patch
+        from search import SearchResult
+        fake_results = [SearchResult(title="WIB", snippet="UTC+7", url="https://example.com")]
+        with patch("metabolism.search", return_value=fake_results):
+            result = explore(
+                [{"gap": "WIB offset", "query": "WIB timezone"}],
+                self.store,
+                self.interior,
+                "evt-1",
+            )
+        self.assertEqual(len(result), 1)
+        self.assertIn("results", result[0])
+        events = self.store.read_all()
+        metabolism_events = [e for e in events if "[Metabolism search:" in e["content"]]
+        self.assertEqual(len(metabolism_events), 1)
+
+    def test_explore_returns_empty_when_all_searches_fail(self) -> None:
+        from metabolism import explore
+        from unittest.mock import patch
+        with patch("metabolism.search", return_value=[]):
+            result = explore(
+                [{"gap": "Unknown thing", "query": "unknown query"}],
+                self.store,
+                self.interior,
+                "evt-2",
+            )
+        self.assertEqual(result, [])
+
 if __name__ == "__main__":
     unittest.main()
