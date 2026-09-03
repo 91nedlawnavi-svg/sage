@@ -75,6 +75,7 @@ class InteriorStore:
         self.reflections_path = self.interior_dir / "reflections.jsonl"
         self.beliefs_path = self.interior_dir / "beliefs.jsonl"
         self.identity_path = self.interior_dir / "identity.jsonl"
+        self.metabolism_path = self.interior_dir / "metabolism.jsonl"
         self.waiting_message_path = self.interior_dir / "waiting_message.json"
         self._mirror = mirror
 

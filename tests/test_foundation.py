@@ -1038,5 +1038,12 @@ class FoundationTests(unittest.TestCase):
             web_thread.join()
             web_server.server_close()
 
+    def test_metabolism_completion_tracking(self) -> None:
+        self.store.append("user", "Hello")
+        event = self.store.read_all()[0]
+        self.store.append_heartbeat_completion("metabolism", event["id"])
+        completed = self.store.heartbeat_completed("metabolism")
+        self.assertIn(event["id"], completed)
+
 if __name__ == "__main__":
     unittest.main()

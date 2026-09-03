@@ -54,10 +54,11 @@ def main() -> None:
     router = RouterClient(aliases)
     # Extraction is mechanical JSON: cheapest alias in the chain unless overridden.
     extract_router = RouterClient(args.extract_alias.strip() or aliases[-1])
+    metabolism_delay = float(os.getenv("SAGE_METABOLISM_DELAY", "300"))
     interior = InteriorStore(args.data_root, mirror=int_mirror)
 
     # Start permitted local background work.
-    heartbeat = Heartbeat(store, interior, router, extract_router=extract_router, interval_seconds=120.0)
+    heartbeat = Heartbeat(store, interior, router, extract_router=extract_router, interval_seconds=120.0, metabolism_delay=metabolism_delay)
     heartbeat.start()
 
     server = SageServer(("0.0.0.0", args.port), store, router, interior)

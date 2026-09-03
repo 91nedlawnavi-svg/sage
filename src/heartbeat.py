@@ -70,6 +70,7 @@ class Heartbeat:
         *,
         extract_router: RouterClient | None = None,
         interval_seconds: float = 60.0,
+        metabolism_delay: float = 300.0,
     ) -> None:
         self.event_store = event_store
         self.interior_store = interior_store
@@ -83,6 +84,7 @@ class Heartbeat:
         self.last_beat_ts: str | None = None
         self.last_reflection_ts: str | None = None
         self.failure_counts: dict[str, int] = {}
+        self.metabolism_delay = metabolism_delay
 
     def _record_outcome(self, pass_name: str, router: RouterClient, succeeded: bool) -> None:
         """Background inference fails invisibly by nature; log it loudly instead.

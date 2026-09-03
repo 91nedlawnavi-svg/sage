@@ -210,7 +210,7 @@ class EventStore:
 
     def append_heartbeat_completion(
         self,
-        stage: Literal["entities", "reflection"],
+        stage: Literal["entities", "reflection", "metabolism"],
         source_event_id: str,
     ) -> HeartbeatCompletion:
         record: HeartbeatCompletion = {
@@ -227,7 +227,7 @@ class EventStore:
         self._mirror_heartbeat_completion(record)
         return record
 
-    def heartbeat_completed(self, stage: Literal["entities", "reflection"]) -> set[str]:
+    def heartbeat_completed(self, stage: Literal["entities", "reflection", "metabolism"]) -> set[str]:
         completed: set[str] = set()
         for record in self._read_jsonl(self.heartbeat_path):
             if (
