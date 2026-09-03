@@ -1114,5 +1114,30 @@ class FoundationTests(unittest.TestCase):
             )
         self.assertEqual(result, [])
 
+    def test_digest_creates_metabolism_reflection(self) -> None:
+        from metabolism import digest
+        scribe = FakeScribe("I learned that WIB is UTC+7, which connects to the scheduling question.")
+        result = digest(
+            [{"gap": "WIB offset", "query": "WIB timezone", "results": [{"title": "WIB", "snippet": "UTC+7", "url": "https://example.com"}]}],
+            scribe,
+            self.interior,
+            "evt-1",
+        )
+        self.assertIsNotNone(result)
+        reflections = self.interior.list_reflections(limit=100)
+        metabolism_refs = [r for r in reflections if r.get("category") == "metabolism"]
+        self.assertEqual(len(metabolism_refs), 1)
+        self.assertEqual(metabolism_refs[0]["source_event_id"], "evt-1")
+
+    def test_digest_returns_none_on_router_failure(self) -> None:
+        from metabolism import digest
+        result = digest(
+            [{"gap": "test", "query": "test", "results": [{"title": "t", "snippet": "s", "url": "u"}]}],
+            DeadRouter(),
+            self.interior,
+            "evt-2",
+        )
+        self.assertIsNone(result)
+
 if __name__ == "__main__":
     unittest.main()

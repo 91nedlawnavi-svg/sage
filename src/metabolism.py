@@ -111,3 +111,46 @@ def explore(
         "queries": [g["query"] for g in explored],
     })
     return explored
+
+
+DIGEST_PROMPT = """You are Sage, thinking privately after a conversation with Elliot. You noticed some gaps and searched for answers. Below are the gaps and what you found. Write a brief private note (2-4 sentences) connecting what you learned to the conversation. This is for your own notebook, not a message to Elliot. If the search results didn't actually resolve the gap or add anything interesting, say so honestly and keep it to one sentence.
+
+Gaps and findings:
+{findings}
+
+Recent reflections for context:
+{reflections}"""
+
+
+def digest(
+    explored: list[dict],
+    router: RouterClient,
+    interior: InteriorStore,
+    source_event_id: str,
+) -> str | None:
+    """Synthesize exploration results into a metabolism reflection. Returns text or None."""
+    if not explored:
+        return None
+    findings = []
+    for gap in explored:
+        lines = [f"Gap: {gap['gap']}"]
+        for r in gap.get("results", []):
+            lines.append(f"  - {r['title']}: {r['snippet']}")
+        findings.append("\n".join(lines))
+    recent = interior.list_reflections(limit=5)
+    reflection_text = "\n".join(f"- {r['content']}" for r in recent) if recent else "(none yet)"
+    prompt = DIGEST_PROMPT.format(
+        findings="\n\n".join(findings),
+        reflections=reflection_text,
+    )
+    try:
+        result = router.chat_with_messages([{"role": "user", "content": prompt}])
+    except Exception:
+        return None
+    if not result.succeeded or not result.reply:
+        return None
+    text = result.reply.strip()
+    if not text:
+        return None
+    interior.append_reflection(text, "metabolism", source_event_id=source_event_id)
+    return text
