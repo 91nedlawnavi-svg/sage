@@ -1237,5 +1237,16 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(len(reach_records), 1)
         self.assertFalse(reach_records[0]["message_sent"])
 
+    def test_metabolism_excludes_sensitive_events(self) -> None:
+        from metabolism import run_metabolism_cycle
+        # Only a sensitive user event — after filtering, no non-sensitive events remain
+        self.store.append("user", "private thought", initial_sensitive=True)
+        # gap_scan would find gaps if called, but pipeline should get empty filtered list
+        scribe = FakeScribe('[{"gap": "should never appear", "query": "leaked"}]')
+        run_metabolism_cycle(self.store, self.interior, scribe, "evt-1")
+        # Nothing happened — no metabolism records, no reflections
+        self.assertFalse(self.interior.metabolism_path.exists())
+        self.assertEqual(self.interior.list_reflections(limit=100), [])
+
 if __name__ == "__main__":
     unittest.main()

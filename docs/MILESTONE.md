@@ -25,7 +25,7 @@ Already present and verified:
 - Recall cues built from the recent eligible exchange plus the newest message.
 - SQLite mirrors (relational and interior) dual-written alongside JSONL with fail-soft recovery.
 - Autonomous metabolism: post-conversation gap scan, web exploration, digest reflection, and waiting-message reach.
-- 107 deterministic tests passing on the refreshed baseline.
+- 108 deterministic tests passing on the refreshed baseline.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
