@@ -50,8 +50,12 @@ class SageHandler(BaseHTTPRequestHandler):
             self._serve_static("index.html", "text/html; charset=utf-8")
         elif path == "/static/app.css":
             self._serve_static("app.css", "text/css; charset=utf-8")
+        elif path == "/notebook":
+            self._serve_static("notebook.html", "text/html; charset=utf-8")
         elif path == "/static/app.js":
             self._serve_static("app.js", "application/javascript; charset=utf-8")
+        elif path == "/static/notebook.js":
+            self._serve_static("notebook.js", "application/javascript; charset=utf-8")
         elif path == "/api/history":
             events = self.server.store.visible_history()
             waiting = self.server.interior.get_waiting_message()

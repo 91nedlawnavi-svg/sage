@@ -6,26 +6,17 @@ const input = document.querySelector("#message");
 const status = document.querySelector("#status");
 const statusDot = document.querySelector("#status-dot");
 const send = document.querySelector("#send-btn");
-const newChat = document.querySelector("#new-chat");
-const notebookToggle = document.querySelector("#notebook-toggle");
+const menuToggle = document.querySelector("#menu-toggle");
 const drawer = document.querySelector("#drawer");
 const drawerClose = document.querySelector("#drawer-close");
 const drawerOverlay = document.querySelector("#drawer-overlay");
-const drawerTabs = [...document.querySelectorAll(".drawer-tab")];
-const drawerContent = document.querySelector("#drawer-content");
+const drawerNewChat = document.querySelector("#drawer-new-chat");
 const sensitiveNotice = document.querySelector("#sensitive-notice");
 
-let activeTab = "reflections";
 let sensitiveMode = false;
 let busy = true;
 let focusBeforeDrawer = null;
 let viewportFrame = 0;
-
-const WIB_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
-  hour: "2-digit",
-  minute: "2-digit",
-  timeZone: "Asia/Jakarta",
-});
 
 function setStatus(value) {
   status.textContent = value;
@@ -37,7 +28,6 @@ function setStatus(value) {
 
 function updateSendState() {
   send.disabled = busy || !input.value.trim();
-  newChat.disabled = busy;
 }
 
 function syncVisualViewport() {
@@ -60,8 +50,8 @@ function setDrawerOpen(open) {
   drawer.classList.toggle("open", open);
   drawerOverlay.classList.toggle("open", open);
   document.body.classList.toggle("drawer-open", open);
-  notebookToggle.setAttribute("aria-expanded", String(open));
-  notebookToggle.setAttribute("aria-label", open ? "Close notebook" : "Open notebook");
+  menuToggle.setAttribute("aria-expanded", String(open));
+  menuToggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
   drawer.setAttribute("aria-hidden", String(!open));
   app.inert = open;
   if (open) {
@@ -78,10 +68,6 @@ function resizeComposer() {
 
 function scrollToLatest() {
   messages.scrollTop = messages.scrollHeight;
-}
-
-function formatWib(timestamp) {
-  return `${WIB_TIME_FORMAT.format(new Date(timestamp))} WIB`;
 }
 
 function add(event) {
@@ -121,9 +107,9 @@ async function loadHistory() {
   setStatus("Ready");
 }
 
-newChat.addEventListener("click", async () => {
+async function startNewChat() {
   if (busy) return;
-  newChat.disabled = true;
+  drawerNewChat.disabled = true;
   try {
     const response = await fetch("/api/chat/clear", {method: "POST"});
     if (!response.ok) throw new Error("new chat unavailable");
@@ -139,15 +125,16 @@ newChat.addEventListener("click", async () => {
   } catch {
     setStatus("Offline");
   } finally {
-    newChat.disabled = false;
+    drawerNewChat.disabled = false;
   }
+}
+
+drawerNewChat.addEventListener("click", () => {
+  setDrawerOpen(false);
+  startNewChat();
 });
 
-notebookToggle.addEventListener("click", () => {
-  const open = !drawer.classList.contains("open");
-  setDrawerOpen(open);
-  if (open) loadDrawerTab(activeTab);
-});
+menuToggle.addEventListener("click", () => setDrawerOpen(!drawer.classList.contains("open")));
 
 drawerClose.addEventListener("click", () => setDrawerOpen(false));
 drawerOverlay.addEventListener("click", () => setDrawerOpen(false));
@@ -159,7 +146,7 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key !== "Tab") return;
-  const focusable = [drawerClose, drawer.querySelector(".drawer-tab.active"), ...drawer.querySelectorAll(".identity-btn")].filter(Boolean);
+  const focusable = [...drawer.querySelectorAll("button, a[href]")];
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
   if (event.shiftKey && document.activeElement === first) {
@@ -192,106 +179,6 @@ input.addEventListener("keydown", (event) => {
 
 resizeComposer();
 updateSendState();
-
-drawerTabs.forEach((tab, index) => {
-  tab.addEventListener("click", () => selectDrawerTab(tab));
-  tab.addEventListener("keydown", (event) => {
-    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
-    event.preventDefault();
-    const direction = event.key === "ArrowRight" ? 1 : -1;
-    selectDrawerTab(drawerTabs[(index + direction + drawerTabs.length) % drawerTabs.length], true);
-  });
-});
-
-drawerContent.addEventListener("click", async (event) => {
-  const btn = event.target.closest("[data-identity-id]");
-  if (!btn) return;
-  const id = btn.dataset.identityId;
-  const action = btn.dataset.action;
-  btn.disabled = true;
-  try {
-    const response = await fetch(`/api/identity/${encodeURIComponent(id)}/${action}`, {method: "POST"});
-    if (!response.ok) throw new Error("ruling failed");
-    loadDrawerTab("identity");
-  } catch {
-    btn.disabled = false;
-  }
-});
-
-function selectDrawerTab(selected, focus = false) {
-  for (const tab of drawerTabs) {
-    const active = tab === selected;
-    tab.classList.toggle("active", active);
-    tab.setAttribute("aria-selected", String(active));
-    tab.tabIndex = active ? 0 : -1;
-  }
-  activeTab = selected.dataset.tab;
-  if (focus) selected.focus();
-  loadDrawerTab(activeTab);
-}
-
-function drawerState(message) {
-  drawerContent.innerHTML = `<div class="drawer-state">${message}</div>`;
-}
-
-async function loadDrawerTab(tab) {
-  drawerState("Loading…");
-  try {
-    const endpoint = tab === "reflections" ? "/api/reflections" : tab === "beliefs" ? "/api/beliefs" : tab === "identity" ? "/api/identity" : "/api/entities";
-    const response = await fetch(endpoint);
-    if (!response.ok) throw new Error("notebook unavailable");
-    const data = await response.json();
-    const list = data[tab] || [];
-    if (list.length === 0) {
-      drawerState(`No ${tab} recorded yet.`);
-      return;
-    }
-    if (tab === "reflections") {
-      drawerContent.innerHTML = list.slice().reverse().map((reflection) => `
-        <div class="notebook-card">
-          <div class="notebook-card-ts">${formatWib(reflection.said_at)}</div>
-          <div>${escapeHtml(reflection.content)}</div>
-        </div>
-      `).join("");
-    } else if (tab === "beliefs") {
-      drawerContent.innerHTML = list.slice().reverse().map((belief) => `
-        <div class="notebook-card">
-          <strong>${escapeHtml(belief.topic)}</strong>
-          <div>${escapeHtml(belief.stance)}</div>
-          <div class="notebook-evidence">Evidence: ${escapeHtml(belief.evidence)}</div>
-        </div>
-      `).join("");
-    } else if (tab === "identity") {
-      drawerContent.innerHTML = list.map((entry) => `
-        <div class="notebook-card identity-card">
-          <div class="identity-status identity-${entry.status}">${escapeHtml(entry.status)}</div>
-          <div>${escapeHtml(entry.claim)}</div>
-          ${entry.status === "proposed" ? `
-            <div class="identity-actions">
-              <button class="identity-btn ratify" data-identity-id="${entry.id}" data-action="ratify">Ratify</button>
-              <button class="identity-btn reject" data-identity-id="${entry.id}" data-action="reject">Reject</button>
-            </div>
-          ` : ""}
-        </div>
-      `).join("");
-    } else {
-      drawerContent.innerHTML = list.slice().reverse().map((entity) => `
-        <div class="notebook-card">
-          <strong>${escapeHtml(entity.name)}</strong>
-          <div>${escapeHtml(entity.observation)}</div>
-        </div>
-      `).join("");
-    }
-  } catch {
-    drawerState("Notebook data could not be loaded.");
-  }
-}
-
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text || "";
-  return div.innerHTML;
-}
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();

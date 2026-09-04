@@ -468,6 +468,10 @@ class FoundationTests(unittest.TestCase):
                 self.assertIn(b"Message Sage", response.read())
             with urlopen(f"{base_url}/static/app.css") as response:
                 self.assertIn(b"-webkit-tap-highlight-color: transparent", response.read())
+            with urlopen(f"{base_url}/notebook") as response:
+                self.assertIn(b"notebook-tabs", response.read())
+            with urlopen(f"{base_url}/static/notebook.js") as response:
+                self.assertIn(b"/api/reflections", response.read())
             payload = json.dumps({"message": "Hello Sage"}).encode()
             request = Request(f"{base_url}/api/chat", data=payload, headers={"Content-Type": "application/json"}, method="POST")
             with urlopen(request) as response:

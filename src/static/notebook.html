@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>Notebook · Sage</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div id="app">
+    <div id="notebook-top">
+      <a id="notebook-back" href="/" aria-label="Back to chat">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19 12H5m6.5-6.5L5 12l6.5 6.5"/></svg>
+      </a>
+      <h1>Notebook</h1>
+    </div>
+    <div id="notebook-tabs" role="tablist" aria-label="Notebook sections">
+      <button class="notebook-tab active" data-tab="reflections" role="tab" aria-selected="true">Reflections</button>
+      <button class="notebook-tab" data-tab="beliefs" role="tab" aria-selected="false" tabindex="-1">Beliefs</button>
+      <button class="notebook-tab" data-tab="entities" role="tab" aria-selected="false" tabindex="-1">Entities</button>
+      <button class="notebook-tab" data-tab="identity" role="tab" aria-selected="false" tabindex="-1">Identity</button>
+    </div>
+    <div id="notebook-content">Loading…</div>
+  </div>
+
+  <script src="/static/notebook.js"></script>
+</body>
+</html>
