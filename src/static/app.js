@@ -5,6 +5,7 @@ const form = document.querySelector("#composer");
 const input = document.querySelector("#message");
 const status = document.querySelector("#status");
 const statusDot = document.querySelector("#status-dot");
+const model = document.querySelector("#model");
 const send = document.querySelector("#send-btn");
 const menuToggle = document.querySelector("#menu-toggle");
 const drawer = document.querySelector("#drawer");
@@ -24,6 +25,10 @@ function setStatus(value) {
   statusDot.classList.toggle("thinking", value === "Thinking");
   statusDot.classList.toggle("offline", value === "Offline");
   statusDot.title = value;
+}
+
+function setModel(alias) {
+  model.textContent = alias ? alias.split("/").pop().replace(":free", "") : "";
 }
 
 function updateSendState() {
@@ -102,7 +107,8 @@ function toggleSensitiveMode() {
 async function loadHistory() {
   const response = await fetch("/api/history");
   if (!response.ok) throw new Error("history unavailable");
-  const {events} = await response.json();
+  const {events, model: alias} = await response.json();
+  setModel(alias);
   for (const event of events || []) add(event);
   setStatus("Ready");
 }
@@ -217,6 +223,10 @@ form.addEventListener("submit", async (event) => {
     const handleEvent = (line) => {
       if (!line) return;
       const streamEvent = JSON.parse(line);
+      if (streamEvent.type === "model") {
+        setModel(streamEvent.content);
+        return;
+      }
       if (streamEvent.type === "search") {
         setStatus(`Searching: ${streamEvent.content || "web"}...`);
         return;

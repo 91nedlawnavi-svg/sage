@@ -47,6 +47,7 @@ class RouterClient:
         if not self.aliases:
             raise ValueError("At least one free-tier alias is required")
         self.alias = self.aliases[0]
+        self.last_alias = self.alias
         self.endpoint = f"{base_url}/v1/chat/completions"
 
     def _request(
@@ -144,6 +145,7 @@ class RouterClient:
                         emitted = True
                     yield chunk
             if emitted:
+                self.last_alias = alias
                 return
 
     @staticmethod

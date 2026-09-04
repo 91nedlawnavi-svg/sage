@@ -77,6 +77,7 @@ class FakeScribe:
 
 class DeadRouter:
     aliases = ("dead-alias",)
+    last_alias = "dead-alias"
 
     def chat_with_messages(self, messages: list[dict[str, str]]) -> RouterResult:
         return RouterResult(reply=None)
@@ -327,6 +328,7 @@ class FoundationTests(unittest.TestCase):
     def test_search_stream_events_do_not_corrupt_the_response(self) -> None:
         class SearchingRouter:
             aliases = ("stub",)
+            last_alias = "stub"
 
             def chat_with_messages(self, messages, **kwargs):  # search decision
                 return RouterResult(reply="sage project status")
@@ -354,6 +356,7 @@ class FoundationTests(unittest.TestCase):
                             {"type": "search", "content": "sage project status"},
                             {"type": "search_error", "content": "Search returned no results"},
                             {"type": "delta", "content": "answer"},
+                            {"type": "model", "content": "stub"},
                             {"type": "done"},
                         ],
                     )
@@ -477,10 +480,17 @@ class FoundationTests(unittest.TestCase):
             with urlopen(request) as response:
                 self.assertEqual(
                     read_stream(response),
-                    [{"type": "delta", "content": "Hel"}, {"type": "delta", "content": "lo."}, {"type": "done"}],
+                    [
+                        {"type": "delta", "content": "Hel"},
+                        {"type": "delta", "content": "lo."},
+                        {"type": "model", "content": "free-tier-alias"},
+                        {"type": "done"},
+                    ],
                 )
             with urlopen(f"{base_url}/api/history") as response:
-                events = json.load(response)["events"]
+                history = json.load(response)
+            self.assertEqual(history["model"], "free-tier-alias")
+            events = history["events"]
             self.assertEqual([(event["role"], event["content"]) for event in events], [("user", "Hello Sage"), ("assistant", "Hello.")])
             self.assertEqual(FakeRouter.request_body["stream"], True)
         finally:
@@ -1177,6 +1187,7 @@ class FoundationTests(unittest.TestCase):
         ])
         class SequenceRouter:
             aliases = ("seq",)
+            last_alias = "seq"
             def chat_with_messages(self, messages, **kwargs):
                 from router import RouterResult
                 try:

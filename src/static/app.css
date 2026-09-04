@@ -81,6 +81,7 @@ button:disabled { cursor: default; }
 #status-dot.cold { background: var(--subtle); box-shadow: none; }
 #status-dot.thinking { animation: pulse 1.25s ease-in-out infinite; }
 #status-dot.offline { background: #d28a8a; box-shadow: 0 0 0 3px rgb(210 138 138 / 12%); }
+#model { color: var(--subtle); font-size: .72rem; white-space: nowrap; }
 #menu-toggle {
   display: grid;
   place-items: center;

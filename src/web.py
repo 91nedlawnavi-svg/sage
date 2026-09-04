@@ -70,7 +70,7 @@ class SageHandler(BaseHTTPRequestHandler):
                         "kind": "waiting",
                     }
                 ] + events
-            self._json(HTTPStatus.OK, {"events": events})
+            self._json(HTTPStatus.OK, {"events": events, "model": self.server.router.last_alias})
         elif path == "/reflections" or path == "/api/reflections":
             self._json(HTTPStatus.OK, {"reflections": self.server.interior.list_reflections()})
         elif path == "/api/beliefs":
@@ -323,6 +323,8 @@ class SageHandler(BaseHTTPRequestHandler):
                 except OSError:
                     self._write_stream_event("error", SAVE_REPLY_FAILURE)
                     return
+                # only a real provider reply names a model; the sensitive acknowledgement does not
+                self._write_stream_event("model", self.server.router.last_alias)
             self._write_stream_event("done")
         except (BrokenPipeError, ConnectionResetError):
             return
