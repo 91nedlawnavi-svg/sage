@@ -15,7 +15,7 @@ from urllib.parse import unquote, urlparse
 from events import EventStore
 from interior import InteriorStore
 from router import EmbeddingClient, RouterClient
-from sage import SENSITIVE_ACKNOWLEDGEMENT, ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_messages, compose_identity_block, load_directive
+from sage import ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_messages, compose_identity_block, load_directive
 from search import search, format_search_context
 
 STATIC_ROOT = Path(__file__).with_name("static")
@@ -73,8 +73,6 @@ class SageHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.OK, {"events": events, "model": self.server.router.last_alias})
         elif path == "/reflections" or path == "/api/reflections":
             self._json(HTTPStatus.OK, {"reflections": self.server.interior.list_reflections()})
-        elif path == "/api/beliefs":
-            self._json(HTTPStatus.OK, {"beliefs": self.server.interior.list_beliefs()})
         elif path == "/api/entities":
             self._json(HTTPStatus.OK, {"entities": self.server.store.entity_observations()})
         elif path == "/api/identity":
@@ -118,10 +116,6 @@ class SageHandler(BaseHTTPRequestHandler):
         if identity_target is not None:
             self._identity_ruling(*identity_target)
             return
-        event_id = self._privacy_target(path)
-        if event_id is not None:
-            self._privacy_override(event_id)
-            return
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def _chat(self) -> None:
@@ -132,11 +126,7 @@ class SageHandler(BaseHTTPRequestHandler):
         if not isinstance(message, str) or not (message := message.strip()):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "message must be a nonblank string"})
             return
-        sensitive_mode = body.get("sensitive_mode", False)
-        if not isinstance(sensitive_mode, bool):
-            self._json(HTTPStatus.BAD_REQUEST, {"error": "sensitive_mode must be boolean"})
-            return
-        accepted = accept_message(message, self.server.store, sensitive=sensitive_mode)
+        accepted = accept_message(message, self.server.store)
         if accepted is None:
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_FAILURE})
             return
@@ -145,17 +135,13 @@ class SageHandler(BaseHTTPRequestHandler):
         self.server.interior.clear_waiting_message()
 
         headers = {
-            "X-Sage-Event-ID": accepted.event["id"],
-            "X-Sage-Sensitive": str(accepted.privacy.sensitive).lower(),
+            "X-Sage-Event-ID": accepted["id"],
         }
         self._begin_stream(headers)
-        if accepted.privacy.sensitive:
-            self._stream_reply(iter((SENSITIVE_ACKNOWLEDGEMENT, "")), persist_reply=False)
-            return
 
         # Decide and run search with visible stream events
         self._search_decision_failed = False
-        search_query = self._decide_search(message, accepted.event["id"])
+        search_query = self._decide_search(message, accepted["id"])
         search_context = ""
         if search_query:
             self._write_stream_event("search", search_query)
@@ -164,11 +150,11 @@ class SageHandler(BaseHTTPRequestHandler):
                 search_context = format_search_context(results)
                 self._write_stream_event("search_done", f"{len(results)} results")
                 try:
-                    sources = "\n".join(r.url for r in results)
-                    self.server.store.append(
-                        "assistant",
-                        f"[Web search: {search_query}]\nSources: {sources}",
-                        save_embedding=True,
+                    self.server.store.append_search_record(
+                        search_query,
+                        [{"title": r.title, "snippet": r.snippet, "url": r.url} for r in results],
+                        "conversation",
+                        accepted["id"],
                     )
                 except OSError:
                     pass
@@ -182,7 +168,7 @@ class SageHandler(BaseHTTPRequestHandler):
                 build_router_messages(
                     message,
                     self.server.store,
-                    exclude_event_id=accepted.event["id"],
+                    exclude_event_id=accepted["id"],
                     directive=load_directive(identity_block=compose_identity_block(self.server.interior)),
                     search_context=search_context,
                 )
@@ -214,24 +200,6 @@ class SageHandler(BaseHTTPRequestHandler):
         if len(reply) < 200 and "\n" not in reply and not reply.endswith("."):
             return reply
         return None
-
-    def _privacy_override(self, event_id: str) -> None:
-        body = self._json_body()
-        if body is None:
-            return
-        sensitive = body.get("sensitive")
-        if not isinstance(sensitive, bool):
-            self._json(HTTPStatus.BAD_REQUEST, {"error": "sensitive must be boolean"})
-            return
-        try:
-            updated = self.server.store.set_sensitive(event_id, sensitive)
-        except OSError:
-            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Sage could not save privacy setting."})
-            return
-        if not updated:
-            self._json(HTTPStatus.NOT_FOUND, {"error": "user event not found"})
-            return
-        self._json(HTTPStatus.OK, {"event_id": event_id, "sensitive": sensitive})
 
     def _identity_ruling(self, entry_id: str, action: str) -> None:
         verdict = "ratified" if action == "ratify" else "rejected"
@@ -267,15 +235,6 @@ class SageHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "body must be an object"})
             return None
         return body
-
-    @staticmethod
-    def _privacy_target(path: str) -> str | None:
-        prefix = "/api/events/"
-        suffix = "/privacy"
-        if not path.startswith(prefix) or not path.endswith(suffix):
-            return None
-        event_id = unquote(path[len(prefix):-len(suffix)])
-        return event_id if event_id and "/" not in event_id else None
 
     @staticmethod
     def _identity_target(path: str) -> tuple[str, str] | None:
@@ -323,7 +282,6 @@ class SageHandler(BaseHTTPRequestHandler):
                 except OSError:
                     self._write_stream_event("error", SAVE_REPLY_FAILURE)
                     return
-                # only a real provider reply names a model; the sensitive acknowledgement does not
                 self._write_stream_event("model", self.server.router.last_alias)
             self._write_stream_event("done")
         except (BrokenPipeError, ConnectionResetError):

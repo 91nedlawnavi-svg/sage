@@ -1,5 +1,8 @@
 # Autonomous Metabolism — Design
 
+> Historical design. Sensitive-event filtering was superseded by the
+> 2026-09-06 Sensitive mode retirement in `docs/DECISIONS.md`.
+
 **Status:** Implemented 2026-09-03.
 
 ## Problem

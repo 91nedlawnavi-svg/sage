@@ -60,8 +60,10 @@ continuity, judgment, initiative, and local ownership.
   `~/sage_data/interior/`, as defined in `docs/INVARIANTS.md`.
 - Keep relational memory and interior material physically separate.
 - Provider calls use the configured local router and only necessary context.
-- Exclude sensitive material before recall, embeddings, or provider prompts,
-  including background work. Unknown privacy fails closed for provider work.
+- All accepted messages use the normal recall, embedding, provider, search, and
+  background paths. No sensitive or local-only mode exists.
+- Minimize provider context to what the active conversation or approved
+  background capability needs. Never claim conversation content stays local-only.
 - Preserve accepted local events when providers fail; report failure honestly.
 - Store time in UTC and display it in WIB.
 - Initiative stays in-app, with at most one revisable waiting message. External

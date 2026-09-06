@@ -44,18 +44,6 @@ class Event(TypedDict):
     content: str
     said_at: str
     id: NotRequired[str]
-    sensitive: NotRequired[bool]
-    provider_excluded: NotRequired[bool]
-    privacy_carry_after: NotRequired[int]
-
-
-class PrivacyRecord(TypedDict):
-    kind: Literal["privacy"]
-    target_id: str
-    sensitive: bool
-    source: Literal["sensor", "user"]
-    carry_after: NotRequired[int]
-    said_at: str
 
 
 class EntityObservation(TypedDict):
@@ -69,9 +57,26 @@ class EntityObservation(TypedDict):
 
 class HeartbeatCompletion(TypedDict):
     kind: Literal["heartbeat"]
-    stage: Literal["entities", "reflection"]
+    stage: Literal["entities", "reflection", "metabolism"]
     source_event_id: str
     said_at: str
+
+
+class SearchSource(TypedDict):
+    title: str
+    snippet: str
+    url: str
+
+
+class SearchRecord(TypedDict):
+    kind: Literal["search"]
+    id: str
+    query: str
+    sources: list[SearchSource]
+    origin: Literal["conversation", "metabolism"]
+    source_event_id: str
+    said_at: str
+
 
 class ChatBoundary(TypedDict):
     kind: Literal["chat_boundary"]
@@ -89,11 +94,6 @@ def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-def _read_sensitive(record: dict) -> object:
-    """Read the sensitive flag, tolerating records written under the old `held_close` key."""
-    return record["sensitive"] if "sensitive" in record else record.get("held_close")
-
-
 class EventStore:
     def __init__(
         self,
@@ -109,6 +109,7 @@ class EventStore:
         self.embeddings_path = self.relational_dir / "embeddings.jsonl"
         self.entities_path = self.relational_dir / "entities.jsonl"
         self.heartbeat_path = self.relational_dir / "heartbeat.jsonl"
+        self.searches_path = self.relational_dir / "searches.jsonl"
         self.embedder = embedder
         self._mirror = mirror
 
@@ -118,8 +119,6 @@ class EventStore:
         content: str,
         *,
         save_embedding: bool = True,
-        initial_sensitive: bool | None = None,
-        privacy_carry_after: int | None = None,
     ) -> Event:
         event: Event = {
             "id": str(uuid4()),
@@ -127,45 +126,14 @@ class EventStore:
             "content": content,
             "said_at": self._timestamp(),
         }
-        if role == "user":
-            event["provider_excluded"] = initial_sensitive is None or initial_sensitive
-            if event["provider_excluded"]:
-                save_embedding = False
-            if initial_sensitive is not None:
-                event["sensitive"] = initial_sensitive
-                if privacy_carry_after is not None:
-                    event["privacy_carry_after"] = privacy_carry_after
-        elif initial_sensitive is not None:
-            raise ValueError("Only user events can have privacy classification")
         self._append_record(event)
         self._mirror_event(event)
-        if save_embedding and self.embedder is not None and not event.get("provider_excluded", False):
+        if save_embedding and self.embedder is not None:
             try:
                 self._save_embedding(event["id"], content)
             except OSError:
                 pass
         return event
-
-    def append_privacy(
-        self,
-        target_id: str,
-        sensitive: bool,
-        source: Literal["sensor", "user"],
-        *,
-        carry_after: int | None = None,
-    ) -> PrivacyRecord:
-        record: PrivacyRecord = {
-            "kind": "privacy",
-            "target_id": target_id,
-            "sensitive": sensitive,
-            "source": source,
-            "said_at": self._timestamp(),
-        }
-        if carry_after is not None:
-            record["carry_after"] = carry_after
-        self._append_record(record)
-        self._mirror_privacy(record)
-        return record
 
     def append_chat_boundary(self) -> ChatBoundary:
         record: ChatBoundary = {"kind": "chat_boundary", "said_at": self._timestamp()}
@@ -239,27 +207,43 @@ class EventStore:
                 completed.add(record["source_event_id"])
         return completed
 
+    def append_search_record(
+        self,
+        query: str,
+        sources: list[SearchSource],
+        origin: Literal["conversation", "metabolism"],
+        source_event_id: str,
+    ) -> SearchRecord:
+        record: SearchRecord = {
+            "kind": "search",
+            "id": str(uuid4()),
+            "query": query,
+            "sources": sources,
+            "origin": origin,
+            "source_event_id": source_event_id,
+            "said_at": self._timestamp(),
+        }
+        self.relational_dir.mkdir(parents=True, exist_ok=True)
+        with self.searches_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+        self._mirror_search_record(record)
+        return record
+
+    def search_records(self) -> list[SearchRecord]:
+        return [
+            record for record in self._read_jsonl(self.searches_path)
+            if isinstance(record, dict) and record.get("kind") == "search"
+        ]
+
     def history(self) -> list[Event]:
         records = self._read_records()
-        privacy = self._privacy_status(records)
-        sensitive_ids = {
-            record["target_id"]
-            for record in records
-            if isinstance(record, dict)
-            and record.get("kind") == "privacy"
-            and _read_sensitive(record) is True
-        }
         events: list[Event] = []
         for index, record in enumerate(records):
             if isinstance(record, dict) and record.get("kind") in {"privacy", "chat_boundary"}:
                 continue
-            event = self._parse_event(record, index)
-            event["sensitive"] = privacy.get(event["id"], event.get("sensitive", False))
-            event["provider_excluded"] = (
-                event.get("provider_excluded", event["role"] == "user")
-                or event["id"] in sensitive_ids
-            )
-            events.append(event)
+            events.append(self._parse_event(record, index))
         return events
 
     def read_all(self) -> list[Event]:
@@ -278,24 +262,6 @@ class EventStore:
         }
         return [event for event in self.history() if event["id"] in visible_ids]
 
-    def set_sensitive(self, event_id: str, sensitive: bool) -> bool:
-        for event in self.history():
-            if event["id"] == event_id and event["role"] == "user":
-                self.append_privacy(event_id, sensitive, "user")
-                return True
-        return False
-
-    def carry_before_next_user_event(self) -> int:
-        carry = 0
-        for record in self._read_records():
-            if isinstance(record, dict) and record.get("kind") == "privacy":
-                privacy = self._parse_privacy(record)
-                if privacy["source"] == "sensor":
-                    carry = privacy.get("carry_after", 0)
-            elif isinstance(record, dict) and record.get("role") == "user":
-                carry = record.get("privacy_carry_after", carry)
-        return carry
-
     def recall(
         self,
         query: str,
@@ -310,8 +276,6 @@ class EventStore:
         events = [
             event for event in self.history()
             if event["role"] in {"user", "assistant"}
-            and not event["sensitive"]
-            and not event.get("provider_excluded", False)
         ]
         if exclude_event_id is not None:
             events = [event for event in events if event["id"] != exclude_event_id]
@@ -340,7 +304,7 @@ class EventStore:
             if query_embedding:
                 embeddings_map = self._load_embeddings()
 
-        # Hybrid scoring: vector cosine similarity + BM25 term frequency + exact match bonus
+        # Hybrid scoring: vector similarity + lexical overlap/frequency + exact match bonus
         scored: list[tuple[float, int, int, Event]] = []
         for index, event in enumerate(events):
             event_id = event["id"]
@@ -393,17 +357,16 @@ class EventStore:
         self._mirror_embedding(event_id, vector)
 
     def _load_embeddings(self) -> dict[str, list[float]]:
-        # ponytail: try SQLite first (indexed), fall back to full JSONL parse
+        # The mirror may lag after a failure. Merge it with JSONL, then let the
+        # append-only source of truth win if a record exists in both.
+        mapping: dict[str, list[float]] = {}
         if self._mirror is not None:
             try:
-                result = self._mirror.load_embedding_vectors()
-                if result:
-                    return result
+                mapping.update(self._mirror.load_embedding_vectors())
             except Exception:
-                _log.warning("mirror: failed to load embeddings, falling back to JSONL", exc_info=True)
+                _log.warning("mirror: failed to load embeddings", exc_info=True)
         if not self.embeddings_path.exists():
-            return {}
-        mapping: dict[str, list[float]] = {}
+            return mapping
         for record in self._read_jsonl(self.embeddings_path):
             if isinstance(record, dict) and "event_id" in record and "vector" in record:
                 mapping[record["event_id"]] = record["vector"]
@@ -415,29 +378,12 @@ class EventStore:
         if self._mirror is None:
             return
         try:
-            sens = event.get("sensitive")
-            pe = event.get("provider_excluded")
             self._mirror.execute(
-                "INSERT OR IGNORE INTO events (id, role, content, said_at, sensitive, provider_excluded, privacy_carry_after) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (event["id"], event["role"], event["content"], event["said_at"],
-                 int(sens) if isinstance(sens, bool) else None,
-                 int(pe) if isinstance(pe, bool) else None,
-                 event.get("privacy_carry_after")),
+                "INSERT OR IGNORE INTO events (id, role, content, said_at) VALUES (?, ?, ?, ?)",
+                (event["id"], event["role"], event["content"], event["said_at"]),
             )
         except Exception:
             _log.warning("mirror: failed to write event %s", event.get("id"), exc_info=True)
-
-    def _mirror_privacy(self, record: PrivacyRecord) -> None:
-        if self._mirror is None:
-            return
-        try:
-            self._mirror.execute(
-                "INSERT OR IGNORE INTO privacy_records (target_id, sensitive, source, carry_after, said_at) VALUES (?, ?, ?, ?, ?)",
-                (record["target_id"], int(record["sensitive"]), record["source"],
-                 record.get("carry_after"), record["said_at"]),
-            )
-        except Exception:
-            _log.warning("mirror: failed to write privacy record", exc_info=True)
 
     def _mirror_chat_boundary(self, record: ChatBoundary) -> None:
         if self._mirror is None:
@@ -466,12 +412,36 @@ class EventStore:
         if self._mirror is None:
             return
         try:
-            self._mirror.execute(
-                "INSERT OR IGNORE INTO heartbeat_completions (stage, source_event_id, said_at) VALUES (?, ?, ?)",
-                (record["stage"], record["source_event_id"], record["said_at"]),
-            )
+            if record["stage"] == "metabolism":
+                self._mirror.execute(
+                    "INSERT OR IGNORE INTO metabolism_completions (source_event_id, said_at) VALUES (?, ?)",
+                    (record["source_event_id"], record["said_at"]),
+                )
+            else:
+                self._mirror.execute(
+                    "INSERT OR IGNORE INTO heartbeat_completions (stage, source_event_id, said_at) VALUES (?, ?, ?)",
+                    (record["stage"], record["source_event_id"], record["said_at"]),
+                )
         except Exception:
             _log.warning("mirror: failed to write heartbeat completion", exc_info=True)
+
+    def _mirror_search_record(self, record: SearchRecord) -> None:
+        if self._mirror is None:
+            return
+        try:
+            self._mirror.execute(
+                "INSERT OR IGNORE INTO search_records (id, query, sources, origin, source_event_id, said_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    record["id"],
+                    record["query"],
+                    json.dumps(record["sources"], ensure_ascii=False),
+                    record["origin"],
+                    record["source_event_id"],
+                    record["said_at"],
+                ),
+            )
+        except Exception:
+            _log.warning("mirror: failed to write search record %s", record["id"], exc_info=True)
 
     def _mirror_embedding(self, event_id: str, vector: list[float]) -> None:
         if self._mirror is None:
@@ -515,15 +485,6 @@ class EventStore:
         return records
 
     @staticmethod
-    def _privacy_status(records: list[object]) -> dict[str, bool]:
-        status: dict[str, bool] = {}
-        for record in records:
-            if isinstance(record, dict) and record.get("kind") == "privacy":
-                privacy = EventStore._parse_privacy(record)
-                status[privacy["target_id"]] = privacy["sensitive"]
-        return status
-
-    @staticmethod
     def _timestamp() -> str:
         return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -558,34 +519,4 @@ class EventStore:
             event["id"] = record["id"]
         else:
             event["id"] = f"legacy:{index}"
-        if isinstance(_read_sensitive(record), bool):
-            event["sensitive"] = bool(_read_sensitive(record))
-        if isinstance(record.get("provider_excluded"), bool):
-            event["provider_excluded"] = record["provider_excluded"]
-        if isinstance(record.get("privacy_carry_after"), int) and record["privacy_carry_after"] >= 0:
-            event["privacy_carry_after"] = record["privacy_carry_after"]
         return event
-
-    @staticmethod
-    def _parse_privacy(record: object) -> PrivacyRecord:
-        if (
-            not isinstance(record, dict)
-            or record.get("kind") != "privacy"
-            or not isinstance(record.get("target_id"), str)
-            or not isinstance(_read_sensitive(record), bool)
-            or record.get("source") not in {"sensor", "user"}
-            or not isinstance(record.get("said_at"), str)
-        ):
-            raise ValueError("Invalid privacy record")
-        parsed: PrivacyRecord = PrivacyRecord(
-            kind="privacy",
-            target_id=record["target_id"],
-            sensitive=bool(_read_sensitive(record)),
-            source=record["source"],
-            said_at=record["said_at"],
-        )
-        if "carry_after" in record:
-            if not isinstance(record["carry_after"], int) or record["carry_after"] < 0:
-                raise ValueError("Invalid privacy record")
-            parsed["carry_after"] = record["carry_after"]
-        return parsed

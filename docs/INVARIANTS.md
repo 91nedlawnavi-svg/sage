@@ -5,7 +5,8 @@ These constraints apply to every implementation and every future capability.
 ## Ownership and scope
 
 - Sage serves one local user.
-- User data stays local by default; provider use is explicit and minimized.
+- Lived memory is stored locally; configured model providers receive only the
+  current message and compact context needed for active Sage work.
 - `~/sage_data/` is lived memory and remains deletable as one unit.
 - Identity has two layers: the seed (`directive.txt`, git-tracked, outside
   lived memory) sets initial conditions; earned identity entries live inside
@@ -24,15 +25,18 @@ These constraints apply to every implementation and every future capability.
   provenance; they never become an untraceable replacement for events.
 - Meaning is computed when memory is recalled, not fixed permanently at intake.
 
-## Context and privacy
+## Context and provider use
 
 - Recall is driven by the present conversation and situation, not only one
   isolated keyword or a permanently assigned importance score.
 - Recall may combine lexical, semantic, temporal, episodic, entity, and pattern
   signals, then return a compact context with provenance.
-- Sensitive material is excluded before casual recall, embedding, or provider
-  prompt assembly.
-- Unknown or interrupted privacy classification fails closed for provider work.
+- Ordinary messages may be recalled, embedded, searched, or included in
+  configured provider prompts when relevant.
+- Sage has no per-message sensitive or local-only mode and must not claim that
+  conversation content remains local-only.
+- Provider context is minimized to what the active conversation or approved
+  background capability needs.
 - Relational memory and Sage's interior material remain physically separate.
 
 ## Intelligence and agency

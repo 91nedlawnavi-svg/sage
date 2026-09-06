@@ -13,8 +13,8 @@ from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from events import EventStore
-from router import EMBEDDER_BASE_URL, ROUTER_BASE_URL, EmbeddingClient, RouterClient
+from events import EventStore  # noqa: E402
+from router import EMBEDDER_BASE_URL, ROUTER_BASE_URL, EmbeddingClient, RouterClient  # noqa: E402
 
 
 DEFAULT_DIRECTIVE = ROOT / "directive.txt"
@@ -129,10 +129,7 @@ def prepare_dense_cases(embedder_url: str) -> tuple[PreparedDenseCase, ...]:
         store = EventStore(Path(directory), embedder=embedder)
         event_ids: dict[str, str] = {}
         for entry in DENSE_MEMORY:
-            event = store.append(
-                entry.role, entry.content,
-                initial_sensitive=False if entry.role == "user" else None,
-            )
+            event = store.append(entry.role, entry.content)
             event_ids[event["id"]] = entry.id
 
         prepared: list[PreparedDenseCase] = []

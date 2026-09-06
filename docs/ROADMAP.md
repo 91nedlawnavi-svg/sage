@@ -15,10 +15,6 @@ flowchart LR
     TALK --> RESPONSE[Answer / notice / suggest / hold back]
     RESPONSE --> EVENTS
 
-    PRIVACY[Privacy boundary] -. filters .-> EVENTS
-    PRIVACY -. filters .-> RECALL
-    PRIVACY -. filters .-> PACKET
-
     ROUTER[Local Sage router] --> QWEN[1 Qwen 3.8 Max]
     QWEN -->|failure| PRO[2 DeepSeek V4 Pro]
     PRO -->|failure| FLASH[3 DeepSeek V4 Flash]
@@ -27,7 +23,7 @@ flowchart LR
     EVENTS --> IDENTITY[Self-authored identity]
     IDENTITY -->|ratified claims| PACKET
     EVENTS --> METABOLISM[Autonomous metabolism]
-    METABOLISM -->|digest + reach| EVENTS
+    METABOLISM -->|digest + reach| DERIVED
     EVENTS --> SEARCH[Conversational search]
     SEARCH -->|results| EVENTS
 
@@ -38,7 +34,7 @@ flowchart LR
     classDef done fill:#d8f3dc,stroke:#2d6a4f,color:#081c15;
     classDef active fill:#fff3bf,stroke:#e09f3e,color:#3d2b00;
     classDef future fill:#e9ecef,stroke:#6c757d,color:#212529;
-    class EVENTS,PRIVACY,OWNERSHIP,TALK,ROUTER,QWEN,PRO,FLASH,IDENTITY,METABOLISM,SEARCH done;
+    class EVENTS,OWNERSHIP,TALK,ROUTER,QWEN,PRO,FLASH,IDENTITY,METABOLISM,SEARCH done;
     class RECALL,PACKET active;
     class DERIVED,RESPONSE,NEXT future;
 ```
@@ -51,10 +47,10 @@ flowchart LR
 - Append-only UTC episodic event history.
 - Durable assistant replies and provider-failure preservation.
 - Local Qwen3 embedding recall.
-- Sensitive and unknown-privacy exclusion.
+- Locally owned lived memory with minimized provider context.
 - Separate relational memory and interior material.
 - Notebook, reflections, entities, and bounded waiting message.
-- Background extraction with retry-safe completion records.
+- Background extraction with successful-pass completion records.
 - SQLite mirrors dual-written alongside JSONL.
 
 ### Intelligence routing — present
@@ -70,9 +66,9 @@ flowchart LR
 
 ### Conversational search — present
 
-- Sage decides mid-conversation when she needs web search.
-- Results stored as episodic events with source URLs and timestamps.
-- Sensitive material excluded from search queries.
+- Sage decides before replying when she needs web search.
+- Query and source provenance stored separately from conversation events.
+- Search queries use only the details needed for the lookup.
 
 ### Autonomous metabolism — present
 
@@ -97,7 +93,8 @@ flowchart LR
 ## Guardrails
 
 - No model replaces the event record.
-- No provider receives sensitive or unknown material.
+- Provider prompts contain only the current message and context needed for the
+  active conversation or approved background work.
 - No model failure loses an accepted user event.
 - No derived view silently outranks contradictory history.
 - No external, risky, irreversible, or ambiguous action happens without permission.

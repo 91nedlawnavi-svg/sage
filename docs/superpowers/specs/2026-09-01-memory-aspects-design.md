@@ -1,5 +1,8 @@
 # Memory Aspects Taxonomy — Design
 
+> Historical design. Privacy-classification details were superseded by the
+> 2026-09-06 Sensitive mode retirement in `docs/DECISIONS.md`.
+
 **Status:** Approved 2026-09-01  
 **Authority:** Elliot — "Taxonomy 100% correct"
 

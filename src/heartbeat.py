@@ -6,9 +6,7 @@ import json
 import logging
 import re
 import threading
-import time
 from datetime import datetime, timezone
-from pathlib import Path
 
 from events import EventStore
 from interior import InteriorStore
@@ -128,11 +126,7 @@ class Heartbeat:
         self._metabolism_pass()
 
     def _extract_entities_pass(self) -> None:
-        history = [
-            event
-            for event in self.event_store.history()
-            if not event.get("sensitive", False) and not event.get("provider_excluded", False)
-        ]
+        history = self.event_store.history()
         if not history:
             return
 
@@ -172,11 +166,7 @@ class Heartbeat:
 
     def _reflection_pass(self) -> None:
         # Generate a private internal reflection if there is new history
-        history = [
-            event
-            for event in self.event_store.history()
-            if not event.get("sensitive", False) and not event.get("provider_excluded", False)
-        ]
+        history = self.event_store.history()
         if len(history) < 2:
             return
 
@@ -236,12 +226,7 @@ class Heartbeat:
 
     def _metabolism_pass(self) -> None:
         """Trigger metabolism if conversation has been silent long enough."""
-        history = [
-            e for e in self.event_store.history()
-            if e["role"] == "user"
-            and not e.get("sensitive", False)
-            and not e.get("provider_excluded", False)
-        ]
+        history = [e for e in self.event_store.history() if e["role"] == "user"]
         if not history:
             return
         last_user = history[-1]
@@ -263,5 +248,5 @@ class Heartbeat:
             )
         except Exception as exc:
             logger.warning(f"metabolism cycle failed: {exc}")
-        finally:
-            self.event_store.append_heartbeat_completion("metabolism", last_user["id"])
+            return
+        self.event_store.append_heartbeat_completion("metabolism", last_user["id"])

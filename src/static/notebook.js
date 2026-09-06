@@ -35,7 +35,7 @@ function selectTab(selected, focus = false) {
 async function loadTab(tab) {
   setState("Loading…");
   try {
-    const endpoint = tab === "reflections" ? "/api/reflections" : tab === "beliefs" ? "/api/beliefs" : tab === "identity" ? "/api/identity" : "/api/entities";
+    const endpoint = tab === "reflections" ? "/api/reflections" : tab === "identity" ? "/api/identity" : "/api/entities";
     const response = await fetch(endpoint);
     if (!response.ok) throw new Error("notebook unavailable");
     const data = await response.json();
@@ -49,14 +49,6 @@ async function loadTab(tab) {
         <div class="notebook-card">
           <div class="notebook-card-ts">${formatWib(reflection.said_at)}</div>
           <div>${escapeHtml(reflection.content)}</div>
-        </div>
-      `).join("");
-    } else if (tab === "beliefs") {
-      content.innerHTML = list.slice().reverse().map((belief) => `
-        <div class="notebook-card">
-          <strong>${escapeHtml(belief.topic)}</strong>
-          <div>${escapeHtml(belief.stance)}</div>
-          <div class="notebook-evidence">Evidence: ${escapeHtml(belief.evidence)}</div>
         </div>
       `).join("");
     } else if (tab === "identity") {

@@ -73,8 +73,8 @@ and providers are replaceable implementation details.
 
 Sequence is outcome-led, not architecture-led:
 
-1. **Reliable presence** — stable daily chat, durable events, privacy, and
-   graceful failure. This is the current foundation.
+1. **Reliable presence** — stable daily chat, durable events, a clear provider
+   boundary, and graceful failure. This is the current foundation.
 2. **Memory refresh** — retain all turns as episodic memory and construct a
    context-aware retrieval packet from the whole current exchange.
 3. **Felt continuity** — episodes, associations, and tentative patterns help

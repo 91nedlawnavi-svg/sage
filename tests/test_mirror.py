@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from database import Database, relational_db, interior_db, RELATIONAL_SCHEMA, INTERIOR_SCHEMA
+from database import Database, relational_db, interior_db, RELATIONAL_SCHEMA
 from events import EventStore
 from interior import InteriorStore
 
@@ -60,19 +60,25 @@ class BackfillTests(unittest.TestCase):
     def test_backfill_counts_match_source(self) -> None:
         """Row counts match JSONL line counts."""
         self._write_events_jsonl([
+            {"kind": "privacy", "target_id": "old", "sensitive": True, "source": "sensor", "said_at": "2025-12-31T23:59:59Z"},
+            {"role": "user", "content": "legacy", "said_at": "2026-01-01T00:00:00Z"},
             {"id": "e1", "role": "user", "content": "a", "said_at": "2026-01-01T00:00:00Z"},
             {"id": "e2", "role": "assistant", "content": "b", "said_at": "2026-01-01T00:00:01Z"},
             {"kind": "privacy", "target_id": "e1", "sensitive": True, "source": "sensor", "said_at": "2026-01-01T00:00:02Z"},
             {"kind": "chat_boundary", "said_at": "2026-01-01T00:00:03Z"},
         ])
+        with (self.root / "relational" / "heartbeat.jsonl").open("w") as f:
+            f.write(json.dumps({"kind": "heartbeat", "stage": "entities", "source_event_id": "e1", "said_at": "2026-01-01T00:00:04Z"}) + "\n")
+            f.write(json.dumps({"kind": "heartbeat", "stage": "metabolism", "source_event_id": "e1", "said_at": "2026-01-01T00:00:05Z"}) + "\n")
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
         from backfill_sqlite import backfill_relational, verify
 
         rel = relational_db(self.root)
         rc = backfill_relational(rel, self.root)
-        self.assertEqual(rc["events"], 2)
-        self.assertEqual(rc["privacy_records"], 1)
+        self.assertEqual(rc["events"], 3)
+        self.assertIsNotNone(rel.fetchone("SELECT id FROM events WHERE id = 'legacy:1'"))
         self.assertEqual(rc["chat_boundaries"], 1)
+        self.assertEqual(rc["heartbeat_completions"], 2)
 
         mismatches = verify(rc, {}, self.root)
         self.assertEqual(mismatches, [])
@@ -115,34 +121,40 @@ class DualWriteTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_event_dual_write(self) -> None:
-        ev = self.store.append("user", "test content", initial_sensitive=False)
+        ev = self.store.append("user", "test content")
         self.assertEqual(self.rel.count("events"), 1)
         row = self.rel.fetchone("SELECT * FROM events WHERE id = ?", (ev["id"],))
         self.assertIsNotNone(row)
         self.assertEqual(row["content"], "test content")
         self.assertEqual(row["role"], "user")
 
-    def test_privacy_dual_write(self) -> None:
-        ev = self.store.append("user", "x", initial_sensitive=False)
-        self.store.append_privacy(ev["id"], True, "sensor", carry_after=2)
-        self.assertEqual(self.rel.count("privacy_records"), 1)
-        row = self.rel.fetchone("SELECT * FROM privacy_records WHERE target_id = ?", (ev["id"],))
-        self.assertEqual(row["sensitive"], 1)
-        self.assertEqual(row["carry_after"], 2)
-
     def test_chat_boundary_dual_write(self) -> None:
         self.store.append_chat_boundary()
         self.assertEqual(self.rel.count("chat_boundaries"), 1)
 
     def test_entity_observation_dual_write(self) -> None:
-        ev = self.store.append("user", "about elliot", initial_sensitive=False)
+        ev = self.store.append("user", "about elliot")
         self.store.append_entity_observation("elliot", "Elliot", "mentioned", source_event_id=ev["id"])
         self.assertEqual(self.rel.count("entity_observations"), 1)
 
     def test_heartbeat_completion_dual_write(self) -> None:
-        ev = self.store.append("user", "msg", initial_sensitive=False)
+        ev = self.store.append("user", "msg")
         self.store.append_heartbeat_completion("entities", ev["id"])
+        self.store.append_heartbeat_completion("metabolism", ev["id"])
         self.assertEqual(self.rel.count("heartbeat_completions"), 1)
+        self.assertEqual(self.rel.count("metabolism_completions"), 1)
+
+    def test_search_record_dual_write(self) -> None:
+        ev = self.store.append("user", "find it")
+        record = self.store.append_search_record(
+            "example",
+            [{"title": "Example", "snippet": "A result", "url": "https://example.com"}],
+            "conversation",
+            ev["id"],
+        )
+        row = self.rel.fetchone("SELECT * FROM search_records WHERE id = ?", (record["id"],))
+        self.assertIsNotNone(row)
+        self.assertEqual(row["origin"], "conversation")
 
     def test_reflection_dual_write(self) -> None:
         ref = self.interior.append_reflection("a thought", source_event_id="src-1")
@@ -183,7 +195,7 @@ class DualWriteTests(unittest.TestCase):
         self.store._mirror = broken_db
 
         # This should still succeed (JSONL write) despite mirror error
-        ev = self.store.append("user", "still saved", initial_sensitive=False)
+        ev = self.store.append("user", "still saved")
         self.assertEqual(ev["content"], "still saved")
 
         # Verify JSONL has it
@@ -235,6 +247,17 @@ class EmbeddingsParityTests(unittest.TestCase):
         result = store._load_embeddings()
         self.assertEqual(len(result), 1)
         self.assertEqual(result["e1"], [1.0, 2.0])
+
+    def test_partial_sqlite_mirror_merges_missing_jsonl_embeddings(self) -> None:
+        emb_path = self.root / "relational" / "embeddings.jsonl"
+        with emb_path.open("w") as f:
+            f.write(json.dumps({"event_id": "e1", "vector": [1.0]}) + "\n")
+            f.write(json.dumps({"event_id": "e2", "vector": [2.0]}) + "\n")
+        self.rel.store_embedding_vector("e1", [1.0])
+
+        result = EventStore(self.root, mirror=self.rel)._load_embeddings()
+
+        self.assertEqual(result, {"e1": [1.0], "e2": [2.0]})
 
 
 class SeparationTests(unittest.TestCase):

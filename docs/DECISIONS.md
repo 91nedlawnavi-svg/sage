@@ -20,8 +20,8 @@ product authority.
   They retain provenance and can be revised by later evidence.
 - Sage's agency is calibrated: she may answer, notice, mention, suggest,
   prepare, or act. Authorization and risk determine the boundary.
-- Local ownership, sensitive-material privacy, graceful provider failure, and the
-  separation of lived memory from code remain permanent constraints.
+- Local ownership, minimized provider context, graceful provider failure, and
+  the separation of lived memory from code remain permanent constraints.
 - The old V3 rebuild is sealed as historical foundation work. The Sage Refresh
   supersedes its product framing without discarding its useful implementation
   or lived memory.
@@ -44,3 +44,16 @@ product authority.
   through to the next priority before an assistant event is saved.
 - The local embedder remains a separate fixed memory component; it is not part
   of talk-model selection.
+
+## 2026-09-06 — Sensitive mode retired
+
+- Sensitive mode, `/sensitive`, automatic classification, carry state, privacy
+  overrides, and provider-exclusion flags are removed.
+- No replacement private or local-only writing control is added.
+- Sage handles difficult or intimate situations through normal conversation,
+  using the same memory, embedding, search, provider, and background paths as
+  other accepted messages.
+- Lived memory remains locally owned and provider context remains minimized,
+  but Sage does not promise that conversation content stays local-only.
+- Existing append-only records are preserved. Legacy privacy metadata may
+  remain in old files but no longer changes runtime behavior.

@@ -1,5 +1,17 @@
 # Sage Development Timeline
 
+Historical phases below describe what existed at the time. Current authority is
+in `DECISIONS.md` and `INVARIANTS.md`.
+
+## Phase 8: Sensitive Mode Retired (Sep 6)
+
+- Removed Sensitive mode, `/sensitive`, automatic classification, carry state,
+  privacy overrides, and provider-exclusion filtering.
+- Preserved old append-only records; legacy privacy metadata no longer affects
+  current behavior.
+- Kept local ownership and minimized provider context without adding a private
+  message replacement.
+
 ## Phase 1: Foundation (Aug 10-14)
 ### Aug 10 — Project Born
 - Established Sage baseline

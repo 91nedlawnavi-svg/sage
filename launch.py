@@ -25,12 +25,12 @@ def load_dotenv() -> None:
         key, _, value = line.partition("=")
         os.environ.setdefault(key.strip(), value.strip())
 
-from database import relational_db, interior_db
-from events import EventStore
-from heartbeat import Heartbeat
-from interior import InteriorStore
-from router import DEFAULT_CHAT_MODELS, EmbeddingClient, RouterClient
-from web import SageServer
+from database import relational_db, interior_db  # noqa: E402
+from events import EventStore  # noqa: E402
+from heartbeat import Heartbeat  # noqa: E402
+from interior import InteriorStore  # noqa: E402
+from router import DEFAULT_CHAT_MODELS, EmbeddingClient, RouterClient  # noqa: E402
+from web import SageServer  # noqa: E402
 
 
 def main() -> None:

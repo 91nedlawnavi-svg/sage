@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from events import EventStore
 from interior import InteriorStore
 from router import ROUTER_BASE_URL, RouterClient, RouterResult
-from sage import SENSITIVE_ACKNOWLEDGEMENT, ROUTER_FAILURE, build_router_messages, handle_message, load_directive
+from sage import ROUTER_FAILURE, build_router_messages, handle_message, load_directive
 from heartbeat import Heartbeat, parse_reflection
 from web import SageServer
 
@@ -83,10 +83,6 @@ class DeadRouter:
         return RouterResult(reply=None)
 
 
-class FailingPrivacyStore(EventStore):
-    def append_privacy(self, *args: object, **kwargs: object) -> object:
-        raise OSError("privacy metadata unavailable")
-
 def read_stream(response: object) -> list[dict[str, str]]:
     return [json.loads(line) for line in response.read().decode().splitlines()]
 
@@ -119,12 +115,12 @@ class FoundationTests(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def test_recall_excludes_non_query_matches(self) -> None:
-        self.store.append("user", "Noisy weather update", initial_sensitive=False)
+        self.store.append("user", "Noisy weather update")
         self.store.append("assistant", "Sunny tomorrow")
-        self.store.append("user", "I never told anyone about this confession", initial_sensitive=False)
+        self.store.append("user", "I never told anyone about this confession")
 
         self.store.append("assistant", "Thanks for sharing")
-        self.store.append("user", "I need advice", initial_sensitive=False)
+        self.store.append("user", "I need advice")
 
         store = EventStore(self.store.data_root)
         self.assertEqual(
@@ -133,8 +129,8 @@ class FoundationTests(unittest.TestCase):
         )
 
     def test_recall_prefers_exact_match_over_keyword_ties(self) -> None:
-        self.store.append("user", "Need a cup of tea and a sandwich", initial_sensitive=False)
-        self.store.append("user", "Need help with the tea recipe", initial_sensitive=False)
+        self.store.append("user", "Need a cup of tea and a sandwich")
+        self.store.append("user", "Need help with the tea recipe")
 
         recalled = [(event["role"], event["content"]) for event in self.store.recall("need tea")]
         self.assertEqual(
@@ -148,9 +144,9 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(recalled[1][1], "Need help with the tea recipe")
 
     def test_recall_ranks_higher_overlap_and_term_frequency_first(self) -> None:
-        self.store.append("user", "We bought apples and oranges for lunch", initial_sensitive=False)
-        self.store.append("user", "Apples are great, I love green apples and red apples", initial_sensitive=False)
-        self.store.append("user", "Just talking about oranges", initial_sensitive=False)
+        self.store.append("user", "We bought apples and oranges for lunch")
+        self.store.append("user", "Apples are great, I love green apples and red apples")
+        self.store.append("user", "Just talking about oranges")
 
         recalled = self.store.recall("apples apples", limit=2)
         self.assertEqual(len(recalled), 2)
@@ -158,23 +154,12 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(recalled[1]["content"], "We bought apples and oranges for lunch")
 
     def test_recall_treats_stopword_only_query_as_context_fallback(self) -> None:
-        self.store.append("user", "First topic", initial_sensitive=False)
+        self.store.append("user", "First topic")
         self.store.append("assistant", "Answer")
 
         self.assertEqual(
             [(event["role"], event["content"]) for event in self.store.recall("the and a")],
             [("user", "First topic"), ("assistant", "Answer")],
-        )
-
-    def test_recall_excludes_sensitive_events(self) -> None:
-        self.store.append("user", "open topic", initial_sensitive=False)
-        hidden = self.store.append("user", "I never told anyone about this", initial_sensitive=False)
-        self.store.append_privacy(hidden["id"], True, "sensor")
-        self.store.append("assistant", "ack")
-
-        self.assertEqual(
-            [(event["role"], event["content"]) for event in self.store.recall("topic")],
-            [("user", "open topic")],
         )
 
     def test_success_persists_separate_utc_events_and_routes_alias(self) -> None:
@@ -190,7 +175,7 @@ class FoundationTests(unittest.TestCase):
             self.assertEqual(datetime.fromisoformat(event["said_at"].replace("Z", "+00:00")).utcoffset().total_seconds(), 0)
 
     def test_prompt_recall_uses_recent_exchange_as_its_cue(self) -> None:
-        self.store.append("user", "I keep buying potatoes even when I plan to cook something else", initial_sensitive=False)
+        self.store.append("user", "I keep buying potatoes even when I plan to cook something else")
         self.store.append("assistant", "You seem to like having them around.")
 
         messages = build_router_messages("I made them again tonight", self.store, directive=load_directive())
@@ -200,11 +185,11 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(messages[-1], {"role": "user", "content": "I made them again tonight"})
 
     def test_prompt_context_keeps_recent_turns_and_adds_older_recall(self) -> None:
-        self.store.append("user", "I want to learn pottery this year", initial_sensitive=False)
+        self.store.append("user", "I want to learn pottery this year")
         self.store.append("assistant", "That sounds like a good creative outlet.")
-        self.store.append("user", "Recent one", initial_sensitive=False)
+        self.store.append("user", "Recent one")
         self.store.append("assistant", "Recent answer one")
-        self.store.append("user", "Recent two", initial_sensitive=False)
+        self.store.append("user", "Recent two")
         self.store.append("assistant", "Recent answer two")
 
         messages = build_router_messages("I tried pottery today", self.store, max_context=6)
@@ -222,7 +207,7 @@ class FoundationTests(unittest.TestCase):
         )
 
     def test_new_chat_preserves_old_events_for_recall_after_restart(self) -> None:
-        self.store.append("user", "I keep buying potatoes", initial_sensitive=False)
+        self.store.append("user", "I keep buying potatoes")
         self.store.append("assistant", "They are a reliable default.")
         self.store.append_chat_boundary()
         reopened = EventStore(self.store.data_root)
@@ -238,21 +223,20 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(messages[-1], {"role": "user", "content": "I made potatoes again"})
         self.assertEqual(build_router_messages("Unrelated weather update", reopened), [{"role": "user", "content": "Unrelated weather update"}])
 
-    def test_chat_sends_contradictory_public_history_without_sensitive_match(self) -> None:
-        self.store.append("user", "I love hosting friends for dinner", initial_sensitive=False)
+    def test_chat_sends_relevant_contradictory_history(self) -> None:
+        self.store.append("user", "I love hosting friends for dinner")
         self.store.append("assistant", "That usually makes the place feel alive.")
-        hidden = self.store.append("user", "I never told anyone hosting makes me panic", initial_sensitive=False)
-        self.store.append_privacy(hidden["id"], True, "sensor")
-        self.store.append("user", "I fixed the loose shelf today", initial_sensitive=False)
+        difficult = self.store.append("user", "I never told anyone hosting makes me panic")
+        self.store.append("user", "I fixed the loose shelf today")
         self.store.append("assistant", "Good, that is finally sorted.")
-        self.store.append("user", "After last weekend I need more quiet than I thought", initial_sensitive=False)
+        self.store.append("user", "After last weekend I need more quiet than I thought")
         self.store.append("assistant", "Both reactions can matter.")
 
         handle_message("Should I host dinner again?", self.store, self.router)
 
         contents = [message["content"] for message in FakeRouter.request_body["messages"]]
         self.assertLess(contents.index("I love hosting friends for dinner"), contents.index("After last weekend I need more quiet than I thought"))
-        self.assertNotIn(hidden["content"], contents)
+        self.assertIn(difficult["content"], contents)
 
     def test_router_fails_over_to_next_chat_model(self) -> None:
         FakeRouter.fail_models = {"first-model"}
@@ -268,35 +252,16 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(list(router.stream("Hello Sage")), ["Hel", "lo.", ""])
         self.assertEqual(FakeRouter.seen_models, ["first-model", "second-model"])
 
-    def test_sensitive_terminal_never_reaches_router(self) -> None:
+    def test_difficult_message_follows_normal_chat_path(self) -> None:
         reply = handle_message("I never told anyone about this confession", self.store, self.router)
 
-        self.assertEqual(reply, SENSITIVE_ACKNOWLEDGEMENT)
-        self.assertIsNone(FakeRouter.request_body)
+        self.assertEqual(reply, "Hello.")
+        self.assertIsNotNone(FakeRouter.request_body)
         events = self.store.read_all()
-        self.assertEqual([(event["role"], event["content"]) for event in events], [("user", "I never told anyone about this confession")])
-        self.assertTrue(events[0]["sensitive"])
-
-    def test_sensitive_carry_replays_after_restart(self) -> None:
-        handle_message("I never told anyone about this confession", self.store, self.router)
-        reopened = EventStore(self.store.data_root)
-
-        reply = handle_message("ordinary follow-up", reopened, self.router)
-
-        self.assertEqual(reply, SENSITIVE_ACKNOWLEDGEMENT)
-        self.assertIsNone(FakeRouter.request_body)
-        self.assertTrue(reopened.read_all()[-1]["sensitive"])
-
-    def test_privacy_override_is_append_only(self) -> None:
-        event = self.store.append("user", "ordinary message", initial_sensitive=False)
-        before = self.store.path.read_text()
-
-        self.assertTrue(self.store.set_sensitive(event["id"], True))
-
-        self.assertTrue(self.store.path.read_text().startswith(before))
-        self.assertTrue(self.store.read_all()[0]["sensitive"])
-        self.assertTrue(self.store.set_sensitive(event["id"], False))
-        self.assertFalse(self.store.read_all()[0]["sensitive"])
+        self.assertEqual(
+            [(event["role"], event["content"]) for event in events],
+            [("user", "I never told anyone about this confession"), ("assistant", "Hello.")],
+        )
 
     def test_router_failure_keeps_user_event_without_assistant_event(self) -> None:
         FakeRouter.status = 503
@@ -326,6 +291,8 @@ class FoundationTests(unittest.TestCase):
             RouterClient("   ")
 
     def test_search_stream_events_do_not_corrupt_the_response(self) -> None:
+        from search import SearchResult
+
         class SearchingRouter:
             aliases = ("stub",)
             last_alias = "stub"
@@ -347,25 +314,31 @@ class FoundationTests(unittest.TestCase):
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with patch("web.search", return_value=[]):
+            results = [SearchResult(title="Sage", snippet="Shipped", url="https://example.com/sage")]
+            with patch("web.search", return_value=results):
                 with urlopen(request) as response:
                     self.assertEqual(response.status, 200)
                     self.assertEqual(
                         read_stream(response),
                         [
                             {"type": "search", "content": "sage project status"},
-                            {"type": "search_error", "content": "Search returned no results"},
+                            {"type": "search_done", "content": "1 results"},
                             {"type": "delta", "content": "answer"},
                             {"type": "model", "content": "stub"},
                             {"type": "done"},
                         ],
                     )
+            self.assertEqual(
+                [(event["role"], event["content"]) for event in self.store.read_all()],
+                [("user", "what shipped today"), ("assistant", "answer")],
+            )
+            self.assertEqual(self.store.search_records()[0]["sources"][0]["url"], "https://example.com/sage")
         finally:
             web_server.shutdown()
             web_thread.join()
             web_server.server_close()
 
-    def test_browser_sensitive_never_reaches_router(self) -> None:
+    def test_browser_difficult_message_follows_normal_chat_path(self) -> None:
         web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
         web_thread = Thread(target=web_server.serve_forever)
         web_thread.start()
@@ -380,82 +353,17 @@ class FoundationTests(unittest.TestCase):
             with urlopen(request) as response:
                 self.assertEqual(
                     read_stream(response),
-                    [{"type": "delta", "content": SENSITIVE_ACKNOWLEDGEMENT}, {"type": "done"}],
+                    [
+                        {"type": "delta", "content": "Hel"},
+                        {"type": "delta", "content": "lo."},
+                        {"type": "model", "content": "free-tier-alias"},
+                        {"type": "done"},
+                    ],
                 )
-                self.assertEqual(response.headers["X-Sage-Sensitive"], "true")
-            self.assertIsNone(FakeRouter.request_body)
+                self.assertIsNone(response.headers.get("X-Sage-Sensitive"))
+            self.assertIsNotNone(FakeRouter.request_body)
             events = self.store.read_all()
-            self.assertEqual([(event["role"], event["content"]) for event in events], [("user", "I never told anyone about this confession")])
-            self.assertTrue(events[0]["sensitive"])
-        finally:
-            web_server.shutdown()
-            web_thread.join()
-            web_server.server_close()
-
-    def test_browser_ephemeral_mode_holds_message_before_provider_work(self) -> None:
-        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
-        web_thread = Thread(target=web_server.serve_forever)
-        web_thread.start()
-        try:
-            payload = json.dumps({"message": "ordinary private note", "sensitive_mode": True}).encode()
-            request = Request(
-                f"http://127.0.0.1:{web_server.server_port}/api/chat",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urlopen(request) as response:
-                self.assertEqual(
-                    read_stream(response),
-                    [{"type": "delta", "content": SENSITIVE_ACKNOWLEDGEMENT}, {"type": "done"}],
-                )
-                self.assertEqual(response.headers["X-Sage-Sensitive"], "true")
-            self.assertIsNone(FakeRouter.request_body)
-            event = self.store.read_all()[0]
-            self.assertTrue(event["sensitive"])
-            self.assertTrue(event["provider_excluded"])
-        finally:
-            web_server.shutdown()
-            web_thread.join()
-            web_server.server_close()
-
-    def test_browser_rejects_invalid_ephemeral_mode(self) -> None:
-        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
-        web_thread = Thread(target=web_server.serve_forever)
-        web_thread.start()
-        try:
-            payload = json.dumps({"message": "Hello Sage", "sensitive_mode": "yes"}).encode()
-            request = Request(
-                f"http://127.0.0.1:{web_server.server_port}/api/chat",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with self.assertRaises(HTTPError) as error:
-                urlopen(request)
-            self.assertEqual(error.exception.code, 400)
-            self.assertEqual(self.store.read_all(), [])
-        finally:
-            web_server.shutdown()
-            web_thread.join()
-            web_server.server_close()
-
-    def test_browser_privacy_override(self) -> None:
-        event = self.store.append("user", "ordinary message", initial_sensitive=False)
-        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
-        web_thread = Thread(target=web_server.serve_forever)
-        web_thread.start()
-        try:
-            payload = json.dumps({"sensitive": True}).encode()
-            request = Request(
-                f"http://127.0.0.1:{web_server.server_port}/api/events/{event['id']}/privacy",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urlopen(request) as response:
-                self.assertEqual(json.load(response)["sensitive"], True)
-            self.assertTrue(self.store.read_all()[0]["sensitive"])
+            self.assertEqual(len(events), 2)
         finally:
             web_server.shutdown()
             web_thread.join()
@@ -499,7 +407,7 @@ class FoundationTests(unittest.TestCase):
             web_server.server_close()
 
     def test_browser_clear_chat_preserves_events_and_resets_visible_history(self) -> None:
-        self.store.append("user", "Old visible chat", initial_sensitive=False)
+        self.store.append("user", "Old visible chat")
         self.store.append("assistant", "Still remembered")
         web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
         web_thread = Thread(target=web_server.serve_forever)
@@ -525,41 +433,15 @@ class FoundationTests(unittest.TestCase):
 
         self.assertEqual([(event["role"], event["content"]) for event in self.store.read_all()], [("user", "saved")])
 
-    def test_legacy_held_close_records_are_read_as_sensitive(self) -> None:
+    def test_legacy_privacy_records_are_ignored_without_rewriting_history(self) -> None:
         self.store.path.write_text(
             '{"id":"old","role":"user","content":"legacy secret","said_at":"2026-08-15T00:00:00Z","held_close":true,"provider_excluded":true}\n'
             '{"kind":"privacy","target_id":"old","held_close":true,"source":"user","said_at":"2026-08-15T00:00:01Z"}\n'
         )
 
-        event = self.store.read_all()[0]
-        self.assertTrue(event["sensitive"])
-        self.assertTrue(event["provider_excluded"])
-        self.assertEqual(self.store.recall("legacy secret"), [])
-
-    def test_unclassified_user_event_is_fail_closed_for_provider_work(self) -> None:
-        event = self.store.append("user", "possibly private", initial_sensitive=None)
-
-        self.assertTrue(event["provider_excluded"])
-        self.assertEqual(self.store.recall("private"), [])
-        self.assertEqual(self.store.heartbeat_completed("entities"), set())
-
-    def test_initial_privacy_classification_is_stored_with_event(self) -> None:
-        event = self.store.append("user", "sensitive from providers", initial_sensitive=True)
-        reopened = EventStore(self.store.data_root)
-
-        self.assertTrue(event["sensitive"])
-        self.assertTrue(event["provider_excluded"])
-        self.assertTrue(reopened.read_all()[0]["sensitive"])
-        self.assertTrue(reopened.read_all()[0]["provider_excluded"])
-
-    def test_privacy_metadata_failure_keeps_classified_event_safe(self) -> None:
-        store = FailingPrivacyStore(self.data_root)
-
-        reply = handle_message("I never told anyone about this", store, self.router)
-
-        self.assertEqual(reply, "I'm holding this close.")
-        self.assertTrue(store.read_all()[0]["sensitive"])
-        self.assertIsNone(FakeRouter.request_body)
+        self.assertEqual(self.store.read_all()[0]["content"], "legacy secret")
+        self.assertEqual(self.store.recall("legacy secret")[0]["content"], "legacy secret")
+        self.assertIn('"kind":"privacy"', self.store.path.read_text())
 
     def test_health_does_not_disclose_model_alias(self) -> None:
         web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
@@ -573,10 +455,10 @@ class FoundationTests(unittest.TestCase):
             web_thread.join()
             web_server.server_close()
 
-    def test_heartbeat_excludes_unclassified_and_sensitive_events_and_deduplicates(self) -> None:
-        private = self.store.append("user", "secret event", initial_sensitive=True)
-        unclassified = self.store.append("user", "maybe private", initial_sensitive=None)
-        public = self.store.append("user", "router project update", initial_sensitive=False)
+    def test_heartbeat_uses_all_events_and_deduplicates(self) -> None:
+        difficult = self.store.append("user", "secret event")
+        ordinary = self.store.append("user", "maybe private")
+        project = self.store.append("user", "router project update")
         self.store.append("assistant", "Understood")
         scribe = FakeScribe()
         heartbeat = Heartbeat(self.store, self.interior, scribe)
@@ -585,10 +467,10 @@ class FoundationTests(unittest.TestCase):
         first_body = json.dumps(scribe.messages)
         heartbeat.beat()
 
-        self.assertNotIn(private["content"], first_body)
-        self.assertNotIn(unclassified["content"], first_body)
-        self.assertIn(public["content"], first_body)
-        self.assertEqual(len(self.store.heartbeat_completed("entities")), 2)
+        self.assertIn(difficult["content"], first_body)
+        self.assertIn(ordinary["content"], first_body)
+        self.assertIn(project["content"], first_body)
+        self.assertEqual(len(self.store.heartbeat_completed("entities")), 4)
         self.assertEqual(len(self.interior.list_reflections()), 1)
         self.assertEqual(len(self.store.heartbeat_completed("reflection")), 1)
 
@@ -725,24 +607,10 @@ class FoundationTests(unittest.TestCase):
             web_thread.join()
             web_server.server_close()
 
-    def test_interior_reflections_and_beliefs_persistence(self) -> None:
-        ref = self.interior.append_reflection("I noticed Elliot's focus on rhythm.")
+    def test_interior_reflections_persist(self) -> None:
+        self.interior.append_reflection("I noticed Elliot's focus on rhythm.")
         self.assertEqual(len(self.interior.list_reflections()), 1)
         self.assertEqual(self.interior.list_reflections()[0]["content"], "I noticed Elliot's focus on rhythm.")
-
-        self.interior.beliefs_path.parent.mkdir(parents=True, exist_ok=True)
-        self.interior.beliefs_path.write_text(
-            json.dumps({
-                "id": "belief-1",
-                "topic": "free-tier routing",
-                "stance": "essential invariant",
-                "evidence": "keeps Sage local and sustainable",
-                "said_at": "2026-08-25T00:00:00Z",
-            }) + "\n"
-        )
-        self.assertEqual(len(self.interior.list_beliefs()), 1)
-        self.assertEqual(self.interior.list_beliefs()[0]["topic"], "free-tier routing")
-        self.assertFalse(hasattr(self.interior, "append_belief"))
 
     def test_waiting_message_prepended_and_cleared_on_chat(self) -> None:
         self.interior.set_waiting_message("Hey Elliot, did that deploy succeed?")
@@ -777,7 +645,7 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(observations[0]["name"], "Qwen 3.8 Max")
 
     def test_heartbeat_splits_reflection_and_extraction_routers(self) -> None:
-        self.store.append("user", "Working on the pressure model", initial_sensitive=False)
+        self.store.append("user", "Working on the pressure model")
         self.store.append("assistant", "Noted")
         chat = FakeScribe()
         extract = FakeScribe()
@@ -794,7 +662,7 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(heartbeat.failure_counts.get("reflection"), 0)
 
     def test_heartbeat_counts_background_failures_instead_of_swallowing_them(self) -> None:
-        self.store.append("user", "Something worth reflecting on", initial_sensitive=False)
+        self.store.append("user", "Something worth reflecting on")
         self.store.append("assistant", "Noted")
         heartbeat = Heartbeat(self.store, self.interior, DeadRouter())
 
@@ -827,7 +695,7 @@ class FoundationTests(unittest.TestCase):
 
     def test_bare_marker_stores_nothing_and_stays_retryable(self) -> None:
         self.assertEqual(parse_reflection("SELF:"), ("self", ""))
-        self.store.append("user", "Something worth reflecting on", initial_sensitive=False)
+        self.store.append("user", "Something worth reflecting on")
         self.store.append("assistant", "Noted")
         heartbeat = Heartbeat(self.store, self.interior, FakeScribe("SELF:"))
 
@@ -837,7 +705,7 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(self.store.heartbeat_completed("reflection"), set())
 
     def test_heartbeat_stores_self_category_with_marker_stripped(self) -> None:
-        self.store.append("user", "You said you would drop that opener", initial_sensitive=False)
+        self.store.append("user", "You said you would drop that opener")
         self.store.append("assistant", "Noted")
         heartbeat = Heartbeat(self.store, self.interior, FakeScribe("SELF: I used the opener again."))
 
@@ -879,7 +747,7 @@ class FoundationTests(unittest.TestCase):
             self.interior.append_identity_ruling(proposal["id"], "approved")
 
     def test_no_identity_proposal_without_a_self_observation(self) -> None:
-        self.store.append("user", "Working on the pressure model", initial_sensitive=False)
+        self.store.append("user", "Working on the pressure model")
         self.store.append("assistant", "Noted")
         scribe = FakeScribe("Elliot is testing the edges of his own reality.")
         heartbeat = Heartbeat(self.store, self.interior, scribe)
@@ -891,7 +759,7 @@ class FoundationTests(unittest.TestCase):
         self.assertFalse(any("claim about yourself" in m[0]["content"] for m in scribe.messages))
 
     def test_self_observation_becomes_a_proposal_awaiting_ratification(self) -> None:
-        self.store.append("user", "You said you would drop that opener", initial_sensitive=False)
+        self.store.append("user", "You said you would drop that opener")
         self.store.append("assistant", "Noted")
         scribe = FakeScribe("SELF: I used the opener again.")
         heartbeat = Heartbeat(self.store, self.interior, scribe)
@@ -906,7 +774,7 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(entries[0]["status"], "proposed")
 
     def test_an_already_proposed_observation_is_not_proposed_again(self) -> None:
-        self.store.append("user", "You said you would drop that opener", initial_sensitive=False)
+        self.store.append("user", "You said you would drop that opener")
         self.store.append("assistant", "Noted")
         scribe = FakeScribe("SELF: I used the opener again.")
         heartbeat = Heartbeat(self.store, self.interior, scribe)
@@ -984,7 +852,7 @@ class FoundationTests(unittest.TestCase):
             web_server.server_close()
 
     def test_api_identity_returns_proposals_with_status(self) -> None:
-        p = self.interior.append_identity_proposal("I over-explain", ["r1"])
+        self.interior.append_identity_proposal("I over-explain", ["r1"])
         web_server = SageServer(("127.0.0.1", 0), self.store, self.router, self.interior)
         web_thread = Thread(target=web_server.serve_forever)
         web_thread.start()
@@ -1059,6 +927,20 @@ class FoundationTests(unittest.TestCase):
         completed = self.store.heartbeat_completed("metabolism")
         self.assertIn(event["id"], completed)
 
+    def test_failed_metabolism_cycle_remains_retryable(self) -> None:
+        event = self.store.append("user", "Hello")
+        heartbeat = Heartbeat(
+            self.store,
+            self.interior,
+            FakeScribe(),
+            metabolism_delay=0,
+        )
+
+        with patch("heartbeat.run_metabolism_cycle", side_effect=RuntimeError("failed")):
+            heartbeat._metabolism_pass()
+
+        self.assertNotIn(event["id"], self.store.heartbeat_completed("metabolism"))
+
     def test_gap_scan_returns_empty_on_no_gaps(self) -> None:
         from metabolism import gap_scan
         scribe = FakeScribe("[]")
@@ -1098,7 +980,7 @@ class FoundationTests(unittest.TestCase):
         )
         self.assertEqual(result, [])
 
-    def test_explore_searches_gaps_and_stores_events(self) -> None:
+    def test_explore_searches_gaps_and_stores_separate_search_records(self) -> None:
         from metabolism import explore
         from unittest.mock import patch
         from search import SearchResult
@@ -1112,9 +994,11 @@ class FoundationTests(unittest.TestCase):
             )
         self.assertEqual(len(result), 1)
         self.assertIn("results", result[0])
-        events = self.store.read_all()
-        metabolism_events = [e for e in events if "[Metabolism search:" in e["content"]]
-        self.assertEqual(len(metabolism_events), 1)
+        self.assertEqual(self.store.read_all(), [])
+        searches = self.store.search_records()
+        self.assertEqual(len(searches), 1)
+        self.assertEqual(searches[0]["origin"], "metabolism")
+        self.assertEqual(searches[0]["sources"][0]["url"], "https://example.com")
 
     def test_explore_returns_empty_when_all_searches_fail(self) -> None:
         from metabolism import explore
@@ -1196,7 +1080,7 @@ class FoundationTests(unittest.TestCase):
                 except StopIteration:
                     return RouterResult(reply=None)
 
-        self.store.append("user", "What time zone is WIB?", initial_sensitive=False)
+        self.store.append("user", "What time zone is WIB?")
         self.store.append("assistant", "I am not certain of the offset.")
         fake_results = [SearchResult(title="WIB", snippet="UTC+7", url="https://example.com")]
         with patch("metabolism.search", return_value=fake_results):
@@ -1214,7 +1098,7 @@ class FoundationTests(unittest.TestCase):
 
     def test_metabolism_pipeline_stops_on_empty_gap_scan(self) -> None:
         from metabolism import run_metabolism_cycle
-        self.store.append("user", "Hi", initial_sensitive=False)
+        self.store.append("user", "Hi")
         self.store.append("assistant", "Hello")
         scribe = FakeScribe("[]")
         run_metabolism_cycle(self.store, self.interior, scribe, "evt-1")
@@ -1222,7 +1106,6 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(self.interior.list_reflections(limit=100), [])
 
     def test_api_metabolism_returns_records(self) -> None:
-        import json as _json
         from metabolism import _append_metabolism
         _append_metabolism(self.interior, {
             "kind": "gap_scan", "id": "test-1", "source_event_id": "evt-1",
@@ -1251,17 +1134,6 @@ class FoundationTests(unittest.TestCase):
         reach_records = [r for r in records if r["kind"] == "reach"]
         self.assertEqual(len(reach_records), 1)
         self.assertFalse(reach_records[0]["message_sent"])
-
-    def test_metabolism_excludes_sensitive_events(self) -> None:
-        from metabolism import run_metabolism_cycle
-        # Only a sensitive user event — after filtering, no non-sensitive events remain
-        self.store.append("user", "private thought", initial_sensitive=True)
-        # gap_scan would find gaps if called, but pipeline should get empty filtered list
-        scribe = FakeScribe('[{"gap": "should never appear", "query": "leaked"}]')
-        run_metabolism_cycle(self.store, self.interior, scribe, "evt-1")
-        # Nothing happened — no metabolism records, no reflections
-        self.assertFalse(self.interior.metabolism_path.exists())
-        self.assertEqual(self.interior.list_reflections(limit=100), [])
 
 if __name__ == "__main__":
     unittest.main()

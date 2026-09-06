@@ -1,5 +1,8 @@
 # Self-Authored Identity — Design
 
+> Historical design. Privacy endpoints and Sensitive mode references were
+> superseded by the 2026-09-06 decision in `docs/DECISIONS.md`.
+
 **Status:** Reviewed 2026-09-02. Automatic recurrence detection rejected on measured
 evidence; **ratification model approved by Elliot**. Implemented: reflection stream,
 identity storage with fold, mirror table, backfill, and the proposal pass (steps 1-2).

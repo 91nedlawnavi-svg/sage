@@ -96,9 +96,12 @@ def explore(
             continue
         if not results:
             continue
-        sources = "\n".join(r.url for r in results)
-        content = f"[Metabolism search: {query}]\nSources: {sources}"
-        store.append("assistant", content)
+        store.append_search_record(
+            query,
+            [{"title": r.title, "snippet": r.snippet, "url": r.url} for r in results],
+            "metabolism",
+            source_event_id,
+        )
         explored.append({**gap, "results": [{"title": r.title, "snippet": r.snippet, "url": r.url} for r in results]})
     if not explored:
         return []
@@ -228,10 +231,7 @@ def run_metabolism_cycle(
     source_event_id: str,
 ) -> None:
     """Run the full metabolism pipeline. Each stage gates the next."""
-    events = [
-        e for e in store.history()
-        if not e.get("sensitive", False) and not e.get("provider_excluded", False)
-    ]
+    events = store.history()
     if not events:
         return
     # Stage 1: gap scan

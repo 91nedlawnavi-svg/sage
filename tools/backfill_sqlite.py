@@ -18,7 +18,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from database import Database, relational_db, interior_db
+from database import Database, relational_db, interior_db  # noqa: E402
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -40,69 +40,40 @@ def _read_jsonl(path: Path) -> list[dict]:
     return records
 
 
-def _read_sensitive(record: dict) -> object:
-    """Read sensitive flag, tolerating old `held_close` key."""
-    return record["sensitive"] if "sensitive" in record else record.get("held_close")
-
-
 def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
     """Backfill relational.db from JSONL files. Returns table->row_count."""
     events_path = data_root / "events.jsonl"
     entities_path = data_root / "relational" / "entities.jsonl"
     heartbeat_path = data_root / "relational" / "heartbeat.jsonl"
     embeddings_path = data_root / "relational" / "embeddings.jsonl"
+    searches_path = data_root / "relational" / "searches.jsonl"
 
     counts: dict[str, int] = {}
 
-    # --- events + privacy + chat_boundaries from events.jsonl ---
+    # --- events + chat_boundaries from events.jsonl ---
     records = _read_jsonl(events_path)
 
     events = []
-    privacy = []
     boundaries = []
 
-    for r in records:
+    for index, r in enumerate(records):
         kind = r.get("kind")
-        if kind == "privacy":
-            sens = _read_sensitive(r)
-            if not isinstance(sens, bool):
-                continue
-            privacy.append((
-                r["target_id"],
-                int(sens),
-                r["source"],
-                r.get("carry_after"),
-                r["said_at"],
-            ))
-        elif kind == "chat_boundary":
+        if kind == "chat_boundary":
             boundaries.append((r["said_at"],))
         elif r.get("role") in ("user", "assistant"):
-            sens_val = _read_sensitive(r)
-            pe = r.get("provider_excluded")
-            pca = r.get("privacy_carry_after")
             events.append((
-                r.get("id", f"legacy:{len(events)}"),
+                r.get("id", f"legacy:{index}"),
                 r["role"],
                 r["content"],
                 r["said_at"],
-                int(sens_val) if isinstance(sens_val, bool) else None,
-                int(pe) if isinstance(pe, bool) else None,
-                pca,
             ))
 
     if events:
         db.executemany(
-            "INSERT OR IGNORE INTO events (id, role, content, said_at, sensitive, provider_excluded, privacy_carry_after) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO events (id, role, content, said_at) VALUES (?, ?, ?, ?)",
             events,
         )
     counts["events"] = db.count("events")
-
-    if privacy:
-        db.executemany(
-            "INSERT OR IGNORE INTO privacy_records (target_id, sensitive, source, carry_after, said_at) VALUES (?, ?, ?, ?, ?)",
-            privacy,
-        )
-    counts["privacy_records"] = db.count("privacy_records")
 
     if boundaries:
         db.executemany(
@@ -125,11 +96,34 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
     for r in _read_jsonl(heartbeat_path):
         if r.get("kind") != "heartbeat":
             continue
+        if r.get("stage") == "metabolism":
+            db.execute(
+                "INSERT OR IGNORE INTO metabolism_completions (source_event_id, said_at) VALUES (?, ?)",
+                (r["source_event_id"], r["said_at"]),
+            )
+        elif r.get("stage") in {"entities", "reflection"}:
+            db.execute(
+                "INSERT OR IGNORE INTO heartbeat_completions (stage, source_event_id, said_at) VALUES (?, ?, ?)",
+                (r["stage"], r["source_event_id"], r["said_at"]),
+            )
+    counts["heartbeat_completions"] = db.count("heartbeat_completions") + db.count("metabolism_completions")
+
+    # --- search_records ---
+    for r in _read_jsonl(searches_path):
+        if r.get("kind") != "search":
+            continue
         db.execute(
-            "INSERT OR IGNORE INTO heartbeat_completions (stage, source_event_id, said_at) VALUES (?, ?, ?)",
-            (r["stage"], r["source_event_id"], r["said_at"]),
+            "INSERT OR IGNORE INTO search_records (id, query, sources, origin, source_event_id, said_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                r["id"],
+                r["query"],
+                json.dumps(r["sources"], ensure_ascii=False),
+                r["origin"],
+                r["source_event_id"],
+                r["said_at"],
+            ),
         )
-    counts["heartbeat_completions"] = db.count("heartbeat_completions")
+    counts["search_records"] = db.count("search_records")
 
     # --- embeddings ---
     for r in _read_jsonl(embeddings_path):
@@ -197,13 +191,10 @@ def verify(rel_counts: dict[str, int], int_counts: dict[str, int], data_root: Pa
     if events_path.exists():
         records = _read_jsonl(events_path)
         expected_events = sum(1 for r in records if r.get("role") in ("user", "assistant"))
-        expected_privacy = sum(1 for r in records if r.get("kind") == "privacy" and isinstance(_read_sensitive(r), bool))
         expected_boundaries = sum(1 for r in records if r.get("kind") == "chat_boundary")
 
         if rel_counts.get("events", 0) != expected_events:
             mismatches.append(f"events: expected {expected_events}, got {rel_counts.get('events', 0)}")
-        if rel_counts.get("privacy_records", 0) != expected_privacy:
-            mismatches.append(f"privacy_records: expected {expected_privacy}, got {rel_counts.get('privacy_records', 0)}")
         if rel_counts.get("chat_boundaries", 0) != expected_boundaries:
             mismatches.append(f"chat_boundaries: expected {expected_boundaries}, got {rel_counts.get('chat_boundaries', 0)}")
 
@@ -224,6 +215,12 @@ def verify(rel_counts: dict[str, int], int_counts: dict[str, int], data_root: Pa
         expected = sum(1 for r in _read_jsonl(embeddings_path) if "event_id" in r and "vector" in r)
         if rel_counts.get("embeddings", 0) != expected:
             mismatches.append(f"embeddings: expected {expected}, got {rel_counts.get('embeddings', 0)}")
+
+    searches_path = data_root / "relational" / "searches.jsonl"
+    if searches_path.exists():
+        expected = sum(1 for r in _read_jsonl(searches_path) if r.get("kind") == "search")
+        if rel_counts.get("search_records", 0) != expected:
+            mismatches.append(f"search_records: expected {expected}, got {rel_counts.get('search_records', 0)}")
 
     reflections_path = data_root / "interior" / "reflections.jsonl"
     if reflections_path.exists():

@@ -1,5 +1,14 @@
 # Sage Development Timeline
 
+> Historical entries describe what existed at the time. Current authority is in the repository's `docs/DECISIONS.md` and `docs/INVARIANTS.md`.
+
+```timeline
+[line-3, body-2]
++ Sep 6, 2026
++ Sensitive Mode Retired
++ Removed Sensitive mode, `/sensitive`, automatic classification, carry state, privacy overrides, and provider-exclusion filtering. Old append-only records remain, but their legacy privacy metadata no longer changes current behavior. No private-message replacement was added.
+```
+
 ```timeline
 [line-3, body-2]
 + Aug 10, 2026
@@ -50,4 +59,3 @@ Make history feel relevant naturally. Not dumping records — weaving continuity
 - [ ] Whole exchange as recall cue (in progress)
 - [ ] Contradictions preserved in responses
 - [ ] Felt continuity test passing
-

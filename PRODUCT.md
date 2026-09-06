@@ -6,11 +6,11 @@ product
 
 ## Users
 
-Sage serves Elliot as a private, single-user daily companion across phone and desktop browsers. The primary interface is mobile chat: open it quickly, say what matters, and continue an ongoing conversation without navigating a dashboard.
+Sage serves Elliot as a single-user daily companion across phone and desktop browsers. The primary interface is mobile chat: open it quickly, say what matters, and continue an ongoing conversation without navigating a dashboard.
 
 ## Product Purpose
 
-Sage is an owned, persistent personal intelligence whose interface makes conversation, memory, privacy, and continuity feel dependable. Success means the UI disappears into the exchange: messages are effortless to send and read, private modes remain clear, and deeper memory views stay available without crowding the chat.
+Sage is an owned, persistent personal intelligence whose interface makes conversation, memory, provider use, and continuity feel dependable. Success means the UI disappears into the exchange: messages are effortless to send and read, system state remains clear, and deeper memory views stay available without crowding the chat.
 
 ## Brand Personality
 
@@ -28,7 +28,7 @@ Calm, minimal, dependable.
 - Mobile browser behavior is the first acceptance target.
 - Keep conversation primary and supporting memory one action away.
 - Prefer familiar, ChatGPT-like interaction patterns over novelty.
-- Make privacy and system state clear without adding noise.
+- Make provider use and system state clear without adding noise.
 - Preserve accessibility, speed, and touch reliability before visual flourish.
 
 ## Accessibility & Inclusion

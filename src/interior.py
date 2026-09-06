@@ -24,15 +24,6 @@ class Reflection(TypedDict):
     source_event_id: NotRequired[str]
 
 
-class Belief(TypedDict):
-    id: str
-    topic: str
-    stance: str
-    evidence: str
-    said_at: str
-    revised_from: NotRequired[str]
-
-
 IDENTITY_VERDICTS = ("ratified", "rejected", "retired")
 
 
@@ -73,7 +64,6 @@ class InteriorStore:
         self.data_root = data_root or Path.home() / "sage_data"
         self.interior_dir = self.data_root / "interior"
         self.reflections_path = self.interior_dir / "reflections.jsonl"
-        self.beliefs_path = self.interior_dir / "beliefs.jsonl"
         self.identity_path = self.interior_dir / "identity.jsonl"
         self.metabolism_path = self.interior_dir / "metabolism.jsonl"
         self.waiting_message_path = self.interior_dir / "waiting_message.json"
@@ -181,13 +171,6 @@ class InteriorStore:
     @staticmethod
     def _timestamp() -> str:
         return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-    def list_beliefs(self) -> list[Belief]:
-        if not self.beliefs_path.exists():
-            return []
-        beliefs: list[Belief] = []
-        beliefs = [record for record in self._read_jsonl(self.beliefs_path) if isinstance(record, dict)]
-        return beliefs
 
     @staticmethod
     def _read_jsonl(path: Path) -> list[object]:

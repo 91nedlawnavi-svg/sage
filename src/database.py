@@ -7,8 +7,8 @@ from the files by ``tools/backfill_sqlite.py`` without touching lived memory.
 Relational and interior material live in separate database files, mirroring the
 ``relational/`` and ``interior/`` directory split required by INVARIANTS.md.
 
-Events are mirrored as written. Sensitivity and provider exclusion stay derived
-at read time from ``privacy_records``; they are not frozen into the events table.
+Events are mirrored as written. Legacy privacy records may remain in existing
+stores, but Sage no longer creates or applies them.
 """
 
 from __future__ import annotations
@@ -25,26 +25,11 @@ CREATE TABLE IF NOT EXISTS events (
     id TEXT PRIMARY KEY,
     role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
     content TEXT NOT NULL,
-    said_at TEXT NOT NULL,
-    sensitive INTEGER,
-    provider_excluded INTEGER,
-    privacy_carry_after INTEGER
+    said_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_said_at ON events(said_at);
 CREATE INDEX IF NOT EXISTS idx_events_role ON events(role);
-
-CREATE TABLE IF NOT EXISTS privacy_records (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    target_id TEXT NOT NULL,
-    sensitive INTEGER NOT NULL,
-    source TEXT NOT NULL CHECK(source IN ('sensor', 'user')),
-    carry_after INTEGER,
-    said_at TEXT NOT NULL,
-    UNIQUE(target_id, source, said_at)
-);
-
-CREATE INDEX IF NOT EXISTS idx_privacy_target ON privacy_records(target_id);
 
 CREATE TABLE IF NOT EXISTS entity_observations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,6 +51,22 @@ CREATE TABLE IF NOT EXISTS heartbeat_completions (
     said_at TEXT NOT NULL,
     UNIQUE(stage, source_event_id)
 );
+
+CREATE TABLE IF NOT EXISTS metabolism_completions (
+    source_event_id TEXT PRIMARY KEY,
+    said_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS search_records (
+    id TEXT PRIMARY KEY,
+    query TEXT NOT NULL,
+    sources TEXT NOT NULL,
+    origin TEXT NOT NULL CHECK(origin IN ('conversation', 'metabolism')),
+    source_event_id TEXT NOT NULL,
+    said_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_search_source ON search_records(source_event_id);
 
 CREATE TABLE IF NOT EXISTS chat_boundaries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -10,12 +10,12 @@ only.
 ## What Sage does today
 
 **Conversation** — browser chat (mobile and desktop) with streaming replies,
-sensitive-mode privacy, and new-chat boundaries.
+one normal message path, and new-chat boundaries.
 
 **Episodic memory** — every accepted turn is appended as a timestamped event
-in JSONL. Recall combines BM25 lexical search with cosine-similarity
-embeddings, scored against the current exchange. Nothing is discarded for
-being mundane.
+in JSONL. Recall combines lexical overlap and term frequency with
+cosine-similarity embeddings, scored against the current exchange. Nothing is
+discarded for being mundane.
 
 **Self-authored identity** — Sage observes her own behavior during background
 heartbeat passes and proposes identity claims. Elliot ratifies or rejects each
@@ -30,26 +30,26 @@ leaves a waiting message for Elliot's return. Each stage gates the next;
 silence is the default outcome.
 
 **Conversational search** — during a live conversation, Sage can decide to
-search the web when she recognizes she lacks knowledge. Results are stored as
-episodic events with source URLs.
+search the web when she recognizes she lacks knowledge. Query and source
+provenance are stored as separate relational search records, not chat messages.
 
-**Privacy** — sensitive messages are excluded from recall, embeddings, provider
-prompts, and background processing. Unknown privacy classification fails
-closed.
+**Provider boundary** — lived memory stays local. Current messages and compact
+relevant context may pass through the configured router to model providers.
+Sage has no sensitive or local-only message mode.
 
-**Interior storage** — reflections, entity observations, identity proposals,
-metabolism records, beliefs, and one bounded waiting-message surface live in
-`~/sage_data/interior/`, separate from relational event history.
+**Separate storage** — events, embeddings, entity observations, search records,
+and completion records are relational. Reflections, identity proposals,
+metabolism records, and one bounded waiting message are interior material.
 
 **SQLite mirrors** — relational and interior databases are dual-written
-alongside JSONL for indexed reads. JSONL remains the source of truth; mirrors
-are derived and rebuildable.
+alongside JSONL. JSONL remains the source of truth; mirrors are derived and
+rebuildable.
 
 **Background heartbeat** — runs every 120 seconds: entity extraction,
-reflection, identity proposal, and metabolism trigger check, each with
-retry-safe completion records.
+reflection, identity proposal, and metabolism trigger check. Successful passes
+use completion records to prevent duplicate work.
 
-**108 deterministic tests** covering the full foundation.
+**95 deterministic tests** covering the current foundation.
 
 ## Running
 
@@ -103,7 +103,7 @@ Python 3, stdlib only, no external dependencies.
 - `src/database.py` — SQLite mirror layer
 - `src/search.py` — web search integration (SearXNG)
 - `src/static/` — frontend HTML/CSS/JS
-- `tests/test_foundation.py` — 108 deterministic tests
+- `tests/` — deterministic foundation and mirror tests
 
 ## Tests
 

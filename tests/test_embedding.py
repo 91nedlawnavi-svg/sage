@@ -25,8 +25,8 @@ class FailingEmbeddingStore(EventStore):
         raise OSError("embedding storage unavailable")
 
 
-class PrivacyEmbeddingTests(unittest.TestCase):
-    def test_sensitive_input_never_reaches_embedder(self) -> None:
+class EmbeddingTests(unittest.TestCase):
+    def test_every_accepted_message_reaches_embedder(self) -> None:
         with TemporaryDirectory() as directory:
             embedder = RecordingEmbedder()
             store = EventStore(Path(directory), embedder=embedder)
@@ -34,37 +34,16 @@ class PrivacyEmbeddingTests(unittest.TestCase):
             accepted = accept_message("I never told anyone about this", store)
 
             self.assertIsNotNone(accepted)
-            self.assertTrue(accepted.privacy.sensitive)
-            self.assertEqual(embedder.texts, [])
-
-    def test_non_sensitive_input_still_reaches_embedder(self) -> None:
-        with TemporaryDirectory() as directory:
-            embedder = RecordingEmbedder()
-            store = EventStore(Path(directory), embedder=embedder)
-
-            accepted = accept_message("Open project update", store)
-
-            self.assertIsNotNone(accepted)
-            self.assertFalse(accepted.privacy.sensitive)
-            self.assertEqual(embedder.texts, ["Open project update"])
-
-    def test_unclassified_input_never_reaches_embedder(self) -> None:
-        with TemporaryDirectory() as directory:
-            embedder = RecordingEmbedder()
-            store = EventStore(Path(directory), embedder=embedder)
-
-            store.append("user", "Unknown privacy", initial_sensitive=None)
-
-            self.assertEqual(embedder.texts, [])
+            self.assertEqual(embedder.texts, ["I never told anyone about this"])
 
     def test_embedding_storage_failure_does_not_lose_user_event(self) -> None:
         with TemporaryDirectory() as directory:
             store = FailingEmbeddingStore(Path(directory), embedder=RecordingEmbedder())
 
-            accepted = accept_message("Public update", store)
+            accepted = accept_message("Project update", store)
 
             self.assertIsNotNone(accepted)
-            self.assertEqual(store.read_all()[0]["content"], "Public update")
+            self.assertEqual(store.read_all()[0]["content"], "Project update")
 
 
 if __name__ == "__main__":

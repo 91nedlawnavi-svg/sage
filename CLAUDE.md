@@ -16,17 +16,16 @@ Sage is a single-user personal intelligence with persistent episodic memory. Pyt
 
 **Entry point**: `launch.py` loads `.env`, wires stores/router/heartbeat, starts `SageServer`.
 
-**Core flow**: User message → `web.py:_chat()` → `sage.py:accept_message()` → `EventStore.append()` → router stream → reply persisted as assistant event. Heartbeat runs background entity extraction and reflection passes.
+**Core flow**: User message → `web.py:_chat()` → `sage.py:accept_message()` → `EventStore.append()` → optional search → router stream → reply persisted as assistant event. Search provenance is stored separately from dialogue. Heartbeat runs background entity extraction, reflection, identity, and metabolism passes.
 
 **Key modules** (all in `src/`):
 - `sage.py` — message handling, directive loading, router message building
 - `web.py` — HTTP server (`ThreadingHTTPServer`), chat API, streaming NDJSON replies
-- `events.py` — append-only JSONL event store with hybrid recall (BM25 + cosine similarity)
+- `events.py` — append-only JSONL event store with hybrid recall (lexical scoring + cosine similarity)
 - `database.py` — SQLite mirror layer: separate relational (`~/sage_data/relational/relational.db`) and interior (`~/sage_data/interior/interior.db`) databases, dual-written alongside JSONL. JSONL remains source of truth; mirrors are derived and rebuildable via `tools/backfill_sqlite.py`
 - `router.py` — LLM router client with model fallback chain
 - `heartbeat.py` — background thread for entity extraction and reflection
-- `interior.py` — private storage (reflections, waiting messages). Beliefs are computed at recall, never stored
-- `sensitive.py` — privacy classification logic
+- `interior.py` — separate interior storage (reflections, identity, metabolism, waiting messages)
 - `search.py` — web search integration
 
 **Frontend**: Static HTML/CSS/JS in `src/static/`.
@@ -49,11 +48,10 @@ Older V3 commits are implementation history, not current authority.
 ## Boundaries
 
 - Lived memory is `~/sage_data/`; identity, code, project records stay outside it
-- Sensitive material never enters casual recall, embeddings, or background provider prompts
+- All accepted messages use the normal recall, embedding, provider, and background paths; no sensitive or local-only mode exists
 - Original events are not replaced by frozen facts or current-state tables
 - No writes to lived memory, `.env`, credentials, or destructive migrations without explicit approval
-- Systemd user-service commands for Sage (`systemctl --user start|stop|restart|status sage`, `journalctl --user -u sage`)
-  are pre-authorized. Run them mid-session without asking — including restarts.
+- Service restarts require Elliot's explicit approval; status and logs are safe to inspect
 - No speculative abstractions or unrelated refactors
 
 </content>
