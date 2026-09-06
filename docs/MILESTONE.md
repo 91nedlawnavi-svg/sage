@@ -11,7 +11,8 @@ episodic memory becomes relevant continuity.
 
 Already present and verified:
 
-- Local browser and terminal chat through the configured local router.
+- Local browser chat through the configured local router. An older command-line
+  chat path remains in code but is not a current product interface.
 - Durable UTC event history with restart persistence.
 - Lexical and embedding-assisted event recall.
 - One normal conversation path for every accepted message; Sensitive mode and
@@ -33,30 +34,19 @@ Already present and verified:
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
 
-## Active outcome — legible architecture
-
-Elliot can see what Sage is, how its layers fit together, where development
-stands, and what comes next without maintaining overlapping product records.
-
-## Acceptance evidence — legible architecture
-
-- One Blueprint holds purpose, intended behavior, architecture, interface
-  principles, and permanent boundaries.
-- Decisions records settled choices and their reasons.
-- This file holds only the active outcome and its acceptance evidence.
-- One horizontal Timeline shows past, now, next, and later.
-- README and AGENTS point to the same four authoritative product records.
-- Superseded product records and duplicate timeline artifacts are removed.
-
-## Next outcome — felt continuity
+## Active outcome — felt continuity
 
 Sage's remembered history influences replies naturally in ordinary, non-crisis
 conversations. Related events can be grouped or summarized without erasing
 their sources.
 
-Acceptance will require relevant older moments to influence replies without
-sounding like search, contradictions to remain available without forced
-resolution, and a felt test in ordinary conversation.
+## Acceptance evidence — felt continuity
+
+- Relevant older moments influence replies without sounding like search.
+- Contradictory events remain available without forced resolution.
+- Related moments can be grouped without replacing their original events.
+- Ordinary conversation with Elliot provides a felt test, not only technical
+  retrieval scores.
 
 ## Explicitly not active yet
 

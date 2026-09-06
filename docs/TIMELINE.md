@@ -16,9 +16,9 @@ flowchart LR
     R["REFRESH<br/>Aug 24–29<br/>Continuity becomes the goal"]
     W["IDENTITY + WONDER<br/>Sep 1–3<br/>Sage reflects and explores"]
     S["SIMPLIFICATION<br/>Sep 6<br/>Sensitive mode retired<br/>Audit drift repaired"]
-    N["NOW<br/>ARCHITECTURE MAP<br/>One system, clear layers"]
-    C["NEXT<br/>FELT CONTINUITY<br/>Memory changes conversation"]
-    P["LATER<br/>CAPABILITY<br/>Broader useful work"]
+    N["ARCHITECTURE MAP<br/>Sep 6<br/>One system, clear layers"]
+    C["NOW<br/>FELT CONTINUITY<br/>Memory changes conversation"]
+    P["NEXT<br/>CAPABILITY<br/>Broader useful work"]
     A["LATER<br/>AGENCY + PRESENCE<br/>Approved action, voice, reach"]
 
     F --> M --> R --> W --> S --> N --> C --> P --> A
@@ -27,10 +27,10 @@ flowchart LR
     classDef now fill:#fff3bf,stroke:#e09f3e,color:#3d2b00,stroke-width:3px;
     classDef next fill:#dbeafe,stroke:#2563eb,color:#172554,stroke-width:2px;
     classDef later fill:#e9ecef,stroke:#6c757d,color:#212529;
-    class F,M,R,W,S past;
-    class N now;
-    class C next;
-    class P,A later;
+    class F,M,R,W,S,N past;
+    class C now;
+    class P next;
+    class A later;
 ```
 
 ## What each stage means
@@ -42,14 +42,14 @@ flowchart LR
 | **Refresh** · Aug 24–29 | Product frame reset, frontend restored, streaming mobile UI, new-chat boundaries, whole-exchange recall cue. | Using recent conversation to retrieve older context. | Felt continuity matters more than accumulating features. |
 | **Identity + Wonder** · Sep 1–3 | Self-observation, identity proposals and rulings, conversational search, autonomous metabolism, waiting messages. | Building an evidence-based identity and exploring genuine knowledge gaps. | Elliot ratifies identity; background activity stays bounded and may end in silence. |
 | **Simplification** · Sep 6 | Sensitive mode removed, provider boundary clarified, mirror and retry faults repaired, search records separated from dialogue. | Treating every message as normal conversation without hidden privacy state. | Preserve lived history; delete obsolete machinery instead of rebuilding Sage. |
-| **Architecture map** · now | Stack, layers, architecture, modules, and product records are being made legible. | Growing without Elliot or future developers losing the shape of Sage. | Map broadly; build one complete behavior at a time. |
-| **Felt continuity** · next | Relevant episodes, associations, and contradictions influence ordinary replies naturally. | Feeling like one continuing intelligence across daily life. | Memory must improve the exchange, not announce retrieval. |
-| **Capability** · later | Writing, coding, research, planning, and tools broaden behind one identity. | Helping across more of Elliot's life. | Add capabilities for real use, not architectural fashion. |
+| **Architecture map** · Sep 6 | Stack, layers, architecture, modules, and product records became legible. | Growing without Elliot or future developers losing the shape of Sage. | Map current truth; build one complete behavior at a time. |
+| **Felt continuity** · now | Relevant episodes, associations, and contradictions influence ordinary replies naturally. | Feeling like one continuing intelligence across daily life. | Memory must improve the exchange, not announce retrieval. |
+| **Capability** · next | Writing, coding, research, planning, and tools broaden behind one identity. | Helping across more of Elliot's life. | Add capabilities for real use, not architectural fashion. |
 | **Agency + presence** · later | Calibrated preparation and approved action; possibly voice, vision, and broader reach. | Acting usefully while knowing when to hold back. | Permission, ownership, and restraint remain system-wide boundaries. |
 
 ## Current position
 
 Sage has a working local foundation, episodic memory, routed intelligence,
-search, an interior, and bounded background activity. The current task is not a
-rebuild. It is making the system legible, then proving that memory produces felt
-continuity in normal conversation.
+search, an interior, and bounded background activity. The system map is now
+legible. The current task is proving that memory produces felt continuity in
+normal conversation.

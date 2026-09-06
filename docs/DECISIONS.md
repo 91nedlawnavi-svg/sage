@@ -68,3 +68,14 @@ product authority.
 - The former North Star, Invariants, Product, and Roadmap records were merged
   into this smaller set. `README.md` and `AGENTS.md` remain operational entry
   points, not additional product authority.
+
+## 2026-09-06 — Current architecture framing
+
+- Sage currently runs as one small Python application with one background
+  thread and local supporting services for models, embeddings, and search.
+- The browser chat and Notebook are the real user interface. The command-line
+  chat path is leftover development code, not a current product interface.
+- The current Sage Core is split: context and identity live in `sage.py`, while
+  browser flow and search judgment remain in `web.py`.
+- The implementation map reports this present truth. It does not pretend the
+  intended clean layer boundary already exists.

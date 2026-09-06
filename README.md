@@ -88,22 +88,67 @@ python3 tools/model_audition.py <alias> [<alias> ...] --output workbench/auditio
 
 Use `--self-check` to run without a router.
 
-## Architecture
+## Current system map
 
-Python 3, stdlib only, no external dependencies.
+### Stack
 
-- `launch.py` — entry point: loads `.env`, wires stores/router/heartbeat
-- `src/sage.py` — message handling, directive loading, router message building
-- `src/web.py` — HTTP server, chat API, streaming NDJSON replies
-- `src/events.py` — append-only JSONL event store with hybrid recall
-- `src/interior.py` — interior storage (reflections, identity, metabolism, waiting messages)
-- `src/metabolism.py` — four-stage post-conversation pipeline
-- `src/heartbeat.py` — background extraction, reflection, identity, metabolism
-- `src/router.py` — LLM router client with model fallback chain
-- `src/database.py` — SQLite mirror layer
-- `src/search.py` — web search integration (SearXNG)
-- `src/static/` — frontend HTML/CSS/JS
-- `tests/` — deterministic foundation and mirror tests
+- Python 3 standard library for the application.
+- Plain HTML, CSS, and JavaScript for the browser interface.
+- JSONL files as the permanent memory record.
+- SQLite as a rebuildable copy, not the source of truth.
+- Local services for model routing, embeddings, and web search.
+- systemd for starting and restarting Sage.
+
+Sage is one small application with one background thread. It is not a group of
+microservices.
+
+### Layers
+
+| Layer | Current home |
+|---|---|
+| **Interface** | Browser chat and Notebook in `src/static/`, served by `src/web.py`. |
+| **Sage Core** | Context and identity in `src/sage.py`; browser flow and search decisions still live in `src/web.py`. |
+| **Memory** | Events and recall in `src/events.py`; interior material in `src/interior.py`; SQLite copies in `src/database.py`. |
+| **Intelligence** | Talk-model failover and local embeddings in `src/router.py`. |
+| **Capabilities** | Web search through `src/search.py`. |
+| **Agency** | Background reflection and exploration in `src/heartbeat.py` and `src/metabolism.py`. |
+| **Operations** | Startup in `launch.py`, systemd, health checks, tests, and maintenance tools. |
+
+The Core is not one clean boundary yet. Production browser behavior is split
+between `src/sage.py` and `src/web.py`.
+
+### Architecture
+
+A normal conversation follows this path:
+
+1. Browser sends Elliot's message to Sage.
+2. Sage saves the message before contacting any model.
+3. Sage builds context from recent conversation, relevant older events, the
+   identity seed, and ratified identity entries.
+4. Sage may search the web and add the results as temporary context.
+5. The local router tries the talk models in order.
+6. A complete reply streams to the browser and is then saved.
+
+Starting a new chat adds a boundary; it does not delete old events. Background
+work follows a separate path: conversation, reflection, optional exploration,
+and at most one waiting message.
+
+### Modules
+
+- `launch.py` — starts and connects the production system.
+- `src/web.py` — browser server, live chat flow, and Notebook APIs.
+- `src/sage.py` — message acceptance, context building, directive, and an unused
+  command-line chat path left from earlier development.
+- `src/events.py` — conversation history, related memory, and recall.
+- `src/interior.py` — reflections, identity, metabolism records, and waiting message.
+- `src/database.py` — rebuildable SQLite copies.
+- `src/router.py` — talk models and local embeddings.
+- `src/search.py` — local web search.
+- `src/heartbeat.py` — schedules background work.
+- `src/metabolism.py` — explores gaps after conversation becomes quiet.
+- `src/static/` — browser chat and Notebook.
+- `tools/` — backfill and model-checking utilities.
+- `tests/` — 99 deterministic checks.
 
 ## Tests
 
