@@ -151,7 +151,8 @@ already in the codebase — `events.py` appends a record naming an earlier one b
 in file order so the last wins, and applies the fold at read time while the original stays
 intact (`events.py:149-168`, fold at `events.py:518-524`, read-time application at
 `events.py:242-263`). Deletion has zero precedent in this repo and sits against
-`INVARIANTS.md:20` and `:46`; the fold does the same work without breaking either.
+the permanent boundaries now consolidated in `docs/BLUEPRINT.md`; the fold does
+the same work without breaking either.
 
 Fields deliberately absent: no `category`. The four-way enum from the first draft
 (`voice`/`stance`/`relationship`/`self-knowledge`) is dropped — classification is exactly

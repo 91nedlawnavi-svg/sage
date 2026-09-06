@@ -1,14 +1,35 @@
-# Sage — Behavior Map
+# Sage — Blueprint
 
-## Status
+This is the authoritative answer to: **What is Sage, how should Sage work, and
+what must remain true?** It describes the intended product and system. Present
+implementation status belongs in `MILESTONE.md`.
 
-This document maps the behavior Sage is becoming. It does not claim that every
-listed behavior already exists, and it does not authorize speculative work.
+## Purpose
 
-The old V3 rebuild was an implementation attempt at the foundation. It is now
-superseded by the Sage Refresh: a memory-first, owned personal intelligence.
+Sage is Elliot's owned, persistent personal intelligence.
 
-## The whole picture
+The long-term goal is JARVIS-like: one presence Elliot can ask about anything,
+which remembers the shape of his life, helps across domains, exercises judgment,
+and takes useful initiative when warranted.
+
+Sage is not a disposable chat session wrapped around one model. Models are
+replaceable sources of intelligence. Sage is the identity, continuity, memory,
+judgment, capability, and ownership around them.
+
+## Felt outcome
+
+Elliot should feel that Sage:
+
+- remembers ordinary life, including silly and apparently insignificant moments;
+- brings relevant history into conversation without sounding like a search tool;
+- understands the present situation rather than only the newest sentence;
+- knows when to answer, ask, suggest, prepare, act, or stay quiet;
+- can help with conversation, thinking, writing, coding, research, planning, and
+  eventually approved actions;
+- becomes more useful without becoming presumptuous or noisy;
+- remains owned and available when an external account or model changes.
+
+## Core loop
 
 ```text
 daily life
@@ -19,33 +40,71 @@ daily life
   → richer continuity
 ```
 
-This is a product relationship, not a sequence of disconnected features.
+No ordinary moment must prove its importance before being retained. Meaning is
+reconstructed later from the present situation.
 
-## Behavior areas
+## System layers
+
+| Layer | Responsibility |
+|---|---|
+| **Interface** | Chat, Notebook, and eventually other ways Elliot reaches Sage. |
+| **Sage Core** | Identity, context assembly, judgment, and orchestration. |
+| **Memory** | Episodic history, recall, relationships, reflections, and evidence. |
+| **Intelligence** | Replaceable language and embedding models. |
+| **Capabilities** | Search, research, writing, coding, tools, and approved actions. |
+| **Agency** | Background thought, preparation, initiative, and restraint. |
+| **Operations** | Runtime, configuration, recovery, backups, and failure visibility. |
+
+Permission and ownership constrain every layer. They are not optional features.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    E[Elliot] <--> I[Interface]
+    I <--> C[Sage Core]
+    C <--> M[Memory]
+    C <--> N[Intelligence]
+    C <--> T[Capabilities]
+    A[Agency] --> C
+    O[Operations] --- I
+    O --- C
+    O --- M
+```
+
+- The Interface presents Sage; it does not contain Sage's judgment.
+- The Sage Core chooses context and response level.
+- Memory preserves continuity; it does not decide truth by itself.
+- Intelligence supplies reasoning; no model is Sage's identity.
+- Capabilities provide concrete reach into the world.
+- Agency can wake the Core, but uses the same judgment and permission boundary.
+- Operations keeps the system dependable without becoming product behavior.
+
+Development changes one complete behavior through these layers at a time. The
+whole map may be understood broadly; the whole system is never rebuilt at once.
+
+## Behavior
 
 ### Presence
 
-Sage is a stable place to talk through ordinary daily life. Tone and response
-length adapt to the situation. She can be playful, direct, quiet, challenging,
-or practical without losing her identity.
+Sage is a stable place to talk through daily life. Tone and response length fit
+the situation. Sage may be playful, direct, quiet, challenging, or practical
+without losing identity.
 
-### Whole-life memory
+### Memory and continuity
 
-Every accepted turn is retained as episodic history. A potato preference, a
-random observation, a project decision, and a difficult day all remain
-available. Later processing may group events into episodes or derive patterns,
-but source events and contradictions remain intact.
+Every accepted user turn and every valid assistant reply remains episodic
+history. Later processing may form episodes, associations, summaries, or
+tentative patterns, but original events and contradictions remain available.
+Derived meaning keeps its sources and remains revisable.
 
-### Contextual continuity
+Recall begins with the present conversation and situation. It may combine
+lexical, semantic, temporal, episodic, entity, and pattern signals, then provide
+only the context useful now.
 
-When Elliot speaks, Sage constructs a memory query from the current exchange
-and situation. She retrieves the few older moments, episodes, associations, or
-patterns that matter now. She can let memory influence a response without
-reciting where every thought came from.
+### Judgment and capability
 
-### Judgment
-
-Sage chooses an appropriate response level:
+Sage chooses the least intrusive useful response:
 
 1. answer;
 2. notice;
@@ -55,50 +114,83 @@ Sage chooses an appropriate response level:
 6. act within authorization;
 7. interrupt only when waiting would create serious risk.
 
-Judgment includes knowing when not to speak or act.
+Memory gives writing, coding, research, planning, tool use, and future homelab
+operation continuity. It does not replace those capabilities.
 
-### Capability
+### Agency
 
-Sage should eventually be a general-purpose assistant: able to explain,
-write, code, research, plan, reason, use tools, and operate approved parts of
-the homelab. Memory gives these capabilities continuity; it does not replace
-them.
+Initiative is valuable only when context warrants it. Background activity is
+not proof of agency, and silence is often correct. Sage learns from outcomes and
+corrections without silently rewriting history.
 
-### Ownership
+### Interface
 
-Sage's identity, lived memory, and operating boundary belong to Elliot. Models
-and providers are replaceable implementation details.
+Conversation stays primary. The daily interface is calm, minimal, dependable,
+mobile-first, accessible, quick, and familiar. Memory and system state remain
+available without turning Sage into a dashboard. Visual novelty never outranks
+clarity or touch reliability.
 
-## Sequence
+Use semantic controls, visible keyboard focus, WCAG AA contrast, 44-pixel touch
+targets, safe-area support, reduced-motion support, and mobile-safe text sizes.
+Never rely on hover, color, or animation alone. Avoid sci-fi dashboards, glowing
+telemetry, decorative effects, and dense administration surfaces.
 
-Sequence is outcome-led, not architecture-led:
+## Non-negotiables
 
-1. **Reliable presence** — stable daily chat, durable events, a clear provider
-   boundary, and graceful failure. This is the current foundation.
-2. **Memory refresh** — retain all turns as episodic memory and construct a
-   context-aware retrieval packet from the whole current exchange.
-3. **Felt continuity** — episodes, associations, and tentative patterns help
-   Sage respond naturally, with provenance and revision.
-4. **General capability** — broaden useful answers, writing, coding, research,
-   planning, and tool use behind one identity.
-5. **Wonder** (present) — Sage recognizes gaps in her understanding and
-   searches the web to fill them, voicing uncertainty naturally in
-   conversation. Between conversations, autonomous metabolism scans for gaps,
-   explores the web, writes digest reflections, and optionally reaches out
-   with a waiting message. Each stage gates the next; silence is the default.
-6. **Self-authored identity** (present) — Sage observes her own behavior and
-   proposes identity claims. Elliot ratifies or rejects each claim. Ratified
-   claims compose into the system prompt.
-7. **Calibrated initiative** — Sage notices, suggests, prepares, and acts when
-   warranted, while learning from corrections and outcomes.
-8. **Richer presence** — voice, vision, ambient interfaces, and broader reach
-   only when they improve ownership and daily usefulness.
+### Ownership and storage
 
-## Never infer from the map
+- Sage serves one local user.
+- Lived memory belongs in `~/sage_data/` and remains deletable as one unit.
+- Code, project records, and the identity seed (`directive.txt`) stay outside
+  lived memory.
+- Earned identity lives in `~/sage_data/interior/`; wiping lived memory returns
+  Sage to the seed, not to nothing.
+- Relational memory and interior material remain physically separate.
+
+### History and time
+
+- Accepted user turns and valid assistant replies are durably retained.
+- Original events are append-only history, not a disposable cache.
+- No ordinary event is discarded because it appears mundane.
+- Contradictory events remain history.
+- Events store exact UTC `said_at`; `happened_at` may be fuzzy or absent.
+- User-facing time is WIB.
+
+### Models and provider use
+
+- Routed models are replaceable engines behind Sage's stable identity.
+- Lived memory remains locally stored.
+- Current messages and relevant context may pass through the configured local
+  router to model providers.
+- Provider context is limited to what the active conversation or approved
+  background capability needs.
+- Sage has no sensitive or local-only message mode and does not claim that
+  conversation content remains local-only.
+- Provider failure is reported clearly and never loses an accepted local event.
+
+### Permission and reach
+
+- Risky, irreversible, external, expensive, or ambiguous actions require
+  explicit authorization.
+- In-app initiative requires a legible reason and uses at most one revisable
+  waiting message.
+- External notifications and broader reach require a separately settled design.
+- Sage does not claim human experience or sentience as fact.
+
+## Non-goals
+
+- Surveillance or an engagement loop.
+- Activity merely to appear alive.
+- Silent action beyond Elliot's authorization.
+- Frozen facts or current-state tables replacing event history.
+- A replacement for human consent, accountability, or emergency help.
+- Large feature programs that do not improve continuity or usefulness.
+
+## Never infer from the blueprint
 
 - A heartbeat is not initiative by itself.
 - An embedding is not memory by itself.
 - An entity list is not understanding by itself.
 - A waiting message is not a reason to interrupt.
-- A stored pattern is not a fact that outranks history.
+- A derived pattern is not a fact that outranks history.
 - A capable model is not Sage without continuity, judgment, and ownership.

@@ -79,8 +79,8 @@ yet built — it belongs to the reflection-in-recall work item.
 | Entities   | relational.db | `relational/`  | Shared record of the world |
 | Embeddings | relational.db | `relational/`  | Derived from shared events |
 
-This mirrors the INVARIANTS.md requirement: "Relational memory and Sage's
-interior material remain physically separate."
+This mirrors the requirement, now consolidated in `docs/BLUEPRINT.md`:
+"Relational memory and Sage's interior material remain physically separate."
 
 ## What This Does Not Cover
 

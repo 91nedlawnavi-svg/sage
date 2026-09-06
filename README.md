@@ -113,9 +113,7 @@ python3 -m pytest tests/
 
 ## Project records
 
-- [North Star](docs/NORTH_STAR.md) — purpose and felt outcome
-- [Invariants](docs/INVARIANTS.md) — permanent constraints
+- [Blueprint](docs/BLUEPRINT.md) — purpose, behavior, architecture, and boundaries
 - [Decisions](docs/DECISIONS.md) — settled choices
 - [Milestone](docs/MILESTONE.md) — current work and acceptance evidence
-- [Blueprint](docs/BLUEPRINT.md) — behavior map
-- [Roadmap](docs/ROADMAP.md) — long-hold visual roadmap
+- [Timeline](docs/TIMELINE.md) — visual past, present, and future context

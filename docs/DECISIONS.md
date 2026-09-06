@@ -57,3 +57,14 @@ product authority.
   but Sage does not promise that conversation content stays local-only.
 - Existing append-only records are preserved. Legacy privacy metadata may
   remain in old files but no longer changes runtime behavior.
+
+## 2026-09-06 — Four canonical product records
+
+- `BLUEPRINT.md` defines purpose, intended behavior, system layers,
+  architecture, interface principles, and permanent boundaries.
+- `DECISIONS.md` records settled choices and why they changed.
+- `MILESTONE.md` records the active outcome and its acceptance evidence.
+- `TIMELINE.md` is Elliot's horizontal past/now/next context map.
+- The former North Star, Invariants, Product, and Roadmap records were merged
+  into this smaller set. `README.md` and `AGENTS.md` remain operational entry
+  points, not additional product authority.

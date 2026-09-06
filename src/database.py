@@ -5,7 +5,7 @@ derived mirrors written alongside it, so a mirror can be rebuilt at any time
 from the files by ``tools/backfill_sqlite.py`` without touching lived memory.
 
 Relational and interior material live in separate database files, mirroring the
-``relational/`` and ``interior/`` directory split required by INVARIANTS.md.
+``relational/`` and ``interior/`` directory split required by the Blueprint.
 
 Events are mirrored as written. Legacy privacy records may remain in existing
 stores, but Sage no longer creates or applies them.

@@ -57,7 +57,7 @@ continuity, judgment, initiative, and local ownership.
 - Sage is single-user and local-first; models are replaceable engines.
 - Lived memory belongs in `~/sage_data/`. Code, project records, and the identity
   seed (`directive.txt`) stay outside it. Earned identity entries live inside
-  `~/sage_data/interior/`, as defined in `docs/INVARIANTS.md`.
+  `~/sage_data/interior/`, as defined in `docs/BLUEPRINT.md`.
 - Keep relational memory and interior material physically separate.
 - Provider calls use the configured local router and only necessary context.
 - All accepted messages use the normal recall, embedding, provider, search, and
@@ -94,15 +94,15 @@ continuity, judgment, initiative, and local ownership.
 
 ## Project authority
 
-- `docs/NORTH_STAR.md` — purpose and felt outcome.
-- `docs/INVARIANTS.md` — permanent constraints.
+- `docs/BLUEPRINT.md` — purpose, intended behavior, system map, and permanent
+  boundaries. It is not an implementation-status claim.
 - `docs/DECISIONS.md` — settled decisions and superseded V3 notice.
-- `docs/BLUEPRINT.md` — behavior map, not an implementation claim.
 - `docs/MILESTONE.md` — current outcome and acceptance evidence.
-- `README.md` — concise report of present reality.
+- `docs/TIMELINE.md` — Elliot's visual past/now/next context map.
 
 Use this file for development workflow and the records above for product
-authority. Follow Elliot's explicit instructions over skill defaults. Older V3
-commits and agent notes are implementation history, not current product
-authority. A generated project map is a navigation aid; verify it against
-current files before relying on it.
+authority. `README.md` reports present reality but is not product authority.
+Follow Elliot's explicit instructions over skill defaults. Older V3 commits and
+agent notes are implementation history, not current product authority. A
+generated project map is a navigation aid; verify it against current files
+before relying on it.

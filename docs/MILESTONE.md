@@ -33,18 +33,30 @@ Already present and verified:
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
 
-## Active outcome — felt continuity
+## Active outcome — legible architecture
+
+Elliot can see what Sage is, how its layers fit together, where development
+stands, and what comes next without maintaining overlapping product records.
+
+## Acceptance evidence — legible architecture
+
+- One Blueprint holds purpose, intended behavior, architecture, interface
+  principles, and permanent boundaries.
+- Decisions records settled choices and their reasons.
+- This file holds only the active outcome and its acceptance evidence.
+- One horizontal Timeline shows past, now, next, and later.
+- README and AGENTS point to the same four authoritative product records.
+- Superseded product records and duplicate timeline artifacts are removed.
+
+## Next outcome — felt continuity
 
 Sage's remembered history influences replies naturally in ordinary, non-crisis
 conversations. Related events can be grouped or summarized without erasing
 their sources.
 
-## Acceptance evidence — felt continuity
-
-- Relevant older moments influence replies without sounding like search.
-- Contradictions remain available without forced resolution.
-- A felt test shows continuity in an ordinary conversation.
-- The selected priority chain is evaluated in real daily use.
+Acceptance will require relevant older moments to influence replies without
+sounding like search, contradictions to remain available without forced
+resolution, and a felt test in ordinary conversation.
 
 ## Explicitly not active yet
 
