@@ -51,7 +51,8 @@ Older V3 commits are implementation history, not current authority.
 - All accepted messages use the normal recall, embedding, provider, and background paths; no sensitive or local-only mode exists
 - Original events are not replaced by frozen facts or current-state tables
 - No writes to lived memory, `.env`, credentials, or destructive migrations without explicit approval
-- Service restarts require Elliot's explicit approval; status and logs are safe to inspect
+- Sage systemd status, logs, start, stop, and restart are standing-authorized
+- Routine Sage milestone commits and pushes are standing-authorized
 - No speculative abstractions or unrelated refactors
 
 </content>

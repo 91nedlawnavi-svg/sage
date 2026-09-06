@@ -71,9 +71,11 @@ continuity, judgment, initiative, and local ownership.
 - Sage must not claim human experience or sentience as fact.
 - Risky, irreversible, external, expensive, or ambiguous actions require explicit
   authorization. This guide authorizes the routine commit/push step below.
-- Do not write to lived memory, change `.env` or credentials, restart services,
-  or perform destructive migrations without explicit user approval. Older
-  permissions in `CLAUDE.md` do not override this boundary.
+- Do not write to lived memory, change `.env` or credentials, or perform
+  destructive migrations without explicit user approval.
+- Sage's systemd user-service commands are standing-authorized, including
+  status, logs, start, stop, and restart. This does not authorize changes to
+  unrelated services.
 - Preserve unrelated local changes. Never commit secrets or include another
   unfinished change in a milestone commit.
 
@@ -87,6 +89,7 @@ continuity, judgment, initiative, and local ownership.
    application test run. Distinguish existing failures from new failures.
 5. Review the diff separately for correctness, scope, privacy, and unwanted edits.
 6. Commit and push each completed, verified milestone, including only its files.
+   Elliot has standing-authorized routine commits and pushes to the Sage remote.
 7. Update affected project records when behavior or the product frame changes.
 
 ## Project authority
