@@ -443,6 +443,15 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(self.store.recall("legacy secret")[0]["content"], "legacy secret")
         self.assertIn('"kind":"privacy"', self.store.path.read_text())
 
+    def test_legacy_search_metadata_stays_raw_but_not_in_dialogue(self) -> None:
+        self.store.path.write_text(
+            '{"id":"search","role":"assistant","content":"[Web search: weather]\\nSources: https://example.com","said_at":"2026-08-15T00:00:00Z"}\n'
+            '{"id":"reply","role":"assistant","content":"It will rain.","said_at":"2026-08-15T00:00:01Z"}\n'
+        )
+
+        self.assertEqual([event["content"] for event in self.store.history()], ["It will rain."])
+        self.assertIn("[Web search: weather]", self.store.path.read_text())
+
     def test_health_does_not_disclose_model_alias(self) -> None:
         web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
         web_thread = Thread(target=web_server.serve_forever)

@@ -49,7 +49,7 @@ rebuildable.
 reflection, identity proposal, and metabolism trigger check. Successful passes
 use completion records to prevent duplicate work.
 
-**95 deterministic tests** covering the current foundation.
+**99 deterministic tests** covering the current foundation.
 
 ## Running
 

@@ -243,6 +243,8 @@ class EventStore:
         for index, record in enumerate(records):
             if isinstance(record, dict) and record.get("kind") in {"privacy", "chat_boundary"}:
                 continue
+            if self._is_legacy_search_event(record):
+                continue
             events.append(self._parse_event(record, index))
         return events
 
@@ -520,3 +522,12 @@ class EventStore:
         else:
             event["id"] = f"legacy:{index}"
         return event
+
+    @staticmethod
+    def _is_legacy_search_event(record: object) -> bool:
+        if not isinstance(record, dict) or record.get("role") != "assistant":
+            return False
+        content = record.get("content")
+        if not isinstance(content, str) or "\nSources:" not in content:
+            return False
+        return content.startswith(("[Web search: ", "[Metabolism search: "))

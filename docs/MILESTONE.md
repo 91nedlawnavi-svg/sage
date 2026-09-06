@@ -28,7 +28,7 @@ Already present and verified:
   stores query/source provenance separately from conversation events.
 - Self-authored identity: heartbeat proposes identity claims from self-observation, Elliot ratifies/rejects via Notebook UI, ratified claims compose into system prompt.
 - Autonomous metabolism: post-conversation gap scan, web exploration, digest reflection, and waiting-message reach. Each stage gates the next; silence is the default.
-- 98 deterministic tests passing after Sensitive mode retirement and audit fixes.
+- 99 deterministic tests passing after Sensitive mode retirement and audit fixes.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
