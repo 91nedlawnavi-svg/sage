@@ -15,6 +15,9 @@ continuity, judgment, initiative, and local ownership.
   necessary; honor authorization already given in the conversation.
 - Keep investigations focused. Reuse verified context and avoid repeated reads
   or checks unless changes, failures, or uncertainty justify them.
+- Use Medium reasoning effort by default. Before deep work likely to benefit
+  from High, xHigh, or Ultra, tell Elliot which level to select and why, then
+  wait for him to trigger it before starting that work.
 
 ## Hard rule: Caveman and Ponytail have separate jobs
 
