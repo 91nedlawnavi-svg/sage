@@ -4,6 +4,9 @@ This is Elliot's visual context map. Read left to right: what Sage became, where
 development stands now, and what comes next. Technical completion evidence lives
 in `MILESTONE.md`; settled reasoning lives in `DECISIONS.md`.
 
+[Open the interactive project whiteboard](timeline-whiteboard.html). The
+whiteboard is a presentation of this record; this file remains authoritative.
+
 ## Journey
 
 ```mermaid

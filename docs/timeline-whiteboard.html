@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111111">
+  <title>Sage — Project Whiteboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --room: #111111;
+      --board: #f7f7f5;
+      --ink: #171717;
+      --muted: #656565;
+      --line: #b9b9b4;
+      --done: #26734d;
+      --done-soft: #e1f1e7;
+      --now: #8b4d00;
+      --now-soft: #fff0c7;
+      --next: #2867b2;
+      --next-soft: #e2efff;
+      --later: #62625f;
+      --later-soft: #ececea;
+      --focus: #125fb3;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-width: 320px;
+      margin: 0;
+      background: var(--room);
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button { font: inherit; }
+
+    button:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 3px;
+    }
+
+    .shell {
+      min-height: 100vh;
+      padding: clamp(12px, 3vw, 32px);
+    }
+
+    .board {
+      min-height: calc(100vh - clamp(24px, 6vw, 64px));
+      overflow: hidden;
+      background: var(--board);
+      box-shadow: 0 4px 8px rgb(0 0 0 / 28%);
+    }
+
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      padding: clamp(20px, 4vw, 44px) clamp(18px, 5vw, 64px) 24px;
+    }
+
+    h1 {
+      max-width: 18ch;
+      margin: 0;
+      font-size: clamp(1.65rem, 4vw, 3.6rem);
+      font-weight: 650;
+      letter-spacing: -.035em;
+      line-height: 1;
+      text-wrap: balance;
+    }
+
+    .lede {
+      max-width: 50ch;
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: .95rem;
+      line-height: 1.5;
+      text-wrap: pretty;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .control {
+      min-height: 44px;
+      padding: 0 15px;
+      border: 1px solid #8e8e89;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    .control:hover { background: #e9e9e6; }
+    .control:active { transform: translateY(1px); }
+    .control:disabled { opacity: .42; cursor: default; transform: none; }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      padding: 0 clamp(18px, 5vw, 64px) 24px;
+      color: var(--muted);
+      font-size: .78rem;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend i {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--later);
+    }
+
+    .legend .done { background: var(--done); }
+    .legend .now { background: var(--now); }
+    .legend .next { background: var(--next); }
+
+    .viewport {
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+      scrollbar-color: #a1a19c transparent;
+      scrollbar-width: thin;
+      scroll-snap-type: x proximity;
+    }
+
+    .track {
+      position: relative;
+      width: max-content;
+      min-width: 100%;
+      padding: 34px max(52px, calc((100vw - 260px) / 2)) 48px;
+      display: flex;
+      align-items: flex-start;
+      gap: 52px;
+    }
+
+    .track::before {
+      content: "";
+      position: absolute;
+      top: 77px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--line);
+    }
+
+    .stage {
+      position: relative;
+      z-index: 1;
+      width: 206px;
+      min-height: 184px;
+      padding: 0 0 20px;
+      border: 0;
+      background: transparent;
+      color: var(--ink);
+      text-align: left;
+      cursor: pointer;
+      scroll-snap-align: center;
+    }
+
+    .stage-date {
+      display: block;
+      height: 34px;
+      color: var(--muted);
+      font-size: .78rem;
+      font-weight: 550;
+    }
+
+    .stage-node {
+      display: grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      margin-left: 14px;
+      border: 4px solid var(--board);
+      border-radius: 50%;
+      background: var(--later);
+      box-shadow: 0 0 0 2px var(--later);
+    }
+
+    .stage-copy {
+      margin-top: 18px;
+      padding: 14px;
+      border-radius: 10px;
+      background: var(--later-soft);
+    }
+
+    .stage-status {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--later);
+      font-size: .7rem;
+      font-weight: 750;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .stage-title {
+      display: block;
+      font-size: 1rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .stage-summary {
+      display: block;
+      margin-top: 6px;
+      color: #4e4e4b;
+      font-size: .82rem;
+      line-height: 1.35;
+    }
+
+    .stage[data-status="done"] .stage-node { background: var(--done); box-shadow: 0 0 0 2px var(--done); }
+    .stage[data-status="done"] .stage-copy { background: var(--done-soft); }
+    .stage[data-status="done"] .stage-status { color: var(--done); }
+    .stage[data-status="now"] .stage-node { background: var(--now); box-shadow: 0 0 0 3px var(--now); }
+    .stage[data-status="now"] .stage-copy { background: var(--now-soft); }
+    .stage[data-status="now"] .stage-status { color: var(--now); }
+    .stage[data-status="next"] .stage-node { background: var(--next); box-shadow: 0 0 0 2px var(--next); }
+    .stage[data-status="next"] .stage-copy { background: var(--next-soft); }
+    .stage[data-status="next"] .stage-status { color: var(--next); }
+
+    .stage[aria-current="step"]::after {
+      content: "YOU ARE HERE";
+      position: absolute;
+      top: -10px;
+      left: 48px;
+      color: var(--now);
+      font-size: .72rem;
+      font-weight: 800;
+      letter-spacing: .08em;
+    }
+
+    .stage[data-selected="true"] .stage-copy {
+      outline: 3px solid currentColor;
+      outline-offset: 4px;
+    }
+
+    .detail {
+      margin: 0 clamp(18px, 5vw, 64px) clamp(24px, 5vw, 56px);
+      padding: clamp(20px, 4vw, 38px) 0 0;
+      border-top: 2px solid #cacac5;
+    }
+
+    .detail-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .detail h2 {
+      margin: 0;
+      font-size: clamp(1.4rem, 3vw, 2.25rem);
+      font-weight: 650;
+      letter-spacing: -.03em;
+      text-wrap: balance;
+    }
+
+    .detail-when {
+      flex: none;
+      color: var(--muted);
+      font-size: .86rem;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: clamp(18px, 4vw, 48px);
+      margin-top: 24px;
+    }
+
+    .detail-block { margin: 0; }
+
+    .detail-block dt {
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: .74rem;
+      font-weight: 750;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+
+    .detail-block dd {
+      margin: 0;
+      max-width: 65ch;
+      font-size: .94rem;
+      line-height: 1.55;
+      text-wrap: pretty;
+    }
+
+    .focus {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 24px;
+    }
+
+    .focus span {
+      padding: 7px 10px;
+      border: 1px solid #a66b1d;
+      border-radius: 999px;
+      color: #744703;
+      font-size: .78rem;
+      font-weight: 650;
+    }
+
+    .hint {
+      margin: 18px clamp(18px, 5vw, 64px) 0;
+      color: var(--muted);
+      font-size: .76rem;
+    }
+
+    .no-script { padding: 0 clamp(18px, 5vw, 64px) 32px; }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 720px) {
+      .shell { padding: 0; }
+      .board { min-height: 100vh; box-shadow: none; }
+      header {
+        display: block;
+        padding-top: max(20px, env(safe-area-inset-top));
+        padding-right: max(18px, env(safe-area-inset-right));
+        padding-left: max(18px, env(safe-area-inset-left));
+      }
+      .controls { justify-content: flex-start; margin-top: 20px; }
+      .track { padding-inline: calc((100vw - 206px) / 2); }
+      .detail-head { display: block; }
+      .detail-when { display: block; margin-top: 6px; }
+      .detail-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      .viewport { scroll-behavior: smooth; }
+      .stage-copy { transition: outline-color 180ms ease-out, transform 180ms ease-out; }
+      .stage:hover .stage-copy { transform: translateY(-3px); }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="board" aria-labelledby="board-title">
+      <header>
+        <div>
+          <h1 id="board-title">Sage project whiteboard</h1>
+          <p class="lede">The whole journey on one line. Select a milestone to see what changed, what it unlocked, and why it matters.</p>
+        </div>
+        <nav class="controls" aria-label="Timeline controls">
+          <button class="control" id="previous" type="button">← Previous</button>
+          <button class="control" id="center-now" type="button">Center now</button>
+          <button class="control" id="next" type="button">Next →</button>
+        </nav>
+      </header>
+
+      <div class="legend" aria-label="Status legend">
+        <span><i class="done"></i>Done</span>
+        <span><i class="now"></i>Now</span>
+        <span><i class="next"></i>Next</span>
+        <span><i></i>Later</span>
+      </div>
+
+      <p class="hint">Swipe or scroll sideways. Arrow keys move between milestones.</p>
+      <div class="viewport" id="viewport" aria-label="Sage development timeline">
+        <div class="track" id="track"></div>
+      </div>
+
+      <section class="detail" aria-labelledby="detail-title" aria-live="polite">
+        <div class="detail-head">
+          <h2 id="detail-title"></h2>
+          <span class="detail-when" id="detail-when"></span>
+        </div>
+        <dl class="detail-grid">
+          <div class="detail-block">
+            <dt>What changed</dt>
+            <dd id="detail-changed"></dd>
+          </div>
+          <div class="detail-block">
+            <dt>What Sage gained</dt>
+            <dd id="detail-gained"></dd>
+          </div>
+          <div class="detail-block">
+            <dt>Key decision</dt>
+            <dd id="detail-decision"></dd>
+          </div>
+        </dl>
+        <div class="focus" id="focus" aria-label="Current focus areas" hidden></div>
+      </section>
+      <noscript><p class="no-script">Enable JavaScript to display the milestones.</p></noscript>
+    </section>
+  </main>
+  <script>
+    const stages = [
+      {
+        title: "Foundation", when: "Aug 10–15", status: "done",
+        summary: "Chat becomes durable",
+        changed: "Terminal and browser chat arrived, events became durable, and the model router was hardened.",
+        gained: "A persistent conversation instead of a disposable chat session.",
+        decision: "Sage is an owned personal intelligence, not a model wrapper."
+      },
+      {
+        title: "Memory", when: "Aug 17–20", status: "done",
+        summary: "History becomes recallable",
+        changed: "Lexical and embedding recall, interior storage, heartbeat, model configuration, and failover were added.",
+        gained: "Earlier events can return as context, and models can change without replacing Sage.",
+        decision: "Original events remain the durable record."
+      },
+      {
+        title: "Refresh", when: "Aug 24–29", status: "done",
+        summary: "Continuity becomes the goal",
+        changed: "The product frame reset, the frontend returned, mobile streaming improved, and recall began using the whole exchange.",
+        gained: "Recent conversation can guide retrieval of older context.",
+        decision: "Felt continuity matters more than accumulating features."
+      },
+      {
+        title: "Identity + Wonder", when: "Sep 1–3", status: "done",
+        summary: "Sage reflects and explores",
+        changed: "Self-observation, identity proposals, conversational search, metabolism, and waiting messages arrived.",
+        gained: "An evidence-based identity and bounded exploration of genuine knowledge gaps.",
+        decision: "Elliot ratifies identity; background work may end in silence."
+      },
+      {
+        title: "Simplification", when: "Sep 6", status: "done",
+        summary: "Obsolete machinery removed",
+        changed: "Sensitive mode was retired, provider boundaries clarified, audit drift repaired, and search records separated from dialogue.",
+        gained: "One normal conversation path without hidden privacy state.",
+        decision: "Preserve lived history and repair Sage instead of rebuilding it."
+      },
+      {
+        title: "Architecture map", when: "Now", status: "now",
+        summary: "One system, clear shape",
+        changed: "Purpose, system layers, architecture, boundaries, decisions, milestones, and direction are being made legible.",
+        gained: "Sage can grow without Elliot losing where everything belongs.",
+        decision: "Map broadly; build one complete behavior at a time.",
+        focus: ["Stack", "Layers", "Architecture", "Modules"]
+      },
+      {
+        title: "Felt continuity", when: "Next", status: "next",
+        summary: "Memory changes conversation",
+        changed: "Relevant episodes, associations, and contradictions will influence ordinary replies naturally.",
+        gained: "One continuing intelligence across daily life.",
+        decision: "Memory must improve the exchange, not announce retrieval."
+      },
+      {
+        title: "Capability", when: "Later", status: "later",
+        summary: "Broader useful work",
+        changed: "Writing, coding, research, planning, and tools broaden behind one identity.",
+        gained: "Useful help across more of Elliot's life.",
+        decision: "Add capabilities for real use, not architectural fashion."
+      },
+      {
+        title: "Agency + Presence", when: "Later", status: "later",
+        summary: "Approved action and reach",
+        changed: "Calibrated preparation and approved action may expand toward voice, vision, and broader reach.",
+        gained: "Useful action with restraint and situational judgment.",
+        decision: "Permission and ownership remain system-wide boundaries."
+      }
+    ];
+
+    const track = document.getElementById("track");
+    const viewport = document.getElementById("viewport");
+    const focus = document.getElementById("focus");
+    let selected = stages.findIndex(stage => stage.status === "now");
+
+    stages.forEach((stage, index) => {
+      const button = document.createElement("button");
+      button.className = "stage";
+      button.type = "button";
+      button.dataset.status = stage.status;
+      if (stage.status === "now") button.setAttribute("aria-current", "step");
+      button.innerHTML = `
+        <span class="stage-date">${stage.when}</span>
+        <span class="stage-node" aria-hidden="true"></span>
+        <span class="stage-copy">
+          <span class="stage-status">${stage.status}</span>
+          <span class="stage-title">${stage.title}</span>
+          <span class="stage-summary">${stage.summary}</span>
+        </span>`;
+      button.addEventListener("click", () => selectStage(index));
+      button.addEventListener("keydown", event => {
+        if (event.key === "ArrowLeft") { event.preventDefault(); selectStage(Math.max(0, index - 1), true); }
+        if (event.key === "ArrowRight") { event.preventDefault(); selectStage(Math.min(stages.length - 1, index + 1), true); }
+        if (event.key === "Home") { event.preventDefault(); selectStage(0, true); }
+        if (event.key === "End") { event.preventDefault(); selectStage(stages.length - 1, true); }
+      });
+      track.append(button);
+    });
+
+    function selectStage(index, moveFocus = false) {
+      selected = index;
+      const stage = stages[index];
+      const buttons = [...track.querySelectorAll(".stage")];
+      buttons.forEach((button, buttonIndex) => button.dataset.selected = String(buttonIndex === index));
+      document.getElementById("detail-title").textContent = stage.title;
+      document.getElementById("detail-when").textContent = `${stage.when} · ${stage.status}`;
+      document.getElementById("detail-changed").textContent = stage.changed;
+      document.getElementById("detail-gained").textContent = stage.gained;
+      document.getElementById("detail-decision").textContent = stage.decision;
+      focus.replaceChildren();
+      focus.hidden = !stage.focus;
+      stage.focus?.forEach(label => {
+        const item = document.createElement("span");
+        item.textContent = label;
+        focus.append(item);
+      });
+      buttons[index].scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+      if (moveFocus) buttons[index].focus();
+      document.getElementById("previous").disabled = index === 0;
+      document.getElementById("next").disabled = index === stages.length - 1;
+    }
+
+    document.getElementById("previous").addEventListener("click", () => selectStage(Math.max(0, selected - 1)));
+    document.getElementById("next").addEventListener("click", () => selectStage(Math.min(stages.length - 1, selected + 1)));
+    document.getElementById("center-now").addEventListener("click", () => selectStage(stages.findIndex(stage => stage.status === "now")));
+    window.addEventListener("load", () => selectStage(selected), { once: true });
+  </script>
+</body>
+</html>
