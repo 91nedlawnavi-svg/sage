@@ -143,15 +143,6 @@ async function startCall() {
       state.socket.send(JSON.stringify({
         setup: {
           model: config.model,
-          generationConfig: {
-            responseModalities: ["AUDIO"],
-            speechConfig: {
-              voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } },
-            },
-          },
-          systemInstruction: { parts: [{ text: config.directive }] },
-          realtimeInputConfig: { turnCoverage: "TURN_INCLUDES_ONLY_ACTIVITY" },
-          sessionResumption: {},
         },
       }));
     };

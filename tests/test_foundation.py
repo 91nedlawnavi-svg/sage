@@ -444,7 +444,7 @@ class FoundationTests(unittest.TestCase):
             token_request.assert_called_once_with("server-secret")
             self.assertEqual(body["token"], "one-use-token")
             self.assertEqual(body["model"], LIVE_MODEL)
-            self.assertIn("You are Sage", body["directive"])
+            self.assertNotIn("directive", body)
             self.assertNotIn("server-secret", json.dumps(body))
             self.assertEqual(self.store.read_all(), [])
         finally:
@@ -482,8 +482,10 @@ class FoundationTests(unittest.TestCase):
         body = json.loads(request.data)
         self.assertEqual(token, "one-use-token")
         self.assertEqual(body["uses"], 1)
-        self.assertEqual(body["liveConnectConstraints"]["model"], LIVE_MODEL)
-        self.assertEqual(body["liveConnectConstraints"]["config"]["responseModalities"], ["AUDIO"])
+        setup = body["bidiGenerateContentSetup"]
+        self.assertEqual(setup["model"], LIVE_MODEL)
+        self.assertEqual(setup["generationConfig"]["responseModalities"], ["AUDIO"])
+        self.assertIn("You are Sage", setup["systemInstruction"]["parts"][0]["text"])
         self.assertNotIn("server-secret", request.full_url)
         self.assertNotIn("server-secret", request.data.decode())
 

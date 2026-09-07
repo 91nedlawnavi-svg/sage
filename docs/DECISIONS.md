@@ -87,7 +87,8 @@ product authority.
 - Gemini 3.1 Flash Live Preview is the temporary audio-to-audio call engine. It
   is not treated as Sage's permanent mind or as a replacement for text chat.
 - Sage's backend keeps the Google API key and issues the browser a one-use,
-  short-lived token. Live audio then travels directly between the browser and
+  short-lived token. The token also locks the model, voice, and identity seed
+  on the server. Live audio then travels directly between the browser and
   Gemini to avoid a Python audio relay.
 - This direct provider connection is a narrow experiment outside the normal
   text router path. It is not a settled production provider design.

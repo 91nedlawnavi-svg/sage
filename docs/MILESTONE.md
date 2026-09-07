@@ -30,9 +30,9 @@ Already present and verified:
 - Self-authored identity: heartbeat proposes identity claims from self-observation, Elliot ratifies/rejects via Notebook UI, ratified claims compose into system prompt.
 - Autonomous metabolism: post-conversation gap scan, web exploration, digest reflection, and waiting-message reach. Each stage gates the next; silence is the default.
 - An isolated `/call` experiment for native audio-to-audio conversation. Its
-  page, audio path, and token boundary are locally verified; the live Gemini
-  handshake still awaits a configured Google AI Studio key. It uses only
-  Sage's identity seed and does not read or write lived memory.
+  page, token boundary, and live Gemini handshake are verified. Elliot's live
+  microphone and felt-quality test remain. The trial uses only Sage's identity
+  seed and does not read or write lived memory.
 - 103 deterministic tests passing across the current foundation and isolated
   voice trial.
 

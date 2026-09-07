@@ -36,12 +36,17 @@ def create_live_token(api_key: str) -> str:
             "uses": 1,
             "expireTime": (now + timedelta(minutes=30)).isoformat().replace("+00:00", "Z"),
             "newSessionExpireTime": (now + timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
-            "liveConnectConstraints": {
+            "bidiGenerateContentSetup": {
                 "model": LIVE_MODEL,
-                "config": {
-                    "sessionResumption": {},
+                "generationConfig": {
                     "responseModalities": ["AUDIO"],
+                    "speechConfig": {
+                        "voiceConfig": {"prebuiltVoiceConfig": {"voiceName": "Kore"}},
+                    },
                 },
+                "systemInstruction": {"parts": [{"text": load_directive()}]},
+                "realtimeInputConfig": {"turnCoverage": "TURN_INCLUDES_ONLY_ACTIVITY"},
+                "sessionResumption": {},
             },
         }
     ).encode()
@@ -187,7 +192,6 @@ class SageHandler(BaseHTTPRequestHandler):
             {
                 "token": token,
                 "model": LIVE_MODEL,
-                "directive": load_directive(),
             },
         )
 
