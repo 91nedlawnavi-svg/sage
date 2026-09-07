@@ -29,12 +29,13 @@ Already present and verified:
   stores query/source provenance separately from conversation events.
 - Self-authored identity: heartbeat proposes identity claims from self-observation, Elliot ratifies/rejects via Notebook UI, ratified claims compose into system prompt.
 - Autonomous metabolism: post-conversation gap scan, web exploration, digest reflection, and waiting-message reach. Each stage gates the next; silence is the default.
-- An isolated `/call` experiment for native audio-to-audio conversation. Its
-  page, token boundary, and live Gemini handshake are verified. Elliot's live
-  microphone and felt-quality test remain. The trial uses only Sage's identity
-  seed and does not read or write lived memory.
-- 103 deterministic tests passing across the current foundation and isolated
-  voice trial.
+- An experimental `/call` path for native audio-to-audio conversation. Elliot
+  verified the live microphone, spoken response, name recognition, and basic
+  felt quality. The memory bridge now supplies ratified identity, recent
+  context, and on-demand episodic recall; completed transcripts enter normal
+  event history while audio remains unstored.
+- 105 deterministic tests passing across the current foundation and voice
+  memory bridge.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
@@ -57,7 +58,7 @@ their sources.
 
 - Broad autonomous actions beyond web search.
 - External notifications.
-- Production voice, memory-integrated voice, or ambient interfaces.
+- Production voice or ambient interfaces.
 - A belief model or belief-edit workflow.
 - A graph or current-state replacement for event memory.
 - More background activity merely to appear alive.

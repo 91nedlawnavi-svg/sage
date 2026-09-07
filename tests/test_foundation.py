@@ -441,7 +441,10 @@ class FoundationTests(unittest.TestCase):
             ) as token_request:
                 with urlopen(request) as response:
                     body = json.load(response)
-            token_request.assert_called_once_with("server-secret")
+            token_request.assert_called_once()
+            self.assertEqual(token_request.call_args.args[0], "server-secret")
+            self.assertIn("You are Sage", token_request.call_args.args[1])
+            self.assertIn("recall_memory", token_request.call_args.args[1])
             self.assertEqual(body["token"], "one-use-token")
             self.assertEqual(body["model"], LIVE_MODEL)
             self.assertNotIn("directive", body)
@@ -476,7 +479,7 @@ class FoundationTests(unittest.TestCase):
     def test_voice_token_request_is_short_lived_and_model_limited(self) -> None:
         with patch("web.urlopen") as open_url:
             open_url.return_value.__enter__.return_value.read.return_value = b'{"name":"one-use-token"}'
-            token = create_live_token("server-secret")
+            token = create_live_token("server-secret", "Locked Sage voice identity")
 
         request = open_url.call_args.args[0]
         body = json.loads(request.data)
@@ -485,9 +488,61 @@ class FoundationTests(unittest.TestCase):
         setup = body["bidiGenerateContentSetup"]
         self.assertEqual(setup["model"], LIVE_MODEL)
         self.assertEqual(setup["generationConfig"]["responseModalities"], ["AUDIO"])
-        self.assertIn("You are Sage", setup["systemInstruction"]["parts"][0]["text"])
+        self.assertEqual(setup["systemInstruction"]["parts"][0]["text"], "Locked Sage voice identity")
+        self.assertEqual(setup["inputAudioTranscription"], {})
+        self.assertEqual(setup["outputAudioTranscription"], {})
+        declaration = setup["tools"][0]["functionDeclarations"][0]
+        self.assertEqual(declaration["name"], "recall_memory")
+        self.assertEqual(declaration["parameters"]["required"], ["query"])
         self.assertNotIn("server-secret", request.full_url)
         self.assertNotIn("server-secret", request.data.decode())
+
+    def test_voice_memory_recall_returns_events_without_writing(self) -> None:
+        self.store.append("user", "We planted basil by the kitchen window")
+        self.store.append("assistant", "The basil liked the morning light.")
+        before = self.store.read_all()
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/live-memory",
+                data=json.dumps({"query": "basil"}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                body = json.load(response)
+            self.assertTrue(any("basil" in event["content"] for event in body["events"]))
+            self.assertEqual(self.store.read_all(), before)
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_voice_turn_saves_normal_user_and_assistant_events(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/live-turn",
+                data=json.dumps({"user": "Do you remember the basil?", "assistant": "Yes, by the kitchen window."}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                body = json.load(response)
+            events = self.store.read_all()
+            self.assertEqual(
+                [(event["role"], event["content"]) for event in events],
+                [("user", "Do you remember the basil?"), ("assistant", "Yes, by the kitchen window.")],
+            )
+            self.assertEqual(body["event_ids"], [event["id"] for event in events])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
 
     def test_browser_clear_chat_preserves_events_and_resets_visible_history(self) -> None:
         self.store.append("user", "Old visible chat")

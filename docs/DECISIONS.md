@@ -94,3 +94,19 @@ product authority.
   text router path. It is not a settled production provider design.
 - The trial receives only `directive.txt`. It has no recall, ratified interior
   identity, tools, search, transcript storage, or writes to `~/sage_data/`.
+
+## 2026-09-07 — Voice memory bridge
+
+- Elliot's live test established that native audio conversation works and feels
+  worth connecting to Sage's continuity.
+- Direct browser-to-Gemini audio remains the low-latency lane. Python does not
+  relay audio.
+- A separate memory lane now supplies Sage's identity seed, ratified identity,
+  recent visible conversation, and an on-demand local episodic recall tool.
+- Only the relevant recalled events cross the direct Gemini connection. Lived
+  memory remains locally stored.
+- Finalized user and assistant transcripts are appended as normal events and
+  receive the normal embedding and background treatment. Audio is not stored.
+- Gemini Live remains the full response model for this experimental voice path,
+  not merely a mouth for the routed text model. The normal text router, web
+  search, and broader tools are not part of calls yet.

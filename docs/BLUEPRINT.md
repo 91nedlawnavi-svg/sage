@@ -47,7 +47,7 @@ reconstructed later from the present situation.
 
 | Layer | Responsibility |
 |---|---|
-| **Interface** | Chat, Notebook, and eventually other ways Elliot reaches Sage. |
+| **Interface** | Chat, voice, Notebook, and eventually other ways Elliot reaches Sage. |
 | **Sage Core** | Identity, context assembly, judgment, and orchestration. |
 | **Memory** | Episodic history, recall, relationships, reflections, and evidence. |
 | **Intelligence** | Replaceable language and embedding models. |
@@ -158,10 +158,11 @@ telemetry, decorative effects, and dense administration surfaces.
 
 ### Models and provider use
 
-- Routed models are replaceable engines behind Sage's stable identity.
+- Models are replaceable engines behind Sage's stable identity.
 - Lived memory remains locally stored.
 - Current messages and relevant context may pass through the configured local
-  router to model providers.
+  router, or through an explicitly approved direct real-time provider
+  connection.
 - Provider context is limited to what the active conversation or approved
   background capability needs.
 - Sage has no sensitive or local-only message mode and does not claim that

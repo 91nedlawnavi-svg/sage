@@ -10,6 +10,10 @@ const state = {
   playback: null,
   silentGain: null,
   connectTimer: null,
+  saveTimer: null,
+  userTranscript: "",
+  assistantTranscript: "",
+  turnClosing: false,
   stopping: false,
 };
 
@@ -95,6 +99,75 @@ function sendAudio(samples) {
   }));
 }
 
+function mergeTranscript(current, update) {
+  const clean = update.trim();
+  if (!clean) return current;
+  if (!current || clean.startsWith(current)) return clean;
+  if (current.endsWith(clean)) return current;
+  const separator = /\s$/.test(current) || /^[\s,.;:!?]/.test(update) ? "" : " ";
+  return `${current}${separator}${update}`.trim();
+}
+
+function recordTranscript(role, text) {
+  const key = role === "user" ? "userTranscript" : "assistantTranscript";
+  state[key] = mergeTranscript(state[key], text);
+  if (state.turnClosing) scheduleTurnSave();
+}
+
+function scheduleTurnSave() {
+  clearTimeout(state.saveTimer);
+  state.saveTimer = setTimeout(() => {
+    state.saveTimer = null;
+    saveTurn();
+  }, 600);
+}
+
+async function saveTurn(keepalive = false) {
+  const user = state.userTranscript;
+  const assistant = state.assistantTranscript;
+  state.userTranscript = "";
+  state.assistantTranscript = "";
+  state.turnClosing = false;
+  if (!user && !assistant) return;
+
+  try {
+    const response = await fetch("/api/live-turn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user, assistant }),
+      keepalive,
+    });
+    if (!response.ok) throw new Error();
+  } catch {
+    if (state.socket) setStatus("Call active; this turn was not saved.");
+  }
+}
+
+async function handleToolCall(toolCall) {
+  setStatus("Remembering…");
+  const functionResponses = await Promise.all((toolCall.functionCalls || []).map(async (call) => {
+    if (call.name !== "recall_memory") {
+      return { name: call.name, id: call.id, response: { error: "Unknown Sage tool." } };
+    }
+    const query = typeof call.args?.query === "string" ? call.args.query : "";
+    try {
+      const response = await fetch("/api/live-memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error();
+      return { name: call.name, id: call.id, response: { result: result.events } };
+    } catch {
+      return { name: call.name, id: call.id, response: { error: "Sage memory is unavailable." } };
+    }
+  }));
+  if (state.socket?.readyState === WebSocket.OPEN && functionResponses.length) {
+    state.socket.send(JSON.stringify({ toolResponse: { functionResponses } }));
+  }
+}
+
 async function handleMessage(event) {
   const text = event.data instanceof Blob ? await event.data.text() : event.data;
   const message = JSON.parse(text);
@@ -107,8 +180,19 @@ async function handleMessage(event) {
     return;
   }
 
+  if (message.toolCall) {
+    await handleToolCall(message.toolCall);
+    return;
+  }
+
   const content = message.serverContent;
   if (!content) return;
+  if (content.inputTranscription?.text) {
+    recordTranscript("user", content.inputTranscription.text);
+  }
+  if (content.outputTranscription?.text) {
+    recordTranscript("assistant", content.outputTranscription.text);
+  }
   if (content.interrupted) {
     state.playback?.port.postMessage("clear");
     setStatus("Listening.");
@@ -119,7 +203,11 @@ async function handleMessage(event) {
       setStatus("Sage is speaking.");
     }
   }
-  if (content.turnComplete) setStatus("Listening.");
+  if (content.turnComplete) {
+    state.turnClosing = true;
+    scheduleTurnSave();
+    setStatus("Listening.");
+  }
 }
 
 async function startCall() {
@@ -162,6 +250,9 @@ async function startCall() {
 function stopCall(message = "Ready when you are.") {
   state.stopping = true;
   clearTimeout(state.connectTimer);
+  clearTimeout(state.saveTimer);
+  state.saveTimer = null;
+  saveTurn(true);
   if (state.socket?.readyState === WebSocket.OPEN) {
     state.socket.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
   }
@@ -182,6 +273,10 @@ function stopCall(message = "Ready when you are.") {
     playback: null,
     silentGain: null,
     connectTimer: null,
+    saveTimer: null,
+    userTranscript: "",
+    assistantTranscript: "",
+    turnClosing: false,
   });
   button.textContent = "Start call";
   button.setAttribute("aria-pressed", "false");

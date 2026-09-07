@@ -13,8 +13,9 @@ only.
 one normal message path, and new-chat boundaries.
 
 **Experimental voice** — `/call` uses Gemini 3.1 Flash Live Preview for a
-direct, native audio-to-audio conversation. The trial receives Sage's identity
-seed but does not read or write lived memory.
+direct, native audio-to-audio conversation. Sage supplies identity and recent
+context, can recall relevant local events during the call, and saves completed
+transcripts as normal episodic history. Audio itself is not stored.
 
 **Episodic memory** — every accepted turn is appended as a timestamped event
 in JSONL. Recall combines lexical overlap and term frequency with
@@ -38,8 +39,9 @@ search the web when she recognizes she lacks knowledge. Query and source
 provenance are stored as separate relational search records, not chat messages.
 
 **Provider boundary** — lived memory stays local. Current messages and compact
-relevant context may pass through the configured router to model providers.
-Sage has no sensitive or local-only message mode.
+relevant context may pass through the configured router, or directly to Gemini
+for the approved Live voice experiment. Sage has no sensitive or local-only
+message mode.
 
 **Separate storage** — events, embeddings, entity observations, search records,
 and completion records are relational. Reflections, identity proposals,
@@ -104,7 +106,7 @@ Use `--self-check` to run without a router.
 - JSONL files as the permanent memory record.
 - SQLite as a rebuildable copy, not the source of truth.
 - Local services for model routing, embeddings, and web search.
-- Gemini Live as the external engine for the isolated voice trial.
+- Gemini Live as the external engine for the memory-connected voice trial.
 - systemd for starting and restarting Sage.
 
 Sage is one small application with one background thread. It is not a group of
@@ -114,10 +116,10 @@ microservices.
 
 | Layer | Current home |
 |---|---|
-| **Interface** | Browser chat, Notebook, and the isolated voice trial in `src/static/`, served by `src/web.py`. |
+| **Interface** | Browser chat, Notebook, and the voice trial in `src/static/`, served by `src/web.py`. |
 | **Sage Core** | Context and identity in `src/sage.py`; browser flow and search decisions still live in `src/web.py`. |
 | **Memory** | Events and recall in `src/events.py`; interior material in `src/interior.py`; SQLite copies in `src/database.py`. |
-| **Intelligence** | Talk-model failover and local embeddings in `src/router.py`; Gemini Live only for the isolated voice trial. |
+| **Intelligence** | Talk-model failover and local embeddings in `src/router.py`; Gemini Live for the experimental native-audio path. |
 | **Capabilities** | Web search through `src/search.py`. |
 | **Agency** | Background reflection and exploration in `src/heartbeat.py` and `src/metabolism.py`. |
 | **Operations** | Startup in `launch.py`, systemd, health checks, tests, and maintenance tools. |
@@ -141,14 +143,17 @@ Starting a new chat adds a boundary; it does not delete old events. Background
 work follows a separate path: conversation, reflection, optional exploration,
 and at most one waiting message.
 
-The `/call` trial follows a separate path: Sage issues a short-lived token,
-then the browser streams audio directly to Gemini Live. It does not enter the
-normal chat, recall, search, embedding, or background paths.
+The `/call` trial keeps audio on a separate low-latency path: Sage issues a
+short-lived token, then the browser streams audio directly to Gemini Live.
+Gemini can request relevant events through Sage's local recall endpoint.
+Completed input and output transcripts return to the normal event and embedding
+path. The text router and conversational web search are not used during calls.
 
 ### Modules
 
 - `launch.py` — starts and connects the production system.
-- `src/web.py` — browser server, live chat flow, and Notebook APIs.
+- `src/web.py` — browser server, text and voice memory bridges, live chat flow,
+  and Notebook APIs.
 - `src/sage.py` — message acceptance, context building, directive, and an unused
   command-line chat path left from earlier development.
 - `src/events.py` — conversation history, related memory, and recall.
@@ -158,7 +163,7 @@ normal chat, recall, search, embedding, or background paths.
 - `src/search.py` — local web search.
 - `src/heartbeat.py` — schedules background work.
 - `src/metabolism.py` — explores gaps after conversation becomes quiet.
-- `src/static/` — browser chat and Notebook.
+- `src/static/` — browser chat, voice call, and Notebook.
 - `tools/` — backfill and model-checking utilities.
 - `tests/` — 103 deterministic checks.
 
