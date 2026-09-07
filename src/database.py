@@ -31,6 +31,20 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_said_at ON events(said_at);
 CREATE INDEX IF NOT EXISTS idx_events_role ON events(role);
 
+CREATE TABLE IF NOT EXISTS event_sources (
+    event_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL CHECK(source IN ('text', 'voice'))
+);
+
+CREATE TABLE IF NOT EXISTS transcript_corrections (
+    id TEXT PRIMARY KEY,
+    source_event_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    said_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_transcript_corrections_source ON transcript_corrections(source_event_id);
+
 CREATE TABLE IF NOT EXISTS entity_observations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entity_id TEXT NOT NULL,

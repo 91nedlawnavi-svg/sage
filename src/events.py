@@ -44,6 +44,16 @@ class Event(TypedDict):
     content: str
     said_at: str
     id: NotRequired[str]
+    source: NotRequired[Literal["text", "voice"]]
+    original_content: NotRequired[str]
+
+
+class TranscriptCorrection(TypedDict):
+    kind: Literal["transcript_correction"]
+    id: str
+    source_event_id: str
+    content: str
+    said_at: str
 
 
 class EntityObservation(TypedDict):
@@ -119,12 +129,14 @@ class EventStore:
         content: str,
         *,
         save_embedding: bool = True,
+        source: Literal["text", "voice"] = "text",
     ) -> Event:
         event: Event = {
             "id": str(uuid4()),
             "role": role,
             "content": content,
             "said_at": self._timestamp(),
+            "source": source,
         }
         self._append_record(event)
         self._mirror_event(event)
@@ -134,6 +146,35 @@ class EventStore:
             except OSError:
                 pass
         return event
+
+    def append_transcript_correction(self, source_event_id: str, content: str) -> TranscriptCorrection:
+        source = next((event for event in self.history() if event["id"] == source_event_id), None)
+        if source is None or source.get("source") != "voice":
+            raise ValueError("Transcript corrections require a voice event")
+        if not content.strip():
+            raise ValueError("Transcript correction must not be blank")
+        record: TranscriptCorrection = {
+            "kind": "transcript_correction",
+            "id": str(uuid4()),
+            "source_event_id": source_event_id,
+            "content": content,
+            "said_at": self._timestamp(),
+        }
+        self._append_record(record)
+        self._mirror_transcript_correction(record)
+        if self.embedder is not None:
+            try:
+                self._save_embedding(source_event_id, content)
+            except OSError:
+                pass
+        return record
+
+    def transcript_corrections(self) -> list[TranscriptCorrection]:
+        return [
+            self._parse_transcript_correction(record)
+            for record in self._read_records()
+            if isinstance(record, dict) and record.get("kind") == "transcript_correction"
+        ]
 
     def append_chat_boundary(self) -> ChatBoundary:
         record: ChatBoundary = {"kind": "chat_boundary", "said_at": self._timestamp()}
@@ -239,13 +280,23 @@ class EventStore:
 
     def history(self) -> list[Event]:
         records = self._read_records()
+        corrections: dict[str, str] = {}
+        for record in records:
+            if isinstance(record, dict) and record.get("kind") == "transcript_correction":
+                correction = self._parse_transcript_correction(record)
+                corrections[correction["source_event_id"]] = correction["content"]
         events: list[Event] = []
         for index, record in enumerate(records):
-            if isinstance(record, dict) and record.get("kind") in {"privacy", "chat_boundary"}:
+            if isinstance(record, dict) and record.get("kind") in {"privacy", "chat_boundary", "transcript_correction"}:
                 continue
             if self._is_legacy_search_event(record):
                 continue
-            events.append(self._parse_event(record, index))
+            event = self._parse_event(record, index)
+            corrected = corrections.get(event["id"]) if event.get("source") == "voice" else None
+            if corrected is not None:
+                event["original_content"] = event["content"]
+                event["content"] = corrected
+            events.append(event)
         return events
 
     def read_all(self) -> list[Event]:
@@ -384,8 +435,23 @@ class EventStore:
                 "INSERT OR IGNORE INTO events (id, role, content, said_at) VALUES (?, ?, ?, ?)",
                 (event["id"], event["role"], event["content"], event["said_at"]),
             )
+            self._mirror.execute(
+                "INSERT OR IGNORE INTO event_sources (event_id, source) VALUES (?, ?)",
+                (event["id"], event["source"]),
+            )
         except Exception:
             _log.warning("mirror: failed to write event %s", event.get("id"), exc_info=True)
+
+    def _mirror_transcript_correction(self, record: TranscriptCorrection) -> None:
+        if self._mirror is None:
+            return
+        try:
+            self._mirror.execute(
+                "INSERT OR IGNORE INTO transcript_corrections (id, source_event_id, content, said_at) VALUES (?, ?, ?, ?)",
+                (record["id"], record["source_event_id"], record["content"], record["said_at"]),
+            )
+        except Exception:
+            _log.warning("mirror: failed to write transcript correction %s", record["id"], exc_info=True)
 
     def _mirror_chat_boundary(self, record: ChatBoundary) -> None:
         if self._mirror is None:
@@ -521,7 +587,30 @@ class EventStore:
             event["id"] = record["id"]
         else:
             event["id"] = f"legacy:{index}"
+        if "source" in record:
+            if record["source"] not in {"text", "voice"}:
+                raise ValueError("Invalid event record")
+            event["source"] = record["source"]
         return event
+
+    @staticmethod
+    def _parse_transcript_correction(record: object) -> TranscriptCorrection:
+        if (
+            not isinstance(record, dict)
+            or record.get("kind") != "transcript_correction"
+            or not isinstance(record.get("id"), str)
+            or not isinstance(record.get("source_event_id"), str)
+            or not isinstance(record.get("content"), str)
+            or not isinstance(record.get("said_at"), str)
+        ):
+            raise ValueError("Invalid transcript correction record")
+        return TranscriptCorrection(
+            kind="transcript_correction",
+            id=record["id"],
+            source_event_id=record["source_event_id"],
+            content=record["content"],
+            said_at=record["said_at"],
+        )
 
     @staticmethod
     def _is_legacy_search_event(record: object) -> bool:

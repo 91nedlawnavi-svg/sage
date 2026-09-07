@@ -154,6 +154,8 @@ telemetry, decorative effects, and dense administration surfaces.
 - No ordinary event is discarded because it appears mundane.
 - Contradictory events remain history.
 - Events store exact UTC `said_at`; `happened_at` may be fuzzy or absent.
+- Machine transcripts retain their source and original wording. Corrections are
+  later linked records, not silent edits; corrected wording may guide recall.
 - User-facing time is WIB.
 
 ### Models and provider use

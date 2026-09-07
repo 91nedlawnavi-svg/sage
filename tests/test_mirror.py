@@ -62,8 +62,9 @@ class BackfillTests(unittest.TestCase):
         self._write_events_jsonl([
             {"kind": "privacy", "target_id": "old", "sensitive": True, "source": "sensor", "said_at": "2025-12-31T23:59:59Z"},
             {"role": "user", "content": "legacy", "said_at": "2026-01-01T00:00:00Z"},
-            {"id": "e1", "role": "user", "content": "a", "said_at": "2026-01-01T00:00:00Z"},
-            {"id": "e2", "role": "assistant", "content": "b", "said_at": "2026-01-01T00:00:01Z"},
+            {"id": "e1", "role": "user", "content": "a", "said_at": "2026-01-01T00:00:00Z", "source": "voice"},
+            {"id": "e2", "role": "assistant", "content": "b", "said_at": "2026-01-01T00:00:01Z", "source": "text"},
+            {"kind": "transcript_correction", "id": "c1", "source_event_id": "e1", "content": "corrected", "said_at": "2026-01-01T00:00:01Z"},
             {"kind": "privacy", "target_id": "e1", "sensitive": True, "source": "sensor", "said_at": "2026-01-01T00:00:02Z"},
             {"kind": "chat_boundary", "said_at": "2026-01-01T00:00:03Z"},
         ])
@@ -76,6 +77,8 @@ class BackfillTests(unittest.TestCase):
         rel = relational_db(self.root)
         rc = backfill_relational(rel, self.root)
         self.assertEqual(rc["events"], 3)
+        self.assertEqual(rc["event_sources"], 2)
+        self.assertEqual(rc["transcript_corrections"], 1)
         self.assertIsNotNone(rel.fetchone("SELECT id FROM events WHERE id = 'legacy:1'"))
         self.assertEqual(rc["chat_boundaries"], 1)
         self.assertEqual(rc["heartbeat_completions"], 2)
@@ -127,6 +130,17 @@ class DualWriteTests(unittest.TestCase):
         self.assertIsNotNone(row)
         self.assertEqual(row["content"], "test content")
         self.assertEqual(row["role"], "user")
+        source = self.rel.fetchone("SELECT source FROM event_sources WHERE event_id = ?", (ev["id"],))
+        self.assertEqual(source["source"], "text")
+
+    def test_transcript_correction_dual_write(self) -> None:
+        ev = self.store.append("user", "wrong words", source="voice")
+        correction = self.store.append_transcript_correction(ev["id"], "right words")
+
+        row = self.rel.fetchone("SELECT * FROM transcript_corrections WHERE id = ?", (correction["id"],))
+        self.assertIsNotNone(row)
+        self.assertEqual(row["source_event_id"], ev["id"])
+        self.assertEqual(row["content"], "right words")
 
     def test_chat_boundary_dual_write(self) -> None:
         self.store.append_chat_boundary()

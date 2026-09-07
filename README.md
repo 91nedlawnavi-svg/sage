@@ -15,7 +15,9 @@ one normal message path, and new-chat boundaries.
 **Experimental voice** — `/call` uses Gemini 3.1 Flash Live Preview for a
 direct, native audio-to-audio conversation. Sage supplies identity and recent
 context, can recall relevant local events during the call, and saves completed
-transcripts as normal episodic history. Audio itself is not stored.
+transcripts as voice-tagged episodic history. Later corrections remain linked
+to the untouched original transcript and become the wording used by recall.
+Audio itself is not stored.
 
 **Episodic memory** — every accepted turn is appended as a timestamped event
 in JSONL. Recall combines lexical overlap and term frequency with
@@ -55,7 +57,7 @@ rebuildable.
 reflection, identity proposal, and metabolism trigger check. Successful passes
 use completion records to prevent duplicate work.
 
-**103 deterministic tests** covering the current foundation.
+**108 deterministic tests** covering the current foundation.
 
 ## Running
 
@@ -147,7 +149,9 @@ The `/call` trial keeps audio on a separate low-latency path: Sage issues a
 short-lived token, then the browser streams audio directly to Gemini Live.
 Gemini can request relevant events through Sage's local recall endpoint.
 Completed input and output transcripts return to the normal event and embedding
-path. The text router and conversational web search are not used during calls.
+path with voice provenance. Append-only correction records can replace faulty
+wording for recall without rewriting the provider transcript. The text router
+and conversational web search are not used during calls.
 
 ### Modules
 
@@ -165,7 +169,7 @@ path. The text router and conversational web search are not used during calls.
 - `src/metabolism.py` — explores gaps after conversation becomes quiet.
 - `src/static/` — browser chat, voice call, and Notebook.
 - `tools/` — backfill and model-checking utilities.
-- `tests/` — 103 deterministic checks.
+- `tests/` — 108 deterministic checks.
 
 ## Tests
 

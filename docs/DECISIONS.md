@@ -110,3 +110,15 @@ product authority.
 - Gemini Live remains the full response model for this experimental voice path,
   not merely a mouth for the routed text model. The normal text router, web
   search, and broader tools are not part of calls yet.
+
+## 2026-09-07 — Voice transcript provenance and correction
+
+- New conversation events identify whether they came from text or voice.
+  Existing untagged history remains unchanged.
+- A voice transcript correction is a new record linked to the source event.
+  The original provider transcript and every correction remain append-only.
+- The newest correction supplies effective wording for recall, embeddings,
+  recent context, and background understanding while original wording remains
+  available for inspection.
+- A review and evaluation surface is separate later work. Reliable provenance
+  and correction history come first.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Literal
 
 from events import Event, EventStore
 from router import RouterClient
@@ -13,10 +14,15 @@ SAVE_FAILURE = "Sage could not save your message. Nothing was sent."
 DIRECTIVE_PATH = Path(__file__).resolve().parents[1] / "directive.txt"
 
 
-def accept_message(message: str, store: EventStore) -> Event | None:
+def accept_message(
+    message: str,
+    store: EventStore,
+    *,
+    source: Literal["text", "voice"] = "text",
+) -> Event | None:
     """Persist user input before any provider can receive it."""
     try:
-        return store.append("user", message)
+        return store.append("user", message, source=source)
     except OSError:
         return None
 

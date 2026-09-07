@@ -33,8 +33,10 @@ Already present and verified:
   verified the live microphone, spoken response, name recognition, and basic
   felt quality. The memory bridge now supplies ratified identity, recent
   context, and on-demand episodic recall; completed transcripts enter normal
-  event history while audio remains unstored.
-- 105 deterministic tests passing across the current foundation and voice
+  event history with voice provenance while audio remains unstored. Later
+  corrections are linked without replacing original transcripts, and corrected
+  wording drives recall.
+- 108 deterministic tests passing across the current foundation and voice
   memory bridge.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like

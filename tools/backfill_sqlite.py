@@ -54,19 +54,26 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
     records = _read_jsonl(events_path)
 
     events = []
+    event_sources = []
     boundaries = []
+    transcript_corrections = []
 
     for index, r in enumerate(records):
         kind = r.get("kind")
         if kind == "chat_boundary":
             boundaries.append((r["said_at"],))
+        elif kind == "transcript_correction":
+            transcript_corrections.append((r["id"], r["source_event_id"], r["content"], r["said_at"]))
         elif r.get("role") in ("user", "assistant"):
+            event_id = r.get("id", f"legacy:{index}")
             events.append((
-                r.get("id", f"legacy:{index}"),
+                event_id,
                 r["role"],
                 r["content"],
                 r["said_at"],
             ))
+            if r.get("source") in {"text", "voice"}:
+                event_sources.append((event_id, r["source"]))
 
     if events:
         db.executemany(
@@ -74,6 +81,20 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
             events,
         )
     counts["events"] = db.count("events")
+
+    if event_sources:
+        db.executemany(
+            "INSERT OR IGNORE INTO event_sources (event_id, source) VALUES (?, ?)",
+            event_sources,
+        )
+    counts["event_sources"] = db.count("event_sources")
+
+    if transcript_corrections:
+        db.executemany(
+            "INSERT OR IGNORE INTO transcript_corrections (id, source_event_id, content, said_at) VALUES (?, ?, ?, ?)",
+            transcript_corrections,
+        )
+    counts["transcript_corrections"] = db.count("transcript_corrections")
 
     if boundaries:
         db.executemany(
@@ -192,11 +213,22 @@ def verify(rel_counts: dict[str, int], int_counts: dict[str, int], data_root: Pa
         records = _read_jsonl(events_path)
         expected_events = sum(1 for r in records if r.get("role") in ("user", "assistant"))
         expected_boundaries = sum(1 for r in records if r.get("kind") == "chat_boundary")
+        expected_sources = sum(
+            1 for r in records
+            if r.get("role") in ("user", "assistant") and r.get("source") in {"text", "voice"}
+        )
+        expected_corrections = sum(1 for r in records if r.get("kind") == "transcript_correction")
 
         if rel_counts.get("events", 0) != expected_events:
             mismatches.append(f"events: expected {expected_events}, got {rel_counts.get('events', 0)}")
         if rel_counts.get("chat_boundaries", 0) != expected_boundaries:
             mismatches.append(f"chat_boundaries: expected {expected_boundaries}, got {rel_counts.get('chat_boundaries', 0)}")
+        if rel_counts.get("event_sources", 0) != expected_sources:
+            mismatches.append(f"event_sources: expected {expected_sources}, got {rel_counts.get('event_sources', 0)}")
+        if rel_counts.get("transcript_corrections", 0) != expected_corrections:
+            mismatches.append(
+                f"transcript_corrections: expected {expected_corrections}, got {rel_counts.get('transcript_corrections', 0)}"
+            )
 
     entities_path = data_root / "relational" / "entities.jsonl"
     if entities_path.exists():

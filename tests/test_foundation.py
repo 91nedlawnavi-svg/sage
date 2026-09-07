@@ -535,14 +535,45 @@ class FoundationTests(unittest.TestCase):
                 body = json.load(response)
             events = self.store.read_all()
             self.assertEqual(
-                [(event["role"], event["content"]) for event in events],
-                [("user", "Do you remember the basil?"), ("assistant", "Yes, by the kitchen window.")],
+                [(event["role"], event["content"], event["source"]) for event in events],
+                [
+                    ("user", "Do you remember the basil?", "voice"),
+                    ("assistant", "Yes, by the kitchen window.", "voice"),
+                ],
             )
             self.assertEqual(body["event_ids"], [event["id"] for event in events])
         finally:
             web_server.shutdown()
             web_thread.join()
             web_server.server_close()
+
+    def test_voice_transcript_correction_preserves_original_and_changes_recall(self) -> None:
+        original = self.store.append("user", "How long until the wrong train?", source="voice")
+        first = self.store.append_transcript_correction(original["id"], "How many minutes until the subway?")
+        latest = self.store.append_transcript_correction(original["id"], "How many minutes until the train?")
+
+        raw_records = [json.loads(line) for line in self.store.path.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(raw_records[0]["content"], "How long until the wrong train?")
+        self.assertEqual(raw_records[0]["source"], "voice")
+        self.assertEqual([record["id"] for record in raw_records[1:]], [first["id"], latest["id"]])
+
+        event = self.store.read_all()[0]
+        self.assertEqual(event["content"], "How many minutes until the train?")
+        self.assertEqual(event["original_content"], "How long until the wrong train?")
+        self.assertEqual(
+            [record["content"] for record in self.store.transcript_corrections()],
+            ["How many minutes until the subway?", "How many minutes until the train?"],
+        )
+        self.assertEqual(
+            self.store.recall("minutes train", fallback=False)[0]["content"],
+            "How many minutes until the train?",
+        )
+
+    def test_transcript_correction_rejects_non_voice_event(self) -> None:
+        typed = self.store.append("user", "Typed exactly")
+
+        with self.assertRaisesRegex(ValueError, "voice event"):
+            self.store.append_transcript_correction(typed["id"], "Changed text")
 
     def test_browser_clear_chat_preserves_events_and_resets_visible_history(self) -> None:
         self.store.append("user", "Old visible chat")

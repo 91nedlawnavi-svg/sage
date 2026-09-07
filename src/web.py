@@ -290,7 +290,7 @@ class SageHandler(BaseHTTPRequestHandler):
 
         saved_ids: list[str] = []
         if user:
-            accepted = accept_message(user, self.server.store)
+            accepted = accept_message(user, self.server.store, source="voice")
             if accepted is None:
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_FAILURE})
                 return
@@ -298,7 +298,7 @@ class SageHandler(BaseHTTPRequestHandler):
             self.server.interior.clear_waiting_message()
         if assistant:
             try:
-                saved_ids.append(self.server.store.append("assistant", assistant)["id"])
+                saved_ids.append(self.server.store.append("assistant", assistant, source="voice")["id"])
             except OSError:
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_REPLY_FAILURE})
                 return
