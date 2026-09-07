@@ -1,16 +1,19 @@
 """Local browser chat for Sage with Notebook and interior data APIs."""
 
 from __future__ import annotations
-import re
 
 import argparse
+from datetime import datetime, timedelta, timezone
 import ipaddress
 import json
+import os
+import re
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterator
 from urllib.parse import unquote, urlparse
+from urllib.request import Request, urlopen
 
 from events import EventStore
 from interior import InteriorStore
@@ -21,6 +24,42 @@ from search import search, format_search_context
 STATIC_ROOT = Path(__file__).with_name("static")
 MAX_REQUEST_BYTES = 64 * 1024
 SAVE_REPLY_FAILURE = "Sage received a reply but could not save it. No assistant reply was recorded."
+LIVE_MODEL = "models/gemini-3.1-flash-live-preview"
+LIVE_TOKEN_URL = "https://generativelanguage.googleapis.com/v1beta/auth_tokens"
+
+
+def create_live_token(api_key: str) -> str:
+    """Create a one-use Gemini Live token without exposing the API key."""
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    body = json.dumps(
+        {
+            "uses": 1,
+            "expireTime": (now + timedelta(minutes=30)).isoformat().replace("+00:00", "Z"),
+            "newSessionExpireTime": (now + timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
+            "liveConnectConstraints": {
+                "model": LIVE_MODEL,
+                "config": {
+                    "sessionResumption": {},
+                    "responseModalities": ["AUDIO"],
+                },
+            },
+        }
+    ).encode()
+    request = Request(
+        LIVE_TOKEN_URL,
+        data=body,
+        headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=15) as response:
+            result = json.load(response)
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("Gemini did not issue a live token.") from exc
+    token = result.get("name") if isinstance(result, dict) else None
+    if not isinstance(token, str) or not token:
+        raise RuntimeError("Gemini returned an invalid live token.")
+    return token
 
 
 class SageServer(ThreadingHTTPServer):
@@ -48,12 +87,22 @@ class SageHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/":
             self._serve_static("index.html", "text/html; charset=utf-8")
+        elif path == "/call":
+            self._serve_static("call.html", "text/html; charset=utf-8")
         elif path == "/static/app.css":
             self._serve_static("app.css", "text/css; charset=utf-8")
+        elif path == "/static/call.css":
+            self._serve_static("call.css", "text/css; charset=utf-8")
         elif path == "/notebook":
             self._serve_static("notebook.html", "text/html; charset=utf-8")
         elif path == "/static/app.js":
             self._serve_static("app.js", "application/javascript; charset=utf-8")
+        elif path == "/static/call.js":
+            self._serve_static("call.js", "application/javascript; charset=utf-8")
+        elif path == "/static/capture.worklet.js":
+            self._serve_static("capture.worklet.js", "application/javascript; charset=utf-8")
+        elif path == "/static/playback.worklet.js":
+            self._serve_static("playback.worklet.js", "application/javascript; charset=utf-8")
         elif path == "/static/notebook.js":
             self._serve_static("notebook.js", "application/javascript; charset=utf-8")
         elif path == "/api/history":
@@ -96,6 +145,9 @@ class SageHandler(BaseHTTPRequestHandler):
             self.send_error(HTTPStatus.FORBIDDEN)
             return
         path = urlparse(self.path).path
+        if path == "/api/live-token":
+            self._live_token()
+            return
         if path == "/api/chat":
             self._chat()
             return
@@ -117,6 +169,27 @@ class SageHandler(BaseHTTPRequestHandler):
             self._identity_ruling(*identity_target)
             return
         self.send_error(HTTPStatus.NOT_FOUND)
+
+    def _live_token(self) -> None:
+        if self._json_body() is None:
+            return
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        if not api_key:
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Gemini Live is not configured."})
+            return
+        try:
+            token = create_live_token(api_key)
+        except RuntimeError:
+            self._json(HTTPStatus.BAD_GATEWAY, {"error": "Gemini Live could not start a call."})
+            return
+        self._json(
+            HTTPStatus.OK,
+            {
+                "token": token,
+                "model": LIVE_MODEL,
+                "directive": load_directive(),
+            },
+        )
 
     def _chat(self) -> None:
         body = self._json_body()

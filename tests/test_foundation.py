@@ -19,7 +19,7 @@ from interior import InteriorStore
 from router import ROUTER_BASE_URL, RouterClient, RouterResult
 from sage import ROUTER_FAILURE, build_router_messages, handle_message, load_directive
 from heartbeat import Heartbeat, parse_reflection
-from web import SageServer
+from web import LIVE_MODEL, SageServer, create_live_token
 
 
 class FakeRouter(BaseHTTPRequestHandler):
@@ -405,6 +405,87 @@ class FoundationTests(unittest.TestCase):
             web_server.shutdown()
             web_thread.join()
             web_server.server_close()
+
+    def test_voice_trial_page_is_served_without_touching_memory(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            with urlopen(f"{base_url}/call") as response:
+                page = response.read()
+            with urlopen(f"{base_url}/static/call.js") as response:
+                script = response.read()
+            self.assertIn(b"Start call", page)
+            self.assertIn(b"BidiGenerateContentConstrained", script)
+            self.assertEqual(self.store.read_all(), [])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_voice_trial_uses_one_short_lived_token_without_saving_events(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            request = Request(
+                f"{base_url}/api/live-token",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with patch.dict("os.environ", {"GEMINI_API_KEY": "server-secret"}), patch(
+                "web.create_live_token", return_value="one-use-token"
+            ) as token_request:
+                with urlopen(request) as response:
+                    body = json.load(response)
+            token_request.assert_called_once_with("server-secret")
+            self.assertEqual(body["token"], "one-use-token")
+            self.assertEqual(body["model"], LIVE_MODEL)
+            self.assertIn("You are Sage", body["directive"])
+            self.assertNotIn("server-secret", json.dumps(body))
+            self.assertEqual(self.store.read_all(), [])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_voice_trial_reports_missing_api_key_without_saving_events(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/live-token",
+                data=b"{}",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with patch.dict("os.environ", {"GEMINI_API_KEY": ""}):
+                with self.assertRaises(HTTPError) as error:
+                    urlopen(request)
+            self.assertEqual(error.exception.code, 503)
+            self.assertEqual(self.store.read_all(), [])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_voice_token_request_is_short_lived_and_model_limited(self) -> None:
+        with patch("web.urlopen") as open_url:
+            open_url.return_value.__enter__.return_value.read.return_value = b'{"name":"one-use-token"}'
+            token = create_live_token("server-secret")
+
+        request = open_url.call_args.args[0]
+        body = json.loads(request.data)
+        self.assertEqual(token, "one-use-token")
+        self.assertEqual(body["uses"], 1)
+        self.assertEqual(body["liveConnectConstraints"]["model"], LIVE_MODEL)
+        self.assertEqual(body["liveConnectConstraints"]["config"]["responseModalities"], ["AUDIO"])
+        self.assertNotIn("server-secret", request.full_url)
+        self.assertNotIn("server-secret", request.data.decode())
 
     def test_browser_clear_chat_preserves_events_and_resets_visible_history(self) -> None:
         self.store.append("user", "Old visible chat")

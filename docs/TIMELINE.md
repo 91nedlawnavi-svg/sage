@@ -43,6 +43,7 @@ flowchart LR
 | **Identity + Wonder** · Sep 1–3 | Self-observation, identity proposals and rulings, conversational search, autonomous metabolism, waiting messages. | Building an evidence-based identity and exploring genuine knowledge gaps. | Elliot ratifies identity; background activity stays bounded and may end in silence. |
 | **Simplification** · Sep 6 | Sensitive mode removed, provider boundary clarified, mirror and retry faults repaired, search records separated from dialogue. | Treating every message as normal conversation without hidden privacy state. | Preserve lived history; delete obsolete machinery instead of rebuilding Sage. |
 | **Architecture map** · Sep 6 | Stack, layers, architecture, modules, and product records became legible. | Growing without Elliot or future developers losing the shape of Sage. | Map current truth; build one complete behavior at a time. |
+| **Voice trial** · Sep 7 | An isolated `/call` surface connected the browser directly to Gemini Live using one-use tokens. | Testing whether native audio-to-audio conversation feels meaningfully better than a manual STT → model → TTS chain. | Keep the trial outside lived memory and the normal text router until its value is proven. |
 | **Felt continuity** · now | Relevant episodes, associations, and contradictions influence ordinary replies naturally. | Feeling like one continuing intelligence across daily life. | Memory must improve the exchange, not announce retrieval. |
 | **Capability** · next | Writing, coding, research, planning, and tools broaden behind one identity. | Helping across more of Elliot's life. | Add capabilities for real use, not architectural fashion. |
 | **Agency + presence** · later | Calibrated preparation and approved action; possibly voice, vision, and broader reach. | Acting usefully while knowing when to hold back. | Permission, ownership, and restraint remain system-wide boundaries. |
@@ -52,4 +53,5 @@ flowchart LR
 Sage has a working local foundation, episodic memory, routed intelligence,
 search, an interior, and bounded background activity. The system map is now
 legible. The current task is proving that memory produces felt continuity in
-normal conversation.
+normal conversation. A separate native-audio voice trial now exists, but it is
+not yet connected to Sage's memory or capabilities.

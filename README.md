@@ -12,6 +12,10 @@ only.
 **Conversation** — browser chat (mobile and desktop) with streaming replies,
 one normal message path, and new-chat boundaries.
 
+**Experimental voice** — `/call` uses Gemini 3.1 Flash Live Preview for a
+direct, native audio-to-audio conversation. The trial receives Sage's identity
+seed but does not read or write lived memory.
+
 **Episodic memory** — every accepted turn is appended as a timestamped event
 in JSONL. Recall combines lexical overlap and term frequency with
 cosine-similarity embeddings, scored against the current exchange. Nothing is
@@ -49,7 +53,7 @@ rebuildable.
 reflection, identity proposal, and metabolism trigger check. Successful passes
 use completion records to prevent duplicate work.
 
-**99 deterministic tests** covering the current foundation.
+**103 deterministic tests** covering the current foundation.
 
 ## Running
 
@@ -61,6 +65,9 @@ python3 launch.py
 
 Sage starts on port 6969 with a heartbeat thread. Lived memory writes to
 `~/sage_data/`; back up existing data before first use.
+
+To try `/call`, add a Google AI Studio key as `GEMINI_API_KEY` in `.env`. Sage
+keeps the key server-side and gives the browser only a one-use token.
 
 The systemd user service at `~/.config/systemd/user/sage.service` manages
 production operation.
@@ -97,6 +104,7 @@ Use `--self-check` to run without a router.
 - JSONL files as the permanent memory record.
 - SQLite as a rebuildable copy, not the source of truth.
 - Local services for model routing, embeddings, and web search.
+- Gemini Live as the external engine for the isolated voice trial.
 - systemd for starting and restarting Sage.
 
 Sage is one small application with one background thread. It is not a group of
@@ -106,10 +114,10 @@ microservices.
 
 | Layer | Current home |
 |---|---|
-| **Interface** | Browser chat and Notebook in `src/static/`, served by `src/web.py`. |
+| **Interface** | Browser chat, Notebook, and the isolated voice trial in `src/static/`, served by `src/web.py`. |
 | **Sage Core** | Context and identity in `src/sage.py`; browser flow and search decisions still live in `src/web.py`. |
 | **Memory** | Events and recall in `src/events.py`; interior material in `src/interior.py`; SQLite copies in `src/database.py`. |
-| **Intelligence** | Talk-model failover and local embeddings in `src/router.py`. |
+| **Intelligence** | Talk-model failover and local embeddings in `src/router.py`; Gemini Live only for the isolated voice trial. |
 | **Capabilities** | Web search through `src/search.py`. |
 | **Agency** | Background reflection and exploration in `src/heartbeat.py` and `src/metabolism.py`. |
 | **Operations** | Startup in `launch.py`, systemd, health checks, tests, and maintenance tools. |
@@ -133,6 +141,10 @@ Starting a new chat adds a boundary; it does not delete old events. Background
 work follows a separate path: conversation, reflection, optional exploration,
 and at most one waiting message.
 
+The `/call` trial follows a separate path: Sage issues a short-lived token,
+then the browser streams audio directly to Gemini Live. It does not enter the
+normal chat, recall, search, embedding, or background paths.
+
 ### Modules
 
 - `launch.py` — starts and connects the production system.
@@ -148,7 +160,7 @@ and at most one waiting message.
 - `src/metabolism.py` — explores gaps after conversation becomes quiet.
 - `src/static/` — browser chat and Notebook.
 - `tools/` — backfill and model-checking utilities.
-- `tests/` — 99 deterministic checks.
+- `tests/` — 103 deterministic checks.
 
 ## Tests
 

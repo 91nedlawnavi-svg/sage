@@ -1,0 +1,85 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #000;
+  color: #ececec;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  min-width: 320px;
+  min-height: 100dvh;
+  margin: 0;
+  background: #000;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  width: min(100%, 38rem);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: max(22px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+}
+
+#back {
+  width: fit-content;
+  color: #b4b4b4;
+  text-decoration: none;
+  font-size: .9rem;
+}
+
+#back:focus-visible,
+#call-button:focus-visible {
+  outline: 2px solid #ececec;
+  outline-offset: 3px;
+}
+
+section {
+  margin: auto 0;
+  padding: 48px 0;
+  text-align: center;
+}
+
+h1 {
+  margin: 0;
+  font-size: 2.4rem;
+  font-weight: 600;
+  letter-spacing: -.04em;
+  text-wrap: balance;
+}
+
+#status {
+  min-height: 1.5em;
+  margin: 16px 0 30px;
+  color: #b4b4b4;
+}
+
+#call-button {
+  min-width: 10rem;
+  min-height: 3.25rem;
+  padding: 0 28px;
+  border: 0;
+  border-radius: 999px;
+  background: #f4f4f4;
+  color: #171717;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+#call-button:active { transform: scale(.98); }
+#call-button:not(.active):hover:not(:disabled) { background: #dedede; }
+#call-button:disabled { cursor: wait; opacity: .58; }
+#call-button.active { background: #3d2727; color: #f2d8d8; }
+#call-button.active:hover { background: #4b3030; }
+
+#note {
+  max-width: 31rem;
+  margin: 30px auto 0;
+  color: #8f8f8f;
+  font-size: .8rem;
+  line-height: 1.55;
+}

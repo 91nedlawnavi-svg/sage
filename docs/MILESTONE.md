@@ -29,7 +29,12 @@ Already present and verified:
   stores query/source provenance separately from conversation events.
 - Self-authored identity: heartbeat proposes identity claims from self-observation, Elliot ratifies/rejects via Notebook UI, ratified claims compose into system prompt.
 - Autonomous metabolism: post-conversation gap scan, web exploration, digest reflection, and waiting-message reach. Each stage gates the next; silence is the default.
-- 99 deterministic tests passing after Sensitive mode retirement and audit fixes.
+- An isolated `/call` experiment for native audio-to-audio conversation. Its
+  page, audio path, and token boundary are locally verified; the live Gemini
+  handshake still awaits a configured Google AI Studio key. It uses only
+  Sage's identity seed and does not read or write lived memory.
+- 103 deterministic tests passing across the current foundation and isolated
+  voice trial.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
@@ -52,7 +57,7 @@ their sources.
 
 - Broad autonomous actions beyond web search.
 - External notifications.
-- Voice or ambient interfaces.
+- Production voice, memory-integrated voice, or ambient interfaces.
 - A belief model or belief-edit workflow.
 - A graph or current-state replacement for event memory.
 - More background activity merely to appear alive.
