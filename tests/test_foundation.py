@@ -855,18 +855,19 @@ class FoundationTests(unittest.TestCase):
         web_thread = Thread(target=web_server.serve_forever)
         web_thread.start()
         try:
-            request = Request(
-                f"http://127.0.0.1:{web_server.server_port}/api/chat",
-                data=json.dumps({"message": "Hello Sage"}).encode(),
-                headers={
-                    "Content-Type": "application/json",
-                    "Host": "th.tail674e3a.ts.net",
-                    "Origin": "https://th.tail674e3a.ts.net",
-                },
-                method="POST",
-            )
-            with urlopen(request) as response:
-                self.assertEqual(read_stream(response)[-1], {"type": "done"})
+            for host in ("th.tail674e3a.ts.net", "th.tail674e3a.ts.net:443"):
+                request = Request(
+                    f"http://127.0.0.1:{web_server.server_port}/api/chat",
+                    data=json.dumps({"message": "Hello Sage"}).encode(),
+                    headers={
+                        "Content-Type": "application/json",
+                        "Host": host,
+                        "Origin": "https://th.tail674e3a.ts.net",
+                    },
+                    method="POST",
+                )
+                with urlopen(request) as response:
+                    self.assertEqual(read_stream(response)[-1], {"type": "done"})
         finally:
             web_server.shutdown()
             web_thread.join()

@@ -24,6 +24,7 @@ from search import search, format_search_context
 
 STATIC_ROOT = Path(__file__).with_name("static")
 FUNNEL_HOST = "th.tail674e3a.ts.net"
+FUNNEL_HOST_WITH_PORT = f"{FUNNEL_HOST}:443"
 FUNNEL_ORIGIN = f"https://{FUNNEL_HOST}"
 MAX_REQUEST_BYTES = 64 * 1024
 SAVE_REPLY_FAILURE = "Sage received a reply but could not save it. No assistant reply was recorded."
@@ -708,7 +709,7 @@ class SageHandler(BaseHTTPRequestHandler):
 
     def _trusted_host(self) -> bool:
         host = self.headers.get("Host", "")
-        if host == FUNNEL_HOST:
+        if host in {FUNNEL_HOST, FUNNEL_HOST_WITH_PORT}:
             return True
         name, separator, port = host.rpartition(":")
         if not separator or port != str(self.server.server_port):
@@ -724,9 +725,11 @@ class SageHandler(BaseHTTPRequestHandler):
     def _same_origin(self) -> bool:
         origin = self.headers.get("Origin")
         host = self.headers["Host"]
-        return origin is None or (host != FUNNEL_HOST and origin == f"http://{host}") or (
-            host == FUNNEL_HOST and origin == FUNNEL_ORIGIN
-        )
+        if origin is None:
+            return True
+        if host in {FUNNEL_HOST, FUNNEL_HOST_WITH_PORT}:
+            return origin == FUNNEL_ORIGIN
+        return origin == f"http://{host}"
 
     def _write_chunk(self, text: str) -> None:
         data = text.encode()
