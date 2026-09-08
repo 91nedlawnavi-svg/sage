@@ -23,6 +23,8 @@ from sage import ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_mess
 from search import search, format_search_context
 
 STATIC_ROOT = Path(__file__).with_name("static")
+FUNNEL_HOST = "th.tail674e3a.ts.net"
+FUNNEL_ORIGIN = f"https://{FUNNEL_HOST}"
 MAX_REQUEST_BYTES = 64 * 1024
 SAVE_REPLY_FAILURE = "Sage received a reply but could not save it. No assistant reply was recorded."
 LIVE_MODEL = "models/gemini-3.1-flash-live-preview"
@@ -706,6 +708,8 @@ class SageHandler(BaseHTTPRequestHandler):
 
     def _trusted_host(self) -> bool:
         host = self.headers.get("Host", "")
+        if host == FUNNEL_HOST:
+            return True
         name, separator, port = host.rpartition(":")
         if not separator or port != str(self.server.server_port):
             return False
@@ -719,7 +723,10 @@ class SageHandler(BaseHTTPRequestHandler):
 
     def _same_origin(self) -> bool:
         origin = self.headers.get("Origin")
-        return origin is None or origin == f"http://{self.headers['Host']}"
+        host = self.headers["Host"]
+        return origin is None or (host != FUNNEL_HOST and origin == f"http://{host}") or (
+            host == FUNNEL_HOST and origin == FUNNEL_ORIGIN
+        )
 
     def _write_chunk(self, text: str) -> None:
         data = text.encode()

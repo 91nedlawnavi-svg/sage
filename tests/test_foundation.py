@@ -808,6 +808,23 @@ class FoundationTests(unittest.TestCase):
             with self.assertRaises(HTTPError) as error:
                 urlopen(request)
             self.assertEqual(error.exception.code, 403)
+            request = Request(url, headers={"Host": "th.tail674e3a.ts.net.evil.example"})
+            with self.assertRaises(HTTPError) as error:
+                urlopen(request)
+            self.assertEqual(error.exception.code, 403)
+            request = Request(
+                url,
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Host": "th.tail674e3a.ts.net",
+                    "Origin": "http://th.tail674e3a.ts.net",
+                },
+                method="POST",
+            )
+            with self.assertRaises(HTTPError) as error:
+                urlopen(request)
+            self.assertEqual(error.exception.code, 403)
             self.assertEqual(self.store.read_all(), [])
         finally:
             web_server.shutdown()
@@ -824,6 +841,28 @@ class FoundationTests(unittest.TestCase):
                 f"http://127.0.0.1:{web_server.server_port}/api/chat",
                 data=json.dumps({"message": "Hello Sage"}).encode(),
                 headers={"Content-Type": "application/json", "Host": host, "Origin": f"http://{host}"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                self.assertEqual(read_stream(response)[-1], {"type": "done"})
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_browser_accepts_tailscale_funnel_host_with_https_origin(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/chat",
+                data=json.dumps({"message": "Hello Sage"}).encode(),
+                headers={
+                    "Content-Type": "application/json",
+                    "Host": "th.tail674e3a.ts.net",
+                    "Origin": "https://th.tail674e3a.ts.net",
+                },
                 method="POST",
             )
             with urlopen(request) as response:
