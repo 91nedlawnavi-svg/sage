@@ -419,9 +419,12 @@ class FoundationTests(unittest.TestCase):
                 script = response.read()
             with urlopen(f"{base_url}/calls") as response:
                 review = response.read()
+            with urlopen(f"{base_url}/static/sage-mark.svg") as response:
+                mark = response.read()
             self.assertIn(b"Start call", page)
             self.assertIn(b"BidiGenerateContentConstrained", script)
             self.assertIn(b"Call review", review)
+            self.assertIn(b"<svg", mark)
             self.assertEqual(self.store.read_all(), [])
         finally:
             web_server.shutdown()

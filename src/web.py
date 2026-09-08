@@ -138,6 +138,8 @@ class SageHandler(BaseHTTPRequestHandler):
             self._serve_static("call.js", "application/javascript; charset=utf-8")
         elif path == "/static/calls.js":
             self._serve_static("calls.js", "application/javascript; charset=utf-8")
+        elif path == "/static/sage-mark.svg":
+            self._serve_static("sage-mark.svg", "image/svg+xml")
         elif path == "/static/capture.worklet.js":
             self._serve_static("capture.worklet.js", "application/javascript; charset=utf-8")
         elif path == "/static/playback.worklet.js":

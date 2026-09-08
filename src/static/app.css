@@ -285,6 +285,8 @@ textarea:disabled { opacity: .65; }
   justify-content: space-between;
   border-bottom: 1px solid var(--border);
 }
+#drawer-brand { display: flex; align-items: center; gap: 10px; }
+#drawer-brand img { width: 28px; height: 28px; flex: none; }
 #drawer-title { font-size: 1.25rem; font-weight: 650; letter-spacing: -.02em; }
 #drawer-close { display: grid; place-items: center; border-radius: 8px; color: var(--muted); }
 #drawer-nav { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 12px 0; }
