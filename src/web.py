@@ -12,7 +12,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterator
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlencode, unquote, urlparse
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
@@ -29,6 +29,12 @@ LIVE_MODEL = "models/gemini-3.1-flash-live-preview"
 LIVE_TOKEN_URL = "https://generativelanguage.googleapis.com/v1beta/auth_tokens"
 LIVE_MEMORY_LIMIT = 8
 LIVE_EVENT_CHAR_LIMIT = 1_500
+DEEPGRAM_STT_URL = "https://api.deepgram.com/v1/listen"
+DEEPGRAM_TTS_URL = "https://api.deepgram.com/v1/speak"
+DEEPGRAM_STT_MODEL = "nova-3"
+DEEPGRAM_TTS_MODEL = "aura-2-luna-en"
+MAX_AUDIO_BYTES = 10 * 1024 * 1024
+MAX_TTS_CHARS = 1_000
 
 
 def create_live_token(api_key: str, system_instruction: str) -> str:
@@ -95,6 +101,41 @@ def create_live_token(api_key: str, system_instruction: str) -> str:
     return token
 
 
+def deepgram_transcribe(api_key: str, audio: bytes, content_type: str) -> str:
+    query = urlencode({"model": os.getenv("SAGE_STT_MODEL", DEEPGRAM_STT_MODEL), "smart_format": "true"})
+    request = Request(
+        f"{DEEPGRAM_STT_URL}?{query}",
+        data=audio,
+        headers={"Authorization": f"Token {api_key}", "Content-Type": content_type},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=30) as response:
+            body = json.load(response)
+        transcript = body["results"]["channels"][0]["alternatives"][0]["transcript"]
+    except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError("Deepgram could not transcribe the recording.") from exc
+    return transcript.strip() if isinstance(transcript, str) else ""
+
+
+def deepgram_synthesize(api_key: str, text: str) -> bytes:
+    query = urlencode({"model": os.getenv("SAGE_TTS_MODEL", DEEPGRAM_TTS_MODEL)})
+    request = Request(
+        f"{DEEPGRAM_TTS_URL}?{query}",
+        data=json.dumps({"text": text}).encode(),
+        headers={"Authorization": f"Token {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=30) as response:
+            audio = response.read()
+    except OSError as exc:
+        raise RuntimeError("Deepgram could not synthesize speech.") from exc
+    if not audio:
+        raise RuntimeError("Deepgram returned no speech audio.")
+    return audio
+
+
 class SageServer(ThreadingHTTPServer):
     def __init__(
         self,
@@ -122,6 +163,8 @@ class SageHandler(BaseHTTPRequestHandler):
             self._serve_static("index.html", "text/html; charset=utf-8")
         elif path == "/call":
             self._serve_static("call.html", "text/html; charset=utf-8")
+        elif path == "/call/split":
+            self._serve_static("split-call.html", "text/html; charset=utf-8")
         elif path == "/calls":
             self._serve_static("calls.html", "text/html; charset=utf-8")
         elif path == "/static/app.css":
@@ -136,6 +179,8 @@ class SageHandler(BaseHTTPRequestHandler):
             self._serve_static("app.js", "application/javascript; charset=utf-8")
         elif path == "/static/call.js":
             self._serve_static("call.js", "application/javascript; charset=utf-8")
+        elif path == "/static/split-call.js":
+            self._serve_static("split-call.js", "application/javascript; charset=utf-8")
         elif path == "/static/calls.js":
             self._serve_static("calls.js", "application/javascript; charset=utf-8")
         elif path == "/static/sage-mark.svg":
@@ -196,6 +241,15 @@ class SageHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/live-turn":
             self._live_turn()
+            return
+        if path == "/api/split-voice/stt":
+            self._split_voice_stt()
+            return
+        if path == "/api/split-voice/tts":
+            self._split_voice_tts()
+            return
+        if path == "/api/split-voice/chat":
+            self._chat(voice=True)
             return
         if path == "/api/transcript-corrections":
             self._transcript_correction()
@@ -338,6 +392,52 @@ class SageHandler(BaseHTTPRequestHandler):
                 return
         self._json(HTTPStatus.OK, {"event_ids": saved_ids, "turn_id": turn_id})
 
+    def _split_voice_stt(self) -> None:
+        api_key = os.getenv("DEEPGRAM_API_KEY", "").strip()
+        if not api_key:
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Deepgram voice is not configured."})
+            return
+        content_type = self.headers.get("Content-Type", "").split(";", 1)[0]
+        if not content_type.startswith("audio/"):
+            self._json(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, {"error": "content type must be audio"})
+            return
+        audio = self._raw_body(MAX_AUDIO_BYTES)
+        if audio is None:
+            return
+        try:
+            transcript = deepgram_transcribe(api_key, audio, content_type)
+        except RuntimeError as exc:
+            self._json(HTTPStatus.BAD_GATEWAY, {"error": str(exc)})
+            return
+        self._json(HTTPStatus.OK, {"transcript": transcript})
+
+    def _split_voice_tts(self) -> None:
+        api_key = os.getenv("DEEPGRAM_API_KEY", "").strip()
+        if not api_key:
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Deepgram voice is not configured."})
+            return
+        body = self._json_body()
+        if body is None:
+            return
+        text = body.get("text")
+        if not isinstance(text, str) or not (text := text.strip()):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "text must be a nonblank string"})
+            return
+        if len(text) > MAX_TTS_CHARS:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "speech chunk is too long"})
+            return
+        try:
+            audio = deepgram_synthesize(api_key, text)
+        except RuntimeError as exc:
+            self._json(HTTPStatus.BAD_GATEWAY, {"error": str(exc)})
+            return
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "audio/mpeg")
+        self.send_header("Content-Length", str(len(audio)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(audio)
+
     def _transcript_correction(self) -> None:
         body = self._json_body()
         if body is None:
@@ -390,7 +490,7 @@ class SageHandler(BaseHTTPRequestHandler):
         except ValueError:
             return False
 
-    def _chat(self) -> None:
+    def _chat(self, *, voice: bool = False) -> None:
         body = self._json_body()
         if body is None:
             return
@@ -398,7 +498,18 @@ class SageHandler(BaseHTTPRequestHandler):
         if not isinstance(message, str) or not (message := message.strip()):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "message must be a nonblank string"})
             return
-        accepted = accept_message(message, self.server.store)
+        call_id = body.get("call_id") if voice else None
+        turn_id = body.get("turn_id") if voice else None
+        if voice and (not self._uuid(call_id) or not self._uuid(turn_id)):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "voice chat requires valid call and turn IDs"})
+            return
+        accepted = accept_message(
+            message,
+            self.server.store,
+            source="voice" if voice else "text",
+            call_id=call_id,
+            turn_id=turn_id,
+        )
         if accepted is None:
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_FAILURE})
             return
@@ -446,6 +557,9 @@ class SageHandler(BaseHTTPRequestHandler):
                 )
             ),
             persist_reply=True,
+            source="voice" if voice else "text",
+            call_id=call_id,
+            turn_id=turn_id,
         )
 
     def _decide_search(self, message: str, exclude_event_id: str) -> str | None:
@@ -508,6 +622,17 @@ class SageHandler(BaseHTTPRequestHandler):
             return None
         return body
 
+    def _raw_body(self, max_bytes: int) -> bytes | None:
+        try:
+            length = int(self.headers["Content-Length"])
+        except (KeyError, ValueError):
+            self._json(HTTPStatus.LENGTH_REQUIRED, {"error": "content length is required"})
+            return None
+        if not 0 < length <= max_bytes:
+            self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "recording is too large"})
+            return None
+        return self.rfile.read(length)
+
     @staticmethod
     def _identity_target(path: str) -> tuple[str, str] | None:
         """Parse /api/identity/<id>/ratify or /api/identity/<id>/reject."""
@@ -535,7 +660,15 @@ class SageHandler(BaseHTTPRequestHandler):
             self.send_header(name, value)
         self.end_headers()
 
-    def _stream_reply(self, chunks: Iterator[str], *, persist_reply: bool) -> None:
+    def _stream_reply(
+        self,
+        chunks: Iterator[str],
+        *,
+        persist_reply: bool,
+        source: str = "text",
+        call_id: str | None = None,
+        turn_id: str | None = None,
+    ) -> None:
         reply: list[str] = []
         completed = False
         try:
@@ -550,7 +683,13 @@ class SageHandler(BaseHTTPRequestHandler):
                 return
             if persist_reply:
                 try:
-                    self.server.store.append("assistant", "".join(reply))
+                    self.server.store.append(
+                        "assistant",
+                        "".join(reply),
+                        source=source,
+                        call_id=call_id,
+                        turn_id=turn_id,
+                    )
                 except OSError:
                     self._write_stream_event("error", SAVE_REPLY_FAILURE)
                     return

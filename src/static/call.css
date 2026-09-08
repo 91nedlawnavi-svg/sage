@@ -41,6 +41,14 @@ nav a:focus-visible,
   outline-offset: 3px;
 }
 
+#timing {
+  min-height: 1.25em;
+  margin: 20px 0 0;
+  color: #ececec;
+  font-size: .85rem;
+  font-variant-numeric: tabular-nums;
+}
+
 section {
   margin: auto 0;
   padding: 48px 0;

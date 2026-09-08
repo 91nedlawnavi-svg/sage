@@ -431,6 +431,81 @@ class FoundationTests(unittest.TestCase):
             web_thread.join()
             web_server.server_close()
 
+    def test_split_voice_page_and_deepgram_endpoints_do_not_expose_the_key(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            with urlopen(f"{base_url}/call/split") as response:
+                page = response.read()
+            with urlopen(f"{base_url}/static/split-call.js") as response:
+                script = response.read()
+            self.assertIn(b"Hold to talk", page)
+            self.assertIn(b"/api/split-voice/stt", script)
+            self.assertNotIn(b"server-secret", page + script)
+
+            stt_request = Request(
+                f"{base_url}/api/split-voice/stt",
+                data=b"webm-audio",
+                headers={"Content-Type": "audio/webm"},
+                method="POST",
+            )
+            tts_request = Request(
+                f"{base_url}/api/split-voice/tts",
+                data=json.dumps({"text": "Hello Elliot."}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with patch.dict("os.environ", {"DEEPGRAM_API_KEY": "server-secret"}), patch(
+                "web.deepgram_transcribe", return_value="Hello Sage"
+            ) as transcribe, patch("web.deepgram_synthesize", return_value=b"mp3-audio") as synthesize:
+                with urlopen(stt_request) as response:
+                    self.assertEqual(json.load(response), {"transcript": "Hello Sage"})
+                with urlopen(tts_request) as response:
+                    self.assertEqual(response.headers["Content-Type"], "audio/mpeg")
+                    self.assertEqual(response.read(), b"mp3-audio")
+            transcribe.assert_called_once_with("server-secret", b"webm-audio", "audio/webm")
+            synthesize.assert_called_once_with("server-secret", "Hello Elliot.")
+            self.assertEqual(self.store.read_all(), [])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_split_voice_chat_streams_and_saves_one_grouped_voice_turn(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        call_id = "44444444-4444-4444-8444-444444444444"
+        turn_id = "55555555-5555-4555-8555-555555555555"
+        try:
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/split-voice/chat",
+                data=json.dumps({"message": "Hello Sage", "call_id": call_id, "turn_id": turn_id}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                events = read_stream(response)
+            self.assertEqual(
+                events,
+                [
+                    {"type": "delta", "content": "Hel"},
+                    {"type": "delta", "content": "lo."},
+                    {"type": "model", "content": "free-tier-alias"},
+                    {"type": "done"},
+                ],
+            )
+            saved = self.store.read_all()
+            self.assertEqual([(event["role"], event["content"]) for event in saved], [("user", "Hello Sage"), ("assistant", "Hello.")])
+            self.assertTrue(all(event["source"] == "voice" for event in saved))
+            self.assertTrue(all(event["call_id"] == call_id and event["turn_id"] == turn_id for event in saved))
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
     def test_voice_trial_uses_one_short_lived_token_without_saving_events(self) -> None:
         web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
         web_thread = Thread(target=web_server.serve_forever)

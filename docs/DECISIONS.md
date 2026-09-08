@@ -130,3 +130,19 @@ product authority.
   edits. Existing voice history without call identifiers remains unchanged.
 - Automated transcript evaluation waits for trustworthy corrected examples;
   the review surface establishes those examples first.
+
+## 2026-09-08 — Split voice latency trial
+
+- Direct Gemini Live remains available unchanged as the low-latency baseline.
+- `/call/split` tests a second path: held audio goes to Deepgram STT, the final
+  transcript enters Sage's normal routed text path, and Deepgram TTS speaks the
+  reply.
+- Sage's streamed reply is divided only at completed sentence boundaries. TTS
+  requests can run while later text is still arriving, but playback remains in
+  order.
+- The trial shows STT, first-sentence, TTS, and total-to-audio times. Its purpose is
+  to measure whether stronger control over Sage's words outweighs added delay;
+  it does not settle the production voice architecture.
+- Split turns keep normal voice provenance, append-only transcript correction,
+  and Call Review grouping. Audio remains unstored and provider keys remain on
+  the server.

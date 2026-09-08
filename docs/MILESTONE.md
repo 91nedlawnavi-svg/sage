@@ -37,8 +37,12 @@ Already present and verified:
   corrections are linked without replacing original transcripts, and corrected
   wording drives recall. New calls and turns are grouped in a local review
   screen where Elliot can inspect and correct either side of the transcript.
-- 110 deterministic tests passing across the current foundation and voice
-  memory bridge.
+  A separate `/call/split` latency trial sends held audio through Deepgram STT,
+  Sage's normal streamed text path, and sentence-chunked Deepgram TTS. It shows
+  STT, first-sentence, TTS, and total-to-audio timing while leaving direct Gemini Live
+  unchanged as the baseline.
+- 112 deterministic tests passing across the current foundation and both voice
+  paths.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.

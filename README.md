@@ -18,7 +18,10 @@ context, can recall relevant local events during the call, and saves completed
 transcripts as voice-tagged episodic history. Later corrections remain linked
 to the untouched original transcript and become the wording used by recall.
 New calls can be inspected and corrected locally at `/calls`, grouped by call
-and turn. Audio itself is not stored.
+and turn. `/call/split` is a side-by-side latency trial: Deepgram transcribes a
+held recording, Sage's normal text path streams the reply, and completed
+sentences are synthesized and queued while later text is still arriving. Audio
+itself is not stored.
 
 **Episodic memory** — every accepted turn is appended as a timestamped event
 in JSONL. Recall combines lexical overlap and term frequency with
@@ -71,8 +74,9 @@ python3 launch.py
 Sage starts on port 6969 with a heartbeat thread. Lived memory writes to
 `~/sage_data/`; back up existing data before first use.
 
-To try `/call`, add a Google AI Studio key as `GEMINI_API_KEY` in `.env`. Sage
-keeps the key server-side and gives the browser only a one-use token.
+To try `/call`, add a Google AI Studio key as `GEMINI_API_KEY` in `.env`. To try
+`/call/split`, add `DEEPGRAM_API_KEY`. Sage keeps both keys server-side; only
+the direct Gemini path gives the browser a one-use token.
 
 The systemd user service at `~/.config/systemd/user/sage.service` manages
 production operation.
@@ -109,7 +113,7 @@ Use `--self-check` to run without a router.
 - JSONL files as the permanent memory record.
 - SQLite as a rebuildable copy, not the source of truth.
 - Local services for model routing, embeddings, and web search.
-- Gemini Live as the external engine for the memory-connected voice trial.
+- Gemini Live for direct audio and Deepgram STT/TTS for the split voice trial.
 - systemd for starting and restarting Sage.
 
 Sage is one small application with one background thread. It is not a group of
@@ -153,7 +157,14 @@ Completed input and output transcripts return to the normal event and embedding
 path with voice provenance. Append-only correction records can replace faulty
 wording for recall without rewriting the provider transcript. Future events
 carry call and turn identifiers so `/calls` can present them together. The text
-router and conversational web search are not used during calls.
+router and conversational web search are not used during direct Gemini calls.
+
+The `/call/split` trial uses the opposite tradeoff. The browser sends each held
+utterance to server-side Deepgram STT, then sends its transcript through Sage's
+normal routed text path. As reply text streams back, sentence-sized chunks are
+sent to server-side Deepgram TTS in parallel and played in order. The page shows
+STT, first-sentence, TTS, and total-to-audio timing. Split turns use the same voice provenance
+and Call Review path as direct calls.
 
 ### Modules
 
@@ -171,7 +182,7 @@ router and conversational web search are not used during calls.
 - `src/metabolism.py` — explores gaps after conversation becomes quiet.
 - `src/static/` — browser chat, voice call, Call Review, and Notebook.
 - `tools/` — backfill and model-checking utilities.
-- `tests/` — 110 deterministic checks.
+- `tests/` — 112 deterministic checks.
 
 ## Tests
 
