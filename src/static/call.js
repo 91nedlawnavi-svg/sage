@@ -11,6 +11,7 @@ const state = {
   silentGain: null,
   connectTimer: null,
   saveTimer: null,
+  callId: null,
   userTranscript: "",
   assistantTranscript: "",
   turnClosing: false,
@@ -125,16 +126,17 @@ function scheduleTurnSave() {
 async function saveTurn(keepalive = false) {
   const user = state.userTranscript;
   const assistant = state.assistantTranscript;
+  const callId = state.callId;
   state.userTranscript = "";
   state.assistantTranscript = "";
   state.turnClosing = false;
-  if (!user && !assistant) return;
+  if ((!user && !assistant) || !callId) return;
 
   try {
     const response = await fetch("/api/live-turn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user, assistant }),
+      body: JSON.stringify({ user, assistant, call_id: callId }),
       keepalive,
     });
     if (!response.ok) throw new Error();
@@ -223,6 +225,7 @@ async function startCall() {
     });
     const config = await response.json();
     if (!response.ok) throw new Error(config.error || "The call could not start.");
+    state.callId = config.call_id;
 
     const endpoint = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained";
     state.socket = new WebSocket(`${endpoint}?access_token=${encodeURIComponent(config.token)}`);
@@ -274,6 +277,7 @@ function stopCall(message = "Ready when you are.") {
     silentGain: null,
     connectTimer: null,
     saveTimer: null,
+    callId: null,
     userTranscript: "",
     assistantTranscript: "",
     turnClosing: false,

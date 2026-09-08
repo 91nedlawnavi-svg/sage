@@ -55,6 +55,7 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
 
     events = []
     event_sources = []
+    voice_event_context = []
     boundaries = []
     transcript_corrections = []
 
@@ -74,6 +75,8 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
             ))
             if r.get("source") in {"text", "voice"}:
                 event_sources.append((event_id, r["source"]))
+            if isinstance(r.get("call_id"), str) and isinstance(r.get("turn_id"), str):
+                voice_event_context.append((event_id, r["call_id"], r["turn_id"]))
 
     if events:
         db.executemany(
@@ -88,6 +91,13 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
             event_sources,
         )
     counts["event_sources"] = db.count("event_sources")
+
+    if voice_event_context:
+        db.executemany(
+            "INSERT OR IGNORE INTO voice_event_context (event_id, call_id, turn_id) VALUES (?, ?, ?)",
+            voice_event_context,
+        )
+    counts["voice_event_context"] = db.count("voice_event_context")
 
     if transcript_corrections:
         db.executemany(
@@ -218,6 +228,12 @@ def verify(rel_counts: dict[str, int], int_counts: dict[str, int], data_root: Pa
             if r.get("role") in ("user", "assistant") and r.get("source") in {"text", "voice"}
         )
         expected_corrections = sum(1 for r in records if r.get("kind") == "transcript_correction")
+        expected_voice_context = sum(
+            1 for r in records
+            if r.get("role") in ("user", "assistant")
+            and isinstance(r.get("call_id"), str)
+            and isinstance(r.get("turn_id"), str)
+        )
 
         if rel_counts.get("events", 0) != expected_events:
             mismatches.append(f"events: expected {expected_events}, got {rel_counts.get('events', 0)}")
@@ -228,6 +244,10 @@ def verify(rel_counts: dict[str, int], int_counts: dict[str, int], data_root: Pa
         if rel_counts.get("transcript_corrections", 0) != expected_corrections:
             mismatches.append(
                 f"transcript_corrections: expected {expected_corrections}, got {rel_counts.get('transcript_corrections', 0)}"
+            )
+        if rel_counts.get("voice_event_context", 0) != expected_voice_context:
+            mismatches.append(
+                f"voice_event_context: expected {expected_voice_context}, got {rel_counts.get('voice_event_context', 0)}"
             )
 
     entities_path = data_root / "relational" / "entities.jsonl"

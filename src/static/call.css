@@ -24,14 +24,18 @@ main {
   flex-direction: column;
 }
 
-#back {
-  width: fit-content;
+nav {
+  display: flex;
+  justify-content: space-between;
+}
+
+nav a {
   color: #b4b4b4;
   text-decoration: none;
   font-size: .9rem;
 }
 
-#back:focus-visible,
+nav a:focus-visible,
 #call-button:focus-visible {
   outline: 2px solid #ececec;
   outline-offset: 3px;
@@ -82,4 +86,8 @@ h1 {
   color: #8f8f8f;
   font-size: .8rem;
   line-height: 1.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #call-button:active { transform: none; }
 }

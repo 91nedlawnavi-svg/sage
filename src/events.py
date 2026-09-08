@@ -45,6 +45,8 @@ class Event(TypedDict):
     said_at: str
     id: NotRequired[str]
     source: NotRequired[Literal["text", "voice"]]
+    call_id: NotRequired[str]
+    turn_id: NotRequired[str]
     original_content: NotRequired[str]
 
 
@@ -130,7 +132,11 @@ class EventStore:
         *,
         save_embedding: bool = True,
         source: Literal["text", "voice"] = "text",
+        call_id: str | None = None,
+        turn_id: str | None = None,
     ) -> Event:
+        if (call_id is None) != (turn_id is None) or (call_id is not None and source != "voice"):
+            raise ValueError("Call context requires a voice event with both call and turn IDs")
         event: Event = {
             "id": str(uuid4()),
             "role": role,
@@ -138,6 +144,9 @@ class EventStore:
             "said_at": self._timestamp(),
             "source": source,
         }
+        if call_id is not None and turn_id is not None:
+            event["call_id"] = call_id
+            event["turn_id"] = turn_id
         self._append_record(event)
         self._mirror_event(event)
         if save_embedding and self.embedder is not None:
@@ -439,6 +448,11 @@ class EventStore:
                 "INSERT OR IGNORE INTO event_sources (event_id, source) VALUES (?, ?)",
                 (event["id"], event["source"]),
             )
+            if "call_id" in event and "turn_id" in event:
+                self._mirror.execute(
+                    "INSERT OR IGNORE INTO voice_event_context (event_id, call_id, turn_id) VALUES (?, ?, ?)",
+                    (event["id"], event["call_id"], event["turn_id"]),
+                )
         except Exception:
             _log.warning("mirror: failed to write event %s", event.get("id"), exc_info=True)
 
@@ -591,6 +605,11 @@ class EventStore:
             if record["source"] not in {"text", "voice"}:
                 raise ValueError("Invalid event record")
             event["source"] = record["source"]
+        if "call_id" in record or "turn_id" in record:
+            if not isinstance(record.get("call_id"), str) or not isinstance(record.get("turn_id"), str):
+                raise ValueError("Invalid event record")
+            event["call_id"] = record["call_id"]
+            event["turn_id"] = record["turn_id"]
         return event
 
     @staticmethod

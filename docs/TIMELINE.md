@@ -43,7 +43,7 @@ flowchart LR
 | **Identity + Wonder** · Sep 1–3 | Self-observation, identity proposals and rulings, conversational search, autonomous metabolism, waiting messages. | Building an evidence-based identity and exploring genuine knowledge gaps. | Elliot ratifies identity; background activity stays bounded and may end in silence. |
 | **Simplification** · Sep 6 | Sensitive mode removed, provider boundary clarified, mirror and retry faults repaired, search records separated from dialogue. | Treating every message as normal conversation without hidden privacy state. | Preserve lived history; delete obsolete machinery instead of rebuilding Sage. |
 | **Architecture map** · Sep 6 | Stack, layers, architecture, modules, and product records became legible. | Growing without Elliot or future developers losing the shape of Sage. | Map current truth; build one complete behavior at a time. |
-| **Voice trial** · Sep 7 | `/call` connected the browser directly to Gemini Live using one-use tokens, then gained local recall, voice-tagged transcripts, and append-only corrections. | Talking naturally while recalling relevant Sage history without putting Python in the audio path or treating faulty transcription as exact truth. | Keep audio direct; preserve original transcripts and let linked corrections guide memory. |
+| **Voice trial** · Sep 7–8 | `/call` connected the browser directly to Gemini Live using one-use tokens, then gained local recall, voice-tagged transcripts, append-only corrections, and a local Call Review screen. | Talking naturally while recalling relevant Sage history, then inspecting and correcting what both sides heard without putting Python in the audio path. | Keep audio direct; preserve original transcripts and let explicit linked corrections guide memory. |
 | **Felt continuity** · now | Relevant episodes, associations, and contradictions influence ordinary replies naturally. | Feeling like one continuing intelligence across daily life. | Memory must improve the exchange, not announce retrieval. |
 | **Capability** · next | Writing, coding, research, planning, and tools broaden behind one identity. | Helping across more of Elliot's life. | Add capabilities for real use, not architectural fashion. |
 | **Agency + presence** · later | Calibrated preparation and approved action; possibly voice, vision, and broader reach. | Acting usefully while knowing when to hold back. | Permission, ownership, and restraint remain system-wide boundaries. |
@@ -57,4 +57,4 @@ ordinary text and voice conversation. The native-audio trial now connects to
 Sage's identity and episodic memory. New call events retain voice provenance,
 and later corrections can guide recall without rewriting original transcripts.
 The trial remains experimental and lacks the normal text path's search,
-review surface, and broader capabilities.
+automated transcript evaluation, and broader capabilities.

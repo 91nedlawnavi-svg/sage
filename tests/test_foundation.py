@@ -11,6 +11,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import unittest
+from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -416,8 +417,11 @@ class FoundationTests(unittest.TestCase):
                 page = response.read()
             with urlopen(f"{base_url}/static/call.js") as response:
                 script = response.read()
+            with urlopen(f"{base_url}/calls") as response:
+                review = response.read()
             self.assertIn(b"Start call", page)
             self.assertIn(b"BidiGenerateContentConstrained", script)
+            self.assertIn(b"Call review", review)
             self.assertEqual(self.store.read_all(), [])
         finally:
             web_server.shutdown()
@@ -447,6 +451,7 @@ class FoundationTests(unittest.TestCase):
             self.assertIn("recall_memory", token_request.call_args.args[1])
             self.assertEqual(body["token"], "one-use-token")
             self.assertEqual(body["model"], LIVE_MODEL)
+            self.assertEqual(str(UUID(body["call_id"])), body["call_id"])
             self.assertNotIn("directive", body)
             self.assertNotIn("server-secret", json.dumps(body))
             self.assertEqual(self.store.read_all(), [])
@@ -527,7 +532,11 @@ class FoundationTests(unittest.TestCase):
         try:
             request = Request(
                 f"http://127.0.0.1:{web_server.server_port}/api/live-turn",
-                data=json.dumps({"user": "Do you remember the basil?", "assistant": "Yes, by the kitchen window."}).encode(),
+                data=json.dumps({
+                    "user": "Do you remember the basil?",
+                    "assistant": "Yes, by the kitchen window.",
+                    "call_id": "11111111-1111-4111-8111-111111111111",
+                }).encode(),
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
@@ -542,6 +551,49 @@ class FoundationTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(body["event_ids"], [event["id"] for event in events])
+            self.assertEqual(events[0]["call_id"], "11111111-1111-4111-8111-111111111111")
+            self.assertEqual(events[0]["turn_id"], events[1]["turn_id"])
+            self.assertEqual(body["turn_id"], events[0]["turn_id"])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_call_review_groups_turns_and_saves_append_only_correction(self) -> None:
+        call_id = "22222222-2222-4222-8222-222222222222"
+        turn_id = "33333333-3333-4333-8333-333333333333"
+        user = self.store.append(
+            "user", "Meet me at free.", source="voice", call_id=call_id, turn_id=turn_id
+        )
+        self.store.append(
+            "assistant", "At three.", source="voice", call_id=call_id, turn_id=turn_id
+        )
+        self.store.append("user", "Typed event")
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            correction_request = Request(
+                f"{base_url}/api/transcript-corrections",
+                data=json.dumps({"event_id": user["id"], "content": "Meet me at three."}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(correction_request) as response:
+                correction = json.load(response)["correction"]
+            with urlopen(f"{base_url}/api/calls") as response:
+                calls = json.load(response)["calls"]
+
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0]["id"], call_id)
+            events = calls[0]["turns"][0]["events"]
+            self.assertEqual([event["role"] for event in events], ["user", "assistant"])
+            self.assertEqual(events[0]["content"], "Meet me at three.")
+            self.assertEqual(events[0]["original_content"], "Meet me at free.")
+            raw = [json.loads(line) for line in self.store.path.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(raw[0]["content"], "Meet me at free.")
+            self.assertEqual(raw[-1]["id"], correction["id"])
         finally:
             web_server.shutdown()
             web_thread.join()
@@ -574,6 +626,12 @@ class FoundationTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "voice event"):
             self.store.append_transcript_correction(typed["id"], "Changed text")
+
+    def test_call_context_requires_complete_voice_identifiers(self) -> None:
+        with self.assertRaisesRegex(ValueError, "both call and turn IDs"):
+            self.store.append("user", "Incomplete", source="voice", call_id="call-1")
+        with self.assertRaisesRegex(ValueError, "voice event"):
+            self.store.append("user", "Typed", call_id="call-1", turn_id="turn-1")
 
     def test_browser_clear_chat_preserves_events_and_resets_visible_history(self) -> None:
         self.store.append("user", "Old visible chat")

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Iterator
 from urllib.parse import unquote, urlparse
 from urllib.request import Request, urlopen
+from uuid import UUID, uuid4
 
 from events import EventStore
 from interior import InteriorStore
@@ -121,16 +122,22 @@ class SageHandler(BaseHTTPRequestHandler):
             self._serve_static("index.html", "text/html; charset=utf-8")
         elif path == "/call":
             self._serve_static("call.html", "text/html; charset=utf-8")
+        elif path == "/calls":
+            self._serve_static("calls.html", "text/html; charset=utf-8")
         elif path == "/static/app.css":
             self._serve_static("app.css", "text/css; charset=utf-8")
         elif path == "/static/call.css":
             self._serve_static("call.css", "text/css; charset=utf-8")
+        elif path == "/static/calls.css":
+            self._serve_static("calls.css", "text/css; charset=utf-8")
         elif path == "/notebook":
             self._serve_static("notebook.html", "text/html; charset=utf-8")
         elif path == "/static/app.js":
             self._serve_static("app.js", "application/javascript; charset=utf-8")
         elif path == "/static/call.js":
             self._serve_static("call.js", "application/javascript; charset=utf-8")
+        elif path == "/static/calls.js":
+            self._serve_static("calls.js", "application/javascript; charset=utf-8")
         elif path == "/static/capture.worklet.js":
             self._serve_static("capture.worklet.js", "application/javascript; charset=utf-8")
         elif path == "/static/playback.worklet.js":
@@ -152,6 +159,8 @@ class SageHandler(BaseHTTPRequestHandler):
                     }
                 ] + events
             self._json(HTTPStatus.OK, {"events": events, "model": self.server.router.last_alias})
+        elif path == "/api/calls":
+            self._json(HTTPStatus.OK, {"calls": self._voice_calls()})
         elif path == "/reflections" or path == "/api/reflections":
             self._json(HTTPStatus.OK, {"reflections": self.server.interior.list_reflections()})
         elif path == "/api/entities":
@@ -185,6 +194,9 @@ class SageHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/live-turn":
             self._live_turn()
+            return
+        if path == "/api/transcript-corrections":
+            self._transcript_correction()
             return
         if path == "/api/chat":
             self._chat()
@@ -226,6 +238,7 @@ class SageHandler(BaseHTTPRequestHandler):
             {
                 "token": token,
                 "model": LIVE_MODEL,
+                "call_id": str(uuid4()),
             },
         )
 
@@ -279,8 +292,12 @@ class SageHandler(BaseHTTPRequestHandler):
             return
         user = body.get("user", "")
         assistant = body.get("assistant", "")
+        call_id = body.get("call_id")
         if not isinstance(user, str) or not isinstance(assistant, str):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "turn transcripts must be strings"})
+            return
+        if not self._uuid(call_id):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "call_id must identify the active call"})
             return
         user = user.strip()
         assistant = assistant.strip()
@@ -289,8 +306,15 @@ class SageHandler(BaseHTTPRequestHandler):
             return
 
         saved_ids: list[str] = []
+        turn_id = str(uuid4())
         if user:
-            accepted = accept_message(user, self.server.store, source="voice")
+            accepted = accept_message(
+                user,
+                self.server.store,
+                source="voice",
+                call_id=call_id,
+                turn_id=turn_id,
+            )
             if accepted is None:
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_FAILURE})
                 return
@@ -298,11 +322,71 @@ class SageHandler(BaseHTTPRequestHandler):
             self.server.interior.clear_waiting_message()
         if assistant:
             try:
-                saved_ids.append(self.server.store.append("assistant", assistant, source="voice")["id"])
+                saved_ids.append(
+                    self.server.store.append(
+                        "assistant",
+                        assistant,
+                        source="voice",
+                        call_id=call_id,
+                        turn_id=turn_id,
+                    )["id"]
+                )
             except OSError:
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_REPLY_FAILURE})
                 return
-        self._json(HTTPStatus.OK, {"event_ids": saved_ids})
+        self._json(HTTPStatus.OK, {"event_ids": saved_ids, "turn_id": turn_id})
+
+    def _transcript_correction(self) -> None:
+        body = self._json_body()
+        if body is None:
+            return
+        event_id = body.get("event_id")
+        content = body.get("content")
+        if not isinstance(event_id, str) or not isinstance(content, str):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "event_id and content must be strings"})
+            return
+        content = content.strip()
+        if not content:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "correction must not be blank"})
+            return
+        if len(content) > LIVE_EVENT_CHAR_LIMIT:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "correction is too long"})
+            return
+        try:
+            correction = self.server.store.append_transcript_correction(event_id, content)
+        except ValueError as exc:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            return
+        except OSError:
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Sage could not save the correction."})
+            return
+        self._json(HTTPStatus.OK, {"correction": correction})
+
+    def _voice_calls(self) -> list[dict[str, object]]:
+        calls: dict[str, dict[str, object]] = {}
+        turns: dict[tuple[str, str], dict[str, object]] = {}
+        for event in self.server.store.history():
+            call_id = event.get("call_id")
+            turn_id = event.get("turn_id")
+            if event.get("source") != "voice" or not call_id or not turn_id:
+                continue
+            call = calls.setdefault(call_id, {"id": call_id, "said_at": event["said_at"], "turns": []})
+            turn_key = (call_id, turn_id)
+            if turn_key not in turns:
+                turn = {"id": turn_id, "said_at": event["said_at"], "events": []}
+                turns[turn_key] = turn
+                call["turns"].append(turn)
+            turns[turn_key]["events"].append(event)
+        return sorted(calls.values(), key=lambda call: str(call["said_at"]), reverse=True)
+
+    @staticmethod
+    def _uuid(value: object) -> bool:
+        if not isinstance(value, str):
+            return False
+        try:
+            return str(UUID(value)) == value
+        except ValueError:
+            return False
 
     def _chat(self) -> None:
         body = self._json_body()

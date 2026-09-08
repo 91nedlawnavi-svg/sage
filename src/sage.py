@@ -19,10 +19,12 @@ def accept_message(
     store: EventStore,
     *,
     source: Literal["text", "voice"] = "text",
+    call_id: str | None = None,
+    turn_id: str | None = None,
 ) -> Event | None:
     """Persist user input before any provider can receive it."""
     try:
-        return store.append("user", message, source=source)
+        return store.append("user", message, source=source, call_id=call_id, turn_id=turn_id)
     except OSError:
         return None
 

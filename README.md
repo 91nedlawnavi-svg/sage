@@ -17,7 +17,8 @@ direct, native audio-to-audio conversation. Sage supplies identity and recent
 context, can recall relevant local events during the call, and saves completed
 transcripts as voice-tagged episodic history. Later corrections remain linked
 to the untouched original transcript and become the wording used by recall.
-Audio itself is not stored.
+New calls can be inspected and corrected locally at `/calls`, grouped by call
+and turn. Audio itself is not stored.
 
 **Episodic memory** — every accepted turn is appended as a timestamped event
 in JSONL. Recall combines lexical overlap and term frequency with
@@ -57,7 +58,7 @@ rebuildable.
 reflection, identity proposal, and metabolism trigger check. Successful passes
 use completion records to prevent duplicate work.
 
-**108 deterministic tests** covering the current foundation.
+**110 deterministic tests** covering the current foundation.
 
 ## Running
 
@@ -150,8 +151,9 @@ short-lived token, then the browser streams audio directly to Gemini Live.
 Gemini can request relevant events through Sage's local recall endpoint.
 Completed input and output transcripts return to the normal event and embedding
 path with voice provenance. Append-only correction records can replace faulty
-wording for recall without rewriting the provider transcript. The text router
-and conversational web search are not used during calls.
+wording for recall without rewriting the provider transcript. Future events
+carry call and turn identifiers so `/calls` can present them together. The text
+router and conversational web search are not used during calls.
 
 ### Modules
 
@@ -167,9 +169,9 @@ and conversational web search are not used during calls.
 - `src/search.py` — local web search.
 - `src/heartbeat.py` — schedules background work.
 - `src/metabolism.py` — explores gaps after conversation becomes quiet.
-- `src/static/` — browser chat, voice call, and Notebook.
+- `src/static/` — browser chat, voice call, Call Review, and Notebook.
 - `tools/` — backfill and model-checking utilities.
-- `tests/` — 108 deterministic checks.
+- `tests/` — 110 deterministic checks.
 
 ## Tests
 

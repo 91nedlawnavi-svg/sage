@@ -36,6 +36,15 @@ CREATE TABLE IF NOT EXISTS event_sources (
     source TEXT NOT NULL CHECK(source IN ('text', 'voice'))
 );
 
+CREATE TABLE IF NOT EXISTS voice_event_context (
+    event_id TEXT PRIMARY KEY,
+    call_id TEXT NOT NULL,
+    turn_id TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_voice_event_call ON voice_event_context(call_id);
+CREATE INDEX IF NOT EXISTS idx_voice_event_turn ON voice_event_context(turn_id);
+
 CREATE TABLE IF NOT EXISTS transcript_corrections (
     id TEXT PRIMARY KEY,
     source_event_id TEXT NOT NULL,

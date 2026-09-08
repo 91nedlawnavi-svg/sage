@@ -120,5 +120,13 @@ product authority.
 - The newest correction supplies effective wording for recall, embeddings,
   recent context, and background understanding while original wording remains
   available for inspection.
-- A review and evaluation surface is separate later work. Reliable provenance
-  and correction history come first.
+- Reliable provenance and correction history came before a review or evaluation
+  surface.
+
+## 2026-09-08 — Local Call Review
+
+- The local Call Review screen groups future voice events by call and turn,
+  shows corrected and original wording, and appends corrections from explicit
+  edits. Existing voice history without call identifiers remains unchanged.
+- Automated transcript evaluation waits for trustworthy corrected examples;
+  the review surface establishes those examples first.

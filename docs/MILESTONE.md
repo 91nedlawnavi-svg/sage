@@ -35,8 +35,9 @@ Already present and verified:
   context, and on-demand episodic recall; completed transcripts enter normal
   event history with voice provenance while audio remains unstored. Later
   corrections are linked without replacing original transcripts, and corrected
-  wording drives recall.
-- 108 deterministic tests passing across the current foundation and voice
+  wording drives recall. New calls and turns are grouped in a local review
+  screen where Elliot can inspect and correct either side of the transcript.
+- 110 deterministic tests passing across the current foundation and voice
   memory bridge.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
