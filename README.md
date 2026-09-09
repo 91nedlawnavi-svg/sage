@@ -11,7 +11,9 @@ only.
 
 **Conversation** — browser chat (mobile and desktop) with streaming replies,
 one normal message path, and navigable sessions that can be reopened, renamed,
-archived, and restored without splitting Sage's lifetime memory.
+archived, restored, and assigned `Auto` or one configured text model without
+splitting Sage's lifetime memory. Completed replies show their actual model;
+failed answers can retry the saved turn without duplicating it.
 
 **Experimental voice** — `/call` uses Gemini 3.1 Flash Live Preview for a
 direct, native audio-to-audio conversation. Sage supplies identity and recent
@@ -62,7 +64,7 @@ rebuildable.
 reflection, identity proposal, and metabolism trigger check. Successful passes
 use completion records to prevent duplicate work.
 
-**121 deterministic tests** covering the current foundation.
+**126 deterministic tests** covering the current foundation.
 
 ## Running
 
@@ -91,8 +93,10 @@ Free-tier only. The talk-model priority chain:
 3. DeepSeek V4 Flash
 
 A failed or unusable response falls through to the next model before an
-assistant reply is recorded. Set `SAGE_CHAT_MODELS` as a comma-separated list
-in `.env`. The local embedder is a separate fixed component.
+assistant reply is recorded when a chat uses `Auto`. Each text session can
+instead select one configured model; that explicit choice never silently falls
+back. Set `SAGE_CHAT_MODELS` as a comma-separated list in `.env`. The local
+embedder and background routes remain separate components.
 
 ## Model audition
 
@@ -146,8 +150,10 @@ A normal conversation follows this path:
 3. Sage builds context from recent conversation, relevant older events, the
    identity seed, and ratified identity entries.
 4. Sage may search the web and add the results as temporary context.
-5. The local router tries the talk models in order.
-6. A complete reply streams to the browser and is then saved.
+5. The local router uses the session's explicit text model, or tries the talk
+   models in order for `Auto`.
+6. A complete reply streams to the browser, records its actual model, and is
+   then saved. A failed answer can retry the already-saved user event.
 
 Starting a new chat adds a boundary with a new stable session ID; it does not
 delete old events. Legacy boundaries define sessions at read time without

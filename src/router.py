@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http.client import HTTPResponse, IncompleteRead
 from typing import Final, Iterator
 from urllib.error import HTTPError, URLError
@@ -32,10 +32,21 @@ def strip_reasoning(text: str) -> str:
 @dataclass(frozen=True)
 class RouterResult:
     reply: str | None
+    model: str | None = None
 
     @property
     def succeeded(self) -> bool:
         return self.reply is not None
+
+
+@dataclass
+class RouterStream:
+    chunks: Iterator[str]
+    actual_alias: str | None = None
+    attempted_aliases: list[str] = field(default_factory=list)
+
+    def __iter__(self) -> Iterator[str]:
+        return self.chunks
 
 
 class RouterClient:
@@ -87,10 +98,12 @@ class RouterClient:
         temperature: float | None = None,
         timeout: float = 60,
         max_tokens: int | None = None,
+        alias: str | None = None,
     ) -> RouterResult:
-        for alias in self.aliases:
-            result = self._chat_once(alias, messages, temperature=temperature, timeout=timeout, max_tokens=max_tokens)
+        for candidate in self._aliases_for(alias):
+            result = self._chat_once(candidate, messages, temperature=temperature, timeout=timeout, max_tokens=max_tokens)
             if result.succeeded:
+                self.last_alias = candidate
                 return result
         return RouterResult(reply=None)
 
@@ -126,13 +139,31 @@ class RouterClient:
             return RouterResult(reply=None)
 
         cleaned = strip_reasoning(reply)
-        return RouterResult(reply=cleaned) if cleaned else RouterResult(reply=None)
+        return RouterResult(reply=cleaned, model=alias) if cleaned else RouterResult(reply=None)
 
-    def stream(self, message: str) -> Iterator[str]:
+    def stream(self, message: str) -> RouterStream:
         return self.stream_with_messages([{"role": "user", "content": message}])
 
-    def stream_with_messages(self, messages: list[dict[str, str]], *, temperature: float = 0.7) -> Iterator[str]:
-        for alias in self.aliases:
+    def stream_with_messages(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float = 0.7,
+        alias: str | None = None,
+    ) -> RouterStream:
+        stream = RouterStream(iter(()))
+        stream.chunks = self._stream_attempts(stream, messages, temperature, self._aliases_for(alias))
+        return stream
+
+    def _stream_attempts(
+        self,
+        stream: RouterStream,
+        messages: list[dict[str, str]],
+        temperature: float,
+        aliases: tuple[str, ...],
+    ) -> Iterator[str]:
+        for alias in aliases:
+            stream.attempted_aliases.append(alias)
             try:
                 response = urlopen(self._request(messages, stream=True, temperature=temperature, alias=alias), timeout=60)
             except (HTTPError, URLError, OSError, IncompleteRead):
@@ -143,10 +174,19 @@ class RouterClient:
                 for chunk in self._stream_response(response):
                     if chunk:
                         emitted = True
+                    else:
+                        stream.actual_alias = alias
+                        self.last_alias = alias
                     yield chunk
             if emitted:
-                self.last_alias = alias
                 return
+
+    def _aliases_for(self, alias: str | None) -> tuple[str, ...]:
+        if alias is None:
+            return self.aliases
+        if alias not in self.aliases:
+            raise ValueError("Model is not configured")
+        return (alias,)
 
     @staticmethod
     def _stream_response(response: HTTPResponse) -> Iterator[str]:

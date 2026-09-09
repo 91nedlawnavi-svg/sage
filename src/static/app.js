@@ -6,6 +6,7 @@ const input = document.querySelector("#message");
 const status = document.querySelector("#status");
 const statusDot = document.querySelector("#status-dot");
 const model = document.querySelector("#model");
+const modelPicker = document.querySelector("#model-picker");
 const send = document.querySelector("#send-btn");
 const menuToggle = document.querySelector("#menu-toggle");
 const drawer = document.querySelector("#drawer");
@@ -39,11 +40,31 @@ function setStatus(value) {
 }
 
 function setModel(alias) {
-  model.textContent = alias ? alias.split("/").pop().replace(":free", "") : "";
+  model.textContent = alias ? `Answered by ${modelName(alias)}` : "";
+  model.title = alias || "";
+}
+
+function modelName(alias) {
+  return alias === "auto" ? "Auto" : alias.split("/").pop().replace(":free", "");
+}
+
+function setModelPicker(aliases, selected = "auto") {
+  modelPicker.replaceChildren();
+  const choices = ["auto", ...(aliases || [])];
+  if (selected !== "auto" && !choices.includes(selected)) choices.push(selected);
+  for (const alias of choices) {
+    const option = document.createElement("option");
+    option.value = alias;
+    option.textContent = `${modelName(alias)}${aliases?.includes(alias) || alias === "auto" ? "" : " (unavailable)"}`;
+    modelPicker.append(option);
+  }
+  modelPicker.value = selected;
+  modelPicker.dataset.selected = selected;
 }
 
 function updateSendState() {
   send.disabled = busy || !input.value.trim();
+  modelPicker.disabled = busy;
 }
 
 function syncVisualViewport() {
@@ -118,9 +139,10 @@ function clearConversation() {
 async function loadHistory() {
   const response = await fetch("/api/history");
   if (!response.ok) throw new Error("history unavailable");
-  const {events, model: alias, session_id: sessionId} = await response.json();
+  const {events, actual_model: alias, selected_model: selectedModel, models: aliases, session_id: sessionId} = await response.json();
   clearConversation();
   activeSessionId = sessionId;
+  setModelPicker(aliases, selectedModel);
   setModel(alias);
   for (const event of events || []) add(event);
   setStatus("Ready");
@@ -291,12 +313,11 @@ async function startNewChat() {
   try {
     const response = await fetch("/api/chat/clear", {method: "POST"});
     if (!response.ok) throw new Error("new chat unavailable");
-    clearConversation();
+    await loadHistory();
     input.value = "";
     resizeComposer();
     updateSendState();
     input.focus({preventScroll: true});
-    setStatus("Ready");
     await loadSessions();
   } catch {
     setStatus("Offline");
@@ -379,6 +400,33 @@ input.addEventListener("input", () => {
   updateSendState();
 });
 
+modelPicker.addEventListener("change", async () => {
+  if (busy || !activeSessionId) return;
+  const previous = modelPicker.dataset.selected || "auto";
+  busy = true;
+  updateSendState();
+  setStatus("Updating model");
+  try {
+    const response = await fetch("/api/sessions/model", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({session_id: activeSessionId, model: modelPicker.value}),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "model update failed");
+    modelPicker.value = result.session.model;
+    modelPicker.dataset.selected = result.session.model;
+    await loadSessions();
+    setStatus("Ready");
+  } catch {
+    modelPicker.value = previous;
+    setStatus("Offline");
+  } finally {
+    busy = false;
+    updateSendState();
+  }
+});
+
 input.addEventListener("focus", () => {
   scheduleViewportSync();
   setTimeout(scheduleViewportSync, 250);
@@ -396,17 +444,40 @@ input.addEventListener("keydown", (event) => {
 resizeComposer();
 updateSendState();
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const message = input.value.trim();
-  if (!message || busy) return;
+function showModelError(reply, streamEvent) {
+  reply.indicator?.remove();
+  reply.article.replaceChildren();
+  reply.article.className = "assistant response-error model-error";
+  reply.article.setAttribute("aria-label", "Model error");
+  const title = document.createElement("strong");
+  title.textContent = "Model error";
+  const text = document.createElement("p");
+  text.textContent = streamEvent.content || "Sage could not complete the response.";
+  const meta = document.createElement("p");
+  meta.className = "model-error-meta";
+  meta.textContent = `Tried ${modelName(streamEvent.attempted_model || "auto")}. Your message is saved.`;
+  const actions = document.createElement("div");
+  actions.className = "model-error-actions";
+  for (const [label, useAuto] of [["Retry", false], ["Retry with Auto", true]]) {
+    if (useAuto && !streamEvent.retry_with_auto) continue;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.dataset.retryEventId = streamEvent.event_id;
+    button.dataset.retryWithAuto = String(useAuto);
+    actions.append(button);
+  }
+  reply.article.append(title, text, meta, actions);
+  scrollToLatest();
+}
 
-  input.value = "";
+async function sendMessage({message = null, retryEventId = null, retryWithAuto = false, errorArticle = null}) {
   busy = true;
   input.disabled = true;
   updateSendState();
   resizeComposer();
-  add({role: "user", content: message});
+  errorArticle?.remove();
+  setModel(null);
   setStatus("Thinking");
   let reply = null;
   let streamFinished = false;
@@ -414,7 +485,7 @@ form.addEventListener("submit", async (event) => {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({message}),
+      body: JSON.stringify(retryEventId ? {retry_event_id: retryEventId, retry_with_auto: retryWithAuto} : {message}),
     });
     if (!response.ok || !response.body) throw new Error("chat unavailable");
     reply = add({role: "assistant", responding: true});
@@ -451,6 +522,9 @@ form.addEventListener("submit", async (event) => {
         streamFinished = true;
         reply?.article.classList.remove("responding", "typing", "streaming");
         reply?.indicator?.remove();
+      } else if (streamEvent.type === "model_error") {
+        streamFinished = true;
+        showModelError(reply, streamEvent);
       } else if (streamEvent.type === "error") {
         streamFinished = true;
         const error = streamEvent.content || "Sage could not complete the response.";
@@ -492,6 +566,26 @@ form.addEventListener("submit", async (event) => {
     input.focus({preventScroll: true});
     setStatus("Ready");
   }
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const message = input.value.trim();
+  if (!message || busy) return;
+  input.value = "";
+  resizeComposer();
+  add({role: "user", content: message});
+  sendMessage({message});
+});
+
+messages.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-retry-event-id]");
+  if (!(button instanceof HTMLButtonElement) || busy) return;
+  sendMessage({
+    retryEventId: button.dataset.retryEventId,
+    retryWithAuto: button.dataset.retryWithAuto === "true",
+    errorArticle: button.closest("article"),
+  });
 });
 
 loadHistory().catch(() => setStatus("Offline")).finally(() => {

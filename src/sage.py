@@ -130,7 +130,7 @@ def handle_message(message: str, store: EventStore, router: RouterClient) -> str
         return ROUTER_FAILURE
 
     try:
-        store.append("assistant", result.reply, session_id=accepted["session_id"])
+        store.append("assistant", result.reply, session_id=accepted["session_id"], model=result.model)
     except OSError:
         return "Sage received a reply but could not save it."
     return result.reply

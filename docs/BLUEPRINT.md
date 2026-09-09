@@ -167,6 +167,11 @@ telemetry, decorative effects, and dense administration surfaces.
 ### Models and provider use
 
 - Models are replaceable engines behind Sage's stable identity.
+- Foreground text-chat model choice belongs to each session. `Auto` uses the
+  configured conversational fallback chain; an explicit choice uses only that
+  model and reports failure instead of silently switching.
+- Valid assistant events retain which model actually answered. A safe retry
+  reuses the already-saved user event rather than creating duplicate history.
 - Lived memory remains locally stored.
 - Current messages and relevant context may pass through the configured local
   router, or through an explicitly approved direct real-time provider

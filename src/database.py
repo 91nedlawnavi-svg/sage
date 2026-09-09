@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS events (
     id TEXT PRIMARY KEY,
     role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
     content TEXT NOT NULL,
-    said_at TEXT NOT NULL
+    said_at TEXT NOT NULL,
+    model TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_said_at ON events(said_at);
@@ -36,7 +37,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at TEXT NOT NULL,
     last_active_at TEXT NOT NULL,
     title TEXT,
-    archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))
+    archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1)),
+    model TEXT NOT NULL DEFAULT 'auto'
 );
 
 CREATE TABLE IF NOT EXISTS event_sessions (
@@ -175,11 +177,16 @@ class Database:
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.executescript(self.schema)
             if self.schema == RELATIONAL_SCHEMA:
-                columns = {row[1] for row in self._conn.execute("PRAGMA table_info(sessions)")}
-                if "title" not in columns:
+                session_columns = {row[1] for row in self._conn.execute("PRAGMA table_info(sessions)")}
+                if "title" not in session_columns:
                     self._conn.execute("ALTER TABLE sessions ADD COLUMN title TEXT")
-                if "archived" not in columns:
+                if "archived" not in session_columns:
                     self._conn.execute("ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+                if "model" not in session_columns:
+                    self._conn.execute("ALTER TABLE sessions ADD COLUMN model TEXT NOT NULL DEFAULT 'auto'")
+                event_columns = {row[1] for row in self._conn.execute("PRAGMA table_info(events)")}
+                if "model" not in event_columns:
+                    self._conn.execute("ALTER TABLE events ADD COLUMN model TEXT")
         return self._conn
 
     def close(self) -> None:

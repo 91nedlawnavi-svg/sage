@@ -64,8 +64,8 @@ class BackfillTests(unittest.TestCase):
             {"kind": "privacy", "target_id": "old", "sensitive": True, "source": "sensor", "said_at": "2025-12-31T23:59:59Z"},
             {"role": "user", "content": "legacy", "said_at": "2026-01-01T00:00:00Z"},
             {"id": "e1", "role": "user", "content": "a", "said_at": "2026-01-01T00:00:00Z", "source": "voice", "call_id": "call-1", "turn_id": "turn-1"},
-            {"id": "e2", "role": "assistant", "content": "b", "said_at": "2026-01-01T00:00:01Z", "source": "text"},
-            {"kind": "session_metadata", "id": "sm1", "session_id": legacy_session_id(-1), "title": "Legacy chat", "archived": True, "said_at": "2026-01-01T00:00:01Z"},
+            {"id": "e2", "role": "assistant", "content": "b", "said_at": "2026-01-01T00:00:01Z", "source": "text", "model": "second-model"},
+            {"kind": "session_metadata", "id": "sm1", "session_id": legacy_session_id(-1), "title": "Legacy chat", "archived": True, "model": "explicit-model", "said_at": "2026-01-01T00:00:01Z"},
             {"kind": "transcript_correction", "id": "c1", "source_event_id": "e1", "content": "corrected", "said_at": "2026-01-01T00:00:01Z"},
             {"kind": "privacy", "target_id": "e1", "sensitive": True, "source": "sensor", "said_at": "2026-01-01T00:00:02Z"},
             {"kind": "chat_boundary", "said_at": "2026-01-01T00:00:03Z"},
@@ -87,8 +87,9 @@ class BackfillTests(unittest.TestCase):
         self.assertIsNotNone(rel.fetchone("SELECT id FROM events WHERE id = 'legacy:1'"))
         self.assertEqual(rc["chat_boundaries"], 1)
         self.assertEqual(rc["heartbeat_completions"], 2)
-        session = rel.fetchone("SELECT title, archived FROM sessions WHERE id = ?", (legacy_session_id(-1),))
-        self.assertEqual(session, {"title": "Legacy chat", "archived": 1})
+        session = rel.fetchone("SELECT title, archived, model FROM sessions WHERE id = ?", (legacy_session_id(-1),))
+        self.assertEqual(session, {"title": "Legacy chat", "archived": 1, "model": "explicit-model"})
+        self.assertEqual(rel.fetchone("SELECT model FROM events WHERE id = 'e2'")["model"], "second-model")
 
         mismatches = verify(rc, {}, self.root)
         self.assertEqual(mismatches, [])
@@ -104,7 +105,7 @@ class BackfillTests(unittest.TestCase):
 
         rel = relational_db(self.root)
         columns = {row["name"] for row in rel.fetchall("PRAGMA table_info(sessions)")}
-        self.assertTrue({"title", "archived"}.issubset(columns))
+        self.assertTrue({"title", "archived", "model"}.issubset(columns))
         self.assertEqual(rel.fetchone("SELECT archived FROM sessions WHERE id = 'old'")["archived"], 0)
         rel.close()
 
@@ -158,11 +159,12 @@ class DualWriteTests(unittest.TestCase):
         self.assertEqual(session["last_active_at"], ev["said_at"])
         link = self.rel.fetchone("SELECT session_id FROM event_sessions WHERE event_id = ?", (ev["id"],))
         self.assertEqual(link["session_id"], ev["session_id"])
-        later = self.store.append("assistant", "later in same session")
+        later = self.store.append("assistant", "later in same session", model="answer-model")
         session = self.rel.fetchone("SELECT * FROM sessions WHERE id = ?", (ev["session_id"],))
         self.assertEqual(later["session_id"], ev["session_id"])
         self.assertEqual(session["created_at"], ev["said_at"])
         self.assertEqual(session["last_active_at"], later["said_at"])
+        self.assertEqual(self.rel.fetchone("SELECT model FROM events WHERE id = ?", (later["id"],))["model"], "answer-model")
 
     def test_transcript_correction_dual_write(self) -> None:
         ev = self.store.append("user", "wrong words", source="voice", call_id="call-1", turn_id="turn-1")
@@ -184,10 +186,11 @@ class DualWriteTests(unittest.TestCase):
     def test_session_metadata_dual_write(self) -> None:
         event = self.store.append("user", "Original title")
         self.store.rename_session(event["session_id"], "Renamed chat")
+        self.store.set_session_model(event["session_id"], "explicit-model")
         self.store.archive_session(event["session_id"])
 
-        row = self.rel.fetchone("SELECT title, archived FROM sessions WHERE id = ?", (event["session_id"],))
-        self.assertEqual(row, {"title": "Renamed chat", "archived": 1})
+        row = self.rel.fetchone("SELECT title, archived, model FROM sessions WHERE id = ?", (event["session_id"],))
+        self.assertEqual(row, {"title": "Renamed chat", "archived": 1, "model": "explicit-model"})
 
     def test_entity_observation_dual_write(self) -> None:
         ev = self.store.append("user", "about elliot")

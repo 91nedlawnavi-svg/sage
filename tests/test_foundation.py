@@ -285,6 +285,24 @@ class FoundationTests(unittest.TestCase):
         self.assertIn("session_open", kinds)
         self.assertEqual(kinds.count("session_metadata"), 3)
 
+    def test_session_model_is_append_only_and_survives_restart(self) -> None:
+        session_id = self.store.current_session_id
+
+        selected = self.store.set_session_model(session_id, "explicit-model")
+        user = self.store.append("user", "Use this model")
+        assistant = self.store.append("assistant", "Done", model="explicit-model")
+
+        self.assertEqual(selected["model"], "explicit-model")
+        self.assertEqual(user["session_id"], session_id)
+        self.assertEqual(assistant["model"], "explicit-model")
+        reopened = EventStore(self.data_root)
+        self.assertEqual(reopened.session_model(), "explicit-model")
+        self.assertEqual(reopened.visible_history()[-1]["model"], "explicit-model")
+        reopened.set_session_model(session_id, "auto")
+        records = [json.loads(line) for line in self.store.path.read_text().splitlines()]
+        self.assertEqual([record.get("model") for record in records if record.get("kind") == "session_metadata"], ["explicit-model", "auto"])
+        self.assertEqual(sum(record.get("kind") == "chat_boundary" for record in records), 1)
+
     def test_reply_keeps_user_session_if_new_chat_starts_during_provider_call(self) -> None:
         store = self.store
 
@@ -388,6 +406,17 @@ class FoundationTests(unittest.TestCase):
 
         self.assertEqual(list(router.stream("Hello Sage")), ["Hel", "lo.", ""])
         self.assertEqual(FakeRouter.seen_models, ["first-model", "second-model"])
+
+    def test_router_explicit_stream_model_never_falls_back(self) -> None:
+        FakeRouter.fail_models = {"first-model"}
+        router = RouterClient(["first-model", "second-model"], self.base_url)
+
+        stream = router.stream_with_messages([{"role": "user", "content": "Hello Sage"}], alias="first-model")
+
+        self.assertEqual(list(stream), [])
+        self.assertEqual(stream.actual_alias, None)
+        self.assertEqual(stream.attempted_aliases, ["first-model"])
+        self.assertEqual(FakeRouter.seen_models, ["first-model"])
 
     def test_difficult_message_follows_normal_chat_path(self) -> None:
         reply = handle_message("I never told anyone about this confession", self.store, self.router)
@@ -517,6 +546,7 @@ class FoundationTests(unittest.TestCase):
             self.assertIn(b"Message Sage", page)
             self.assertIn(b'aria-labelledby="drawer-chats-title"', page)
             self.assertIn(b'aria-label="Archived chats"', page)
+            self.assertIn(b'aria-label="Chat model"', page)
             with urlopen(f"{base_url}/static/app.css") as response:
                 stylesheet = response.read()
             self.assertIn(b"-webkit-tap-highlight-color: transparent", stylesheet)
@@ -526,6 +556,9 @@ class FoundationTests(unittest.TestCase):
             self.assertIn(b"/api/sessions/${action}", script)
             self.assertIn(b'element.closest("[hidden]")', script)
             self.assertIn(b'aria-current', script)
+            self.assertIn(b'"Retry with Auto"', script)
+            self.assertIn(b'"Model error"', script)
+            self.assertIn(b'dataset.retryEventId', script)
             self.assertNotIn(b"Delete permanently", page + script)
             with urlopen(f"{base_url}/notebook") as response:
                 self.assertIn(b"notebook-tabs", response.read())
@@ -545,10 +578,15 @@ class FoundationTests(unittest.TestCase):
                 )
             with urlopen(f"{base_url}/api/history") as response:
                 history = json.load(response)
-            self.assertEqual(history["model"], "free-tier-alias")
+            self.assertEqual(history["actual_model"], "free-tier-alias")
+            self.assertEqual(history["selected_model"], "auto")
+            self.assertEqual(history["models"], ["free-tier-alias"])
             events = history["events"]
             self.assertEqual([(event["role"], event["content"]) for event in events], [("user", "Hello Sage"), ("assistant", "Hello.")])
             self.assertEqual(FakeRouter.request_body["stream"], True)
+            self.store.append("assistant", "Direct voice reply", source="voice")
+            with urlopen(f"{base_url}/api/history") as response:
+                self.assertIsNone(json.load(response)["actual_model"])
         finally:
             web_server.shutdown()
             web_thread.join()
@@ -948,6 +986,122 @@ class FoundationTests(unittest.TestCase):
             web_thread.join()
             web_server.server_close()
 
+    def test_explicit_model_error_retries_saved_event_with_auto(self) -> None:
+        router = RouterClient(["first-model", "second-model"], self.base_url)
+        web_server = SageServer(("127.0.0.1", 0), self.store, router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            session_id = self.store.current_session_id
+            select = Request(
+                f"{base_url}/api/sessions/model",
+                data=json.dumps({"session_id": session_id, "model": "first-model"}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(select) as response:
+                self.assertEqual(json.load(response)["session"]["model"], "first-model")
+
+            FakeRouter.fail_models = {"first-model"}
+            request = Request(
+                f"{base_url}/api/chat",
+                data=json.dumps({"message": "Keep one copy"}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                event_id = response.headers["X-Sage-Event-ID"]
+                failed = read_stream(response)
+            self.assertEqual(
+                failed[-1],
+                {
+                    "type": "model_error",
+                    "content": ROUTER_FAILURE,
+                    "event_id": event_id,
+                    "attempted_model": "first-model",
+                    "retry_with_auto": True,
+                },
+            )
+            self.assertEqual(FakeRouter.seen_models, ["first-model", "second-model", "first-model"])
+            self.assertEqual([(event["role"], event["content"]) for event in self.store.history()], [("user", "Keep one copy")])
+
+            retry = Request(
+                f"{base_url}/api/chat",
+                data=json.dumps({"retry_event_id": event_id, "retry_with_auto": True}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(retry) as response:
+                retried = read_stream(response)
+            self.assertEqual(retried[-2:], [{"type": "model", "content": "second-model"}, {"type": "done"}])
+            saved = self.store.history()
+            self.assertEqual([(event["role"], event["content"]) for event in saved], [("user", "Keep one copy"), ("assistant", "Hello.")])
+            self.assertEqual(saved[-1]["model"], "second-model")
+            self.assertEqual(self.store.session_model(), "first-model")
+            with urlopen(f"{base_url}/api/history") as response:
+                history = json.load(response)
+            self.assertEqual(history["actual_model"], "second-model")
+            self.assertEqual(history["selected_model"], "first-model")
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_removed_session_model_fails_clearly_without_router_call(self) -> None:
+        self.store.append("user", "Old model session")
+        self.store.set_session_model(self.store.current_session_id, "removed-model")
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/chat",
+                data=json.dumps({"message": "Do not switch silently"}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                failed = read_stream(response)
+            self.assertEqual(failed[-1]["type"], "model_error")
+            self.assertEqual(failed[-1]["attempted_model"], "removed-model")
+            self.assertTrue(failed[-1]["retry_with_auto"])
+            self.assertEqual(FakeRouter.seen_models, ["free-tier-alias"])
+            self.assertEqual(self.store.history()[-1]["content"], "Do not switch silently")
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_split_voice_keeps_auto_route_independent_from_chat_model(self) -> None:
+        router = RouterClient(["first-model", "second-model"], self.base_url)
+        self.store.append("user", "Chat setup")
+        self.store.set_session_model(self.store.current_session_id, "first-model")
+        FakeRouter.fail_models = {"first-model"}
+        web_server = SageServer(("127.0.0.1", 0), self.store, router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/split-voice/chat",
+                data=json.dumps({
+                    "message": "Voice stays automatic",
+                    "call_id": "44444444-4444-4444-8444-444444444444",
+                    "turn_id": "55555555-5555-4555-8555-555555555555",
+                }).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                streamed = read_stream(response)
+            self.assertEqual(streamed[-2:], [{"type": "model", "content": "second-model"}, {"type": "done"}])
+            self.assertEqual(self.store.history()[-1]["model"], "second-model")
+            self.assertEqual(FakeRouter.seen_models, ["first-model", "second-model", "first-model", "second-model"])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
     def test_read_ignores_incomplete_final_record(self) -> None:
         self.store.path.write_text('{"role":"user","content":"saved","said_at":"2026-08-15T00:00:00Z"}\n{"role"')
 
@@ -1123,7 +1277,10 @@ class FoundationTests(unittest.TestCase):
             )
             with urlopen(request) as response:
                 events = read_stream(response)
-                self.assertEqual(events[-1], {"type": "error", "content": ROUTER_FAILURE})
+                self.assertEqual(events[-1]["type"], "model_error")
+                self.assertEqual(events[-1]["content"], ROUTER_FAILURE)
+                self.assertEqual(events[-1]["attempted_model"], "auto")
+                self.assertFalse(events[-1]["retry_with_auto"])
             self.assertEqual([(event["role"], event["content"]) for event in self.store.read_all()], [("user", "Hello Sage")])
         finally:
             web_server.shutdown()

@@ -50,6 +50,7 @@ class Event(TypedDict):
     call_id: NotRequired[str]
     turn_id: NotRequired[str]
     original_content: NotRequired[str]
+    model: NotRequired[str]
 
 
 class TranscriptCorrection(TypedDict):
@@ -105,6 +106,7 @@ class SessionMetadata(TypedDict):
     said_at: str
     title: NotRequired[str]
     archived: NotRequired[bool]
+    model: NotRequired[str]
 
 
 class SessionOpen(TypedDict):
@@ -122,6 +124,7 @@ class SessionSummary(TypedDict):
     event_count: int
     archived: bool
     active: bool
+    model: str
 
 
 def legacy_session_id(boundary_index: int) -> str:
@@ -173,11 +176,14 @@ class EventStore:
         call_id: str | None = None,
         turn_id: str | None = None,
         session_id: str | None = None,
+        model: str | None = None,
     ) -> Event:
         if (call_id is None) != (turn_id is None) or (call_id is not None and source != "voice"):
             raise ValueError("Call context requires a voice event with both call and turn IDs")
         if session_id is not None and not session_id:
             raise ValueError("Session ID must not be blank")
+        if model is not None and (role != "assistant" or not model.strip()):
+            raise ValueError("Only assistant events may carry a model")
         with self._write_lock:
             event: Event = {
                 "id": str(uuid4()),
@@ -190,6 +196,8 @@ class EventStore:
             if call_id is not None and turn_id is not None:
                 event["call_id"] = call_id
                 event["turn_id"] = turn_id
+            if model is not None:
+                event["model"] = model
             self._append_record(event)
             if session_id is None and role == "user":
                 self._resumed_session_id = None
@@ -247,6 +255,15 @@ class EventStore:
     def current_session_id(self) -> str:
         return self._current_session_id
 
+    def session_model(self, session_id: str | None = None) -> str:
+        target = session_id or self._current_session_id
+        try:
+            return self._session_summary(target)["model"]
+        except KeyError:
+            if target == self._current_session_id:
+                return "auto"
+            raise
+
     def resumed_session_history(self) -> list[Event] | None:
         if self._resumed_session_id != self._current_session_id:
             return None
@@ -276,6 +293,10 @@ class EventStore:
                     if not isinstance(record["archived"], bool):
                         raise ValueError("Invalid session archive state")
                     summary["archived"] = record["archived"]
+                if "model" in record:
+                    if not isinstance(record["model"], str) or not record["model"]:
+                        raise ValueError("Invalid session model")
+                    summary["model"] = record["model"]
             elif record.get("role") in {"user", "assistant"}:
                 event_session_id = self._record_session_id(record, session_id)
                 summary = self._ensure_session_summary(summaries, event_session_id, record.get("said_at"))
@@ -336,6 +357,37 @@ class EventStore:
     def unarchive_session(self, session_id: str) -> SessionSummary:
         return self._set_session_archived(session_id, False)
 
+    def set_session_model(self, session_id: str, model: str) -> SessionSummary:
+        if not model:
+            raise ValueError("Chat model must not be blank")
+        with self._write_lock:
+            try:
+                summary = self._session_summary(session_id)
+            except KeyError:
+                if session_id != self._current_session_id:
+                    raise
+                boundary: ChatBoundary | None = {
+                    "kind": "chat_boundary",
+                    "said_at": self._timestamp(),
+                    "session_id": session_id,
+                }
+            else:
+                boundary = None
+                if summary["model"] == model:
+                    return summary
+            record: SessionMetadata = {
+                "kind": "session_metadata",
+                "id": str(uuid4()),
+                "session_id": session_id,
+                "said_at": self._timestamp(),
+                "model": model,
+            }
+            self._append_records([boundary, record] if boundary is not None else [record])
+        if boundary is not None:
+            self._mirror_chat_boundary(boundary)
+        self._mirror_session_metadata(record)
+        return self._session_summary(session_id)
+
     def _set_session_archived(self, session_id: str, archived: bool) -> SessionSummary:
         with self._write_lock:
             summary = self._session_summary(session_id)
@@ -390,6 +442,7 @@ class EventStore:
                 "event_count": 0,
                 "archived": False,
                 "active": False,
+                "model": "auto",
             }
         return summaries[session_id]
 
@@ -652,8 +705,8 @@ class EventStore:
             return
         try:
             self._mirror.execute(
-                "INSERT OR IGNORE INTO events (id, role, content, said_at) VALUES (?, ?, ?, ?)",
-                (event["id"], event["role"], event["content"], event["said_at"]),
+                "INSERT OR IGNORE INTO events (id, role, content, said_at, model) VALUES (?, ?, ?, ?, ?)",
+                (event["id"], event["role"], event["content"], event["said_at"], event.get("model")),
             )
             self._mirror.execute(
                 "INSERT OR IGNORE INTO event_sources (event_id, source) VALUES (?, ?)",
@@ -715,6 +768,11 @@ class EventStore:
                 self._mirror.execute(
                     "UPDATE sessions SET archived = ? WHERE id = ?",
                     (int(record["archived"]), record["session_id"]),
+                )
+            if "model" in record:
+                self._mirror.execute(
+                    "UPDATE sessions SET model = ? WHERE id = ?",
+                    (record["model"], record["session_id"]),
                 )
         except Exception:
             _log.warning("mirror: failed to write session metadata %s", record["session_id"], exc_info=True)
@@ -859,6 +917,10 @@ class EventStore:
                 raise ValueError("Invalid event record")
             event["call_id"] = record["call_id"]
             event["turn_id"] = record["turn_id"]
+        if "model" in record:
+            if not isinstance(record["model"], str) or not record["model"]:
+                raise ValueError("Invalid event record")
+            event["model"] = record["model"]
         return event
 
     @staticmethod

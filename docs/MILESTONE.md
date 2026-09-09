@@ -36,6 +36,11 @@ Already present and verified:
   restores chats. Control changes append new records; archive does not remove
   events from global recall. Keyboard focus, mobile touch targets, and semantic
   labels are built into the drawer.
+- Browser text chat offers `Auto` or one configured model per session. Explicit
+  choices never silently fall back; completed replies retain and show the model
+  that actually answered. A clear Model error row can retry the same saved user
+  event, including a one-attempt Auto override, without duplicating lived
+  history.
 - SQLite mirrors (relational and interior) dual-written alongside JSONL with fail-soft recovery.
 - Conversational web search: Sage decides before replying when to search and
   stores query/source provenance separately from conversation events.
@@ -53,7 +58,7 @@ Already present and verified:
   Sage's normal streamed text path, and sentence-chunked Deepgram TTS. It shows
   STT, first-sentence, TTS, and total-to-audio timing while leaving direct Gemini Live
   unchanged as the baseline.
-- 121 deterministic tests passing across the current foundation and both voice
+- 126 deterministic tests passing across the current foundation and both voice
   paths.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like

@@ -181,3 +181,19 @@ product authority.
   global recall. Archiving the active chat starts a new empty chat.
 - Permanent deletion remains a separate unresolved destructive flow and is not
   part of session navigation.
+
+## 2026-09-09 — Per-session text models and safe retry
+
+- Each text-chat session stores `Auto` or one explicit configured
+  conversational model as append-only session metadata. New sessions begin on
+  `Auto`.
+- `Auto` uses the configured ordered talk-model chain. An explicit selection
+  makes the foreground answer attempt use only that model; failure never
+  silently falls through to another engine.
+- Every completed assistant event records the model that actually answered, so
+  reopened chats do not infer it from current router state.
+- A failed answer leaves the accepted user event intact and saves no partial
+  assistant event. `Retry` and `Retry with Auto` reuse that same user event.
+- Foreground selection does not change extraction, heartbeat, metabolism, or
+  direct Gemini Live routing. Split-voice inheritance remains an open Session 5
+  decision; Session 4 does not settle it.

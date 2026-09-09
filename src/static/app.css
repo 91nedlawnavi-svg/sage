@@ -79,7 +79,21 @@ button:disabled { cursor: default; }
 #status-dot.cold { background: var(--subtle); box-shadow: none; }
 #status-dot.thinking { animation: pulse 1.25s ease-in-out infinite; }
 #status-dot.offline { background: #d28a8a; box-shadow: 0 0 0 3px rgb(210 138 138 / 12%); }
-#model { color: var(--subtle); font-size: .72rem; white-space: nowrap; }
+#model-picker {
+  max-width: min(38vw, 180px);
+  min-height: 44px;
+  padding: 0 24px 0 7px;
+  border: 0;
+  border-radius: 7px;
+  outline: 0;
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: .75rem;
+}
+#model-picker:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
+#model-picker:disabled { opacity: .55; }
+#model { color: var(--subtle); font-size: .7rem; white-space: nowrap; }
 #menu-toggle {
   display: grid;
   place-items: center;
@@ -169,6 +183,27 @@ article.streaming p::after {
   animation: response-caret 700ms steps(1) infinite;
 }
 article.response-error { color: #d5b9b9; }
+article.model-error {
+  padding: 14px;
+  border: 1px solid #693f43;
+  border-radius: 12px;
+  background: #241719;
+}
+article.model-error strong { display: block; margin-bottom: 5px; color: #efc7ca; font-size: .9rem; }
+article.model-error p { color: #d5b9b9; font-size: .9rem; line-height: 1.5; }
+.model-error-meta { margin-top: 5px !important; color: #aa898c !important; font-size: .75rem !important; }
+.model-error-actions { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+.model-error-actions button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 13px;
+  border-radius: 7px;
+  background: #3a2629;
+  color: #efc7ca;
+  font-size: .82rem;
+  font-weight: 600;
+}
+.model-error-actions button:first-child { background: #efc7ca; color: #241719; }
 
 #composer {
   width: min(100%, 48rem);
@@ -457,6 +492,7 @@ textarea:disabled { opacity: .65; }
 
 @media (hover: hover) and (pointer: fine) {
   #menu-toggle:hover, #drawer-close:hover, #notebook-back:hover, .notebook-tab:hover, #archived-toggle:hover, .session-open:hover, .session-more:hover, .session-restore:hover, .session-actions button:hover, .session-rename button:hover { background: var(--surface-hover); color: var(--text); }
+  .model-error-actions button:hover { filter: brightness(1.12); }
   .drawer-row:hover { background: var(--surface); }
   #send-btn:hover:not(:disabled) { background: #ffffff; }
 }

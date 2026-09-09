@@ -11,7 +11,7 @@ import re
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Iterator
+from typing import Iterable
 from urllib.parse import urlencode, unquote, urlparse
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
@@ -212,7 +212,16 @@ class SageHandler(BaseHTTPRequestHandler):
                 HTTPStatus.OK,
                 {
                     "events": events,
-                    "model": self.server.router.last_alias,
+                    "actual_model": next(
+                        (
+                            event.get("model")
+                            for event in reversed(events)
+                            if event["role"] == "assistant"
+                        ),
+                        None,
+                    ),
+                    "selected_model": self.server.store.session_model(),
+                    "models": list(self.server.router.aliases),
                     "session_id": self.server.store.current_session_id,
                 },
             )
@@ -280,6 +289,7 @@ class SageHandler(BaseHTTPRequestHandler):
             "/api/sessions/rename",
             "/api/sessions/archive",
             "/api/sessions/unarchive",
+            "/api/sessions/model",
         }:
             self._session_action(path.rsplit("/", 1)[-1])
             return
@@ -523,27 +533,46 @@ class SageHandler(BaseHTTPRequestHandler):
         body = self._json_body()
         if body is None:
             return
-        message = body.get("message")
-        if not isinstance(message, str) or not (message := message.strip()):
-            self._json(HTTPStatus.BAD_REQUEST, {"error": "message must be a nonblank string"})
+        retry_event_id = body.get("retry_event_id")
+        retry_with_auto = body.get("retry_with_auto", False)
+        if not isinstance(retry_with_auto, bool):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "retry_with_auto must be true or false"})
             return
         call_id = body.get("call_id") if voice else None
         turn_id = body.get("turn_id") if voice else None
         if voice and (not self._uuid(call_id) or not self._uuid(turn_id)):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "voice chat requires valid call and turn IDs"})
             return
-        resumed_session_events = self.server.store.resumed_session_history()
-        accepted = accept_message(
-            message,
-            self.server.store,
-            source="voice" if voice else "text",
-            call_id=call_id,
-            turn_id=turn_id,
-        )
-        if accepted is None:
-            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_FAILURE})
-            return
-
+        if retry_event_id is not None:
+            if voice or not isinstance(retry_event_id, str) or not retry_event_id:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": "retry_event_id must identify a text message"})
+                return
+            visible = self.server.store.visible_history()
+            accepted = next(
+                (event for event in visible if event["id"] == retry_event_id and event["role"] == "user"),
+                None,
+            )
+            if accepted is None or not visible or visible[-1]["id"] != retry_event_id:
+                self._json(HTTPStatus.CONFLICT, {"error": "Only the latest unanswered message can be retried."})
+                return
+            message = accepted["content"]
+            resumed_session_events = visible
+        else:
+            message = body.get("message")
+            if not isinstance(message, str) or not (message := message.strip()):
+                self._json(HTTPStatus.BAD_REQUEST, {"error": "message must be a nonblank string"})
+                return
+            resumed_session_events = self.server.store.resumed_session_history()
+            accepted = accept_message(
+                message,
+                self.server.store,
+                source="voice" if voice else "text",
+                call_id=call_id,
+                turn_id=turn_id,
+            )
+            if accepted is None:
+                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_FAILURE})
+                return
         # Acknowledge/clear waiting message once user speaks
         self.server.interior.clear_waiting_message()
 
@@ -576,8 +605,12 @@ class SageHandler(BaseHTTPRequestHandler):
         elif self._search_decision_failed:
             self._write_stream_event("search_error", "Could not decide whether to search")
 
-        self._stream_reply(
-            self.server.router.stream_with_messages(
+        selected_model = self.server.store.session_model(accepted["session_id"])
+        requested_model = None if voice or retry_with_auto or selected_model == "auto" else selected_model
+        stream = (
+            iter(())
+            if requested_model is not None and requested_model not in self.server.router.aliases
+            else self.server.router.stream_with_messages(
                 build_router_messages(
                     message,
                     self.server.store,
@@ -585,13 +618,19 @@ class SageHandler(BaseHTTPRequestHandler):
                     exclude_event_id=accepted["id"],
                     directive=load_directive(identity_block=compose_identity_block(self.server.interior)),
                     search_context=search_context,
-                )
-            ),
+                ),
+                alias=requested_model,
+            )
+        )
+        self._stream_reply(
+            stream,
             persist_reply=True,
             source="voice" if voice else "text",
             call_id=call_id,
             turn_id=turn_id,
             session_id=accepted["session_id"],
+            event_id=accepted["id"],
+            requested_model=requested_model,
         )
 
     def _session_action(self, action: str) -> None:
@@ -612,6 +651,11 @@ class SageHandler(BaseHTTPRequestHandler):
                 session = self.server.store.rename_session(session_id, title)
             elif action == "archive":
                 session = self.server.store.archive_session(session_id)
+            elif action == "model":
+                model = body.get("model")
+                if model != "auto" and model not in self.server.router.aliases:
+                    raise ValueError("Chat model must be Auto or a configured model")
+                session = self.server.store.set_session_model(session_id, model)
             else:
                 session = self.server.store.unarchive_session(session_id)
         except KeyError:
@@ -728,13 +772,15 @@ class SageHandler(BaseHTTPRequestHandler):
 
     def _stream_reply(
         self,
-        chunks: Iterator[str],
+        chunks: Iterable[str],
         *,
         persist_reply: bool,
         source: str = "text",
         call_id: str | None = None,
         turn_id: str | None = None,
         session_id: str | None = None,
+        event_id: str | None = None,
+        requested_model: str | None = None,
     ) -> None:
         reply: list[str] = []
         completed = False
@@ -746,9 +792,16 @@ class SageHandler(BaseHTTPRequestHandler):
                 reply.append(chunk)
                 self._write_stream_event("delta", chunk)
             if not completed or not reply:
-                self._write_stream_event("error", ROUTER_FAILURE)
+                self._write_stream_event(
+                    "model_error",
+                    ROUTER_FAILURE,
+                    event_id=event_id,
+                    attempted_model=requested_model or "auto",
+                    retry_with_auto=requested_model is not None,
+                )
                 return
             if persist_reply:
+                actual_model = getattr(chunks, "actual_alias", None) or getattr(self.server.router, "last_alias", None)
                 try:
                     self.server.store.append(
                         "assistant",
@@ -757,11 +810,13 @@ class SageHandler(BaseHTTPRequestHandler):
                         call_id=call_id,
                         turn_id=turn_id,
                         session_id=session_id,
+                        model=actual_model,
                     )
                 except OSError:
                     self._write_stream_event("error", SAVE_REPLY_FAILURE)
                     return
-                self._write_stream_event("model", self.server.router.last_alias)
+                if actual_model:
+                    self._write_stream_event("model", actual_model)
             self._write_stream_event("done")
         except (BrokenPipeError, ConnectionResetError):
             return
@@ -802,10 +857,11 @@ class SageHandler(BaseHTTPRequestHandler):
         self.wfile.write(data + b"\r\n")
         self.wfile.flush()
 
-    def _write_stream_event(self, event_type: str, content: str | None = None) -> None:
+    def _write_stream_event(self, event_type: str, content: str | None = None, **fields: object) -> None:
         event = {"type": event_type}
         if content is not None:
             event["content"] = content
+        event.update(fields)
         self._write_chunk(json.dumps(event, ensure_ascii=False) + "\n")
 
     def _json(self, status: HTTPStatus, body: object) -> None:

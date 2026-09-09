@@ -292,7 +292,7 @@ copy that contradicts the promise of permanent deletion.
 - Keep global recall available across sessions.
 - Verify keyboard, mobile, and screen-reader behavior.
 
-### Session 4 — Add model selection and retries
+### Session 4 — Add model selection and retries — complete
 
 - Per-session `Auto` or explicit configured model.
 - Honest actual-model display.
