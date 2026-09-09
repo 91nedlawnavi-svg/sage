@@ -71,6 +71,10 @@ Already present and verified:
   `DELETE`, removes directly and safely-proven derived records, cleans SQLite
   mirrors, and discloses the external-backup boundary. Tests cover interruption,
   restart, recall removal, voice corrections/call grouping, and derived records.
+- `SAGE-021` integration review passed: production service is active at commit
+  `8033584`, `/health` returns `{"ok": true}`, live browser controls render,
+  deletion preview returns exact counts and backup disclosure, browser console
+  has no errors, and the full suite remains green.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.

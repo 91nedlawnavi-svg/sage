@@ -334,7 +334,9 @@ copy that contradicts the promise of permanent deletion.
 - Review privacy, memory integrity, failure behavior, and unwanted scope.
 - Run full deterministic tests and live browser checks.
 - Update canonical blueprint, decisions, milestone, and timeline only for
-  behavior that actually shipped.
+  behavior that actually shipped. **Complete as `SAGE-021`:** production,
+  browser, read-only deletion preview, console, and full deterministic test
+  checks passed; no unwanted scope or live-data deletion occurred.
 
 ## Questions still open
 
