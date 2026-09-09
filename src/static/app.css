@@ -31,7 +31,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 body.drawer-open { overflow: hidden; }
-button, textarea { font: inherit; }
+button, input, textarea { font: inherit; }
 button {
   min-width: 44px;
   min-height: 44px;
@@ -306,6 +306,85 @@ textarea:disabled { opacity: .65; }
 }
 .drawer-row:active { background: var(--surface); }
 .drawer-row svg { width: 19px; height: 19px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#drawer-chats {
+  min-height: 0;
+  flex: 1;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--border);
+}
+#drawer-chats-heading {
+  min-height: 36px;
+  flex: none;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+#drawer-chats-title { margin: 0; font-size: .8rem; font-weight: 650; color: var(--muted); }
+#archived-toggle {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 6px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: .75rem;
+}
+#session-status { margin: 10px 8px; color: var(--muted); font-size: .8rem; }
+#session-status:empty { display: none; }
+#session-list, #archived-list { flex: none; display: flex; flex-direction: column; gap: 2px; }
+#session-list { min-height: 0; }
+#archived-list { padding-top: 6px; border-top: 1px solid var(--border); }
+#archived-list[hidden] { display: none; }
+.session-item { border-radius: 8px; }
+.session-item.active { background: var(--surface); }
+.session-main { min-height: 54px; display: flex; align-items: stretch; }
+.session-open {
+  min-width: 0;
+  min-height: 54px;
+  flex: 1;
+  padding: 7px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  border-radius: 8px;
+  text-align: left;
+}
+.session-title { width: 100%; overflow: hidden; color: var(--text); font-size: .875rem; font-weight: 520; text-overflow: ellipsis; white-space: nowrap; }
+.session-meta { width: 100%; overflow: hidden; color: var(--subtle); font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+.session-more, .session-restore { flex: none; align-self: center; border-radius: 7px; color: var(--muted); }
+.session-more { display: grid; place-items: center; }
+.session-more svg { width: 20px; height: 20px; fill: currentColor; }
+.session-restore { min-width: 0; padding: 0 8px; font-size: .75rem; font-weight: 600; }
+.session-actions, .session-rename { padding: 2px 8px 9px; display: flex; align-items: center; gap: 6px; }
+.session-actions button, .session-rename button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 9px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 600;
+}
+.session-rename input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  outline: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+}
+.session-rename input:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
 #notebook-top {
   width: min(100%, 48rem);
   min-height: 56px;
@@ -377,7 +456,7 @@ textarea:disabled { opacity: .65; }
 }
 
 @media (hover: hover) and (pointer: fine) {
-  #menu-toggle:hover, #drawer-close:hover, #notebook-back:hover, .notebook-tab:hover { background: var(--surface); color: var(--text); }
+  #menu-toggle:hover, #drawer-close:hover, #notebook-back:hover, .notebook-tab:hover, #archived-toggle:hover, .session-open:hover, .session-more:hover, .session-restore:hover, .session-actions button:hover, .session-rename button:hover { background: var(--surface-hover); color: var(--text); }
   .drawer-row:hover { background: var(--surface); }
   #send-btn:hover:not(:disabled) { background: #ffffff; }
 }

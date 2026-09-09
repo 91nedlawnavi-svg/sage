@@ -56,6 +56,8 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
 
     events = []
     sessions: dict[str, tuple[str, str]] = {}
+    session_titles: dict[str, str] = {}
+    session_archived: dict[str, bool] = {}
     event_sessions = []
     event_sources = []
     voice_event_context = []
@@ -71,6 +73,11 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
             sessions.setdefault(session_id, (r["said_at"], r["said_at"]))
         elif kind == "transcript_correction":
             transcript_corrections.append((r["id"], r["source_event_id"], r["content"], r["said_at"]))
+        elif kind == "session_metadata" and isinstance(r.get("session_id"), str):
+            if isinstance(r.get("title"), str):
+                session_titles[r["session_id"]] = r["title"]
+            if isinstance(r.get("archived"), bool):
+                session_archived[r["session_id"]] = r["archived"]
         elif r.get("role") in ("user", "assistant"):
             event_id = r.get("id", f"legacy:{index}")
             event_session_id = r.get("session_id") if isinstance(r.get("session_id"), str) else session_id
@@ -100,11 +107,15 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
 
     if sessions:
         db.executemany(
-            "INSERT INTO sessions (id, created_at, last_active_at) VALUES (?, ?, ?) "
+            "INSERT INTO sessions (id, created_at, last_active_at, title, archived) VALUES (?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET "
             "created_at = MIN(created_at, excluded.created_at), "
-            "last_active_at = MAX(last_active_at, excluded.last_active_at)",
-            [(session, *timestamps) for session, timestamps in sessions.items()],
+            "last_active_at = MAX(last_active_at, excluded.last_active_at), "
+            "title = excluded.title, archived = excluded.archived",
+            [
+                (session, *timestamps, session_titles.get(session), int(session_archived.get(session, False)))
+                for session, timestamps in sessions.items()
+            ],
         )
     counts["sessions"] = db.count("sessions")
 

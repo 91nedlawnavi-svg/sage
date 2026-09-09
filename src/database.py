@@ -34,7 +34,9 @@ CREATE INDEX IF NOT EXISTS idx_events_role ON events(role);
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     created_at TEXT NOT NULL,
-    last_active_at TEXT NOT NULL
+    last_active_at TEXT NOT NULL,
+    title TEXT,
+    archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS event_sessions (
@@ -172,6 +174,12 @@ class Database:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.executescript(self.schema)
+            if self.schema == RELATIONAL_SCHEMA:
+                columns = {row[1] for row in self._conn.execute("PRAGMA table_info(sessions)")}
+                if "title" not in columns:
+                    self._conn.execute("ALTER TABLE sessions ADD COLUMN title TEXT")
+                if "archived" not in columns:
+                    self._conn.execute("ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
         return self._conn
 
     def close(self) -> None:

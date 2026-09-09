@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#000000">
   <title>Sage</title>
   <link rel="icon" href="/static/sage-mark.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/app.css?v=9">
+  <link rel="stylesheet" href="/static/app.css?v=10">
 </head>
 <body>
   <div id="app">
@@ -58,8 +58,17 @@
         <span>Voice trial</span>
       </a>
     </nav>
+    <section id="drawer-chats" aria-labelledby="drawer-chats-title">
+      <div id="drawer-chats-heading">
+        <h2 id="drawer-chats-title">Chats</h2>
+        <button id="archived-toggle" type="button" aria-controls="archived-list" aria-expanded="false" hidden></button>
+      </div>
+      <p id="session-status" role="status" aria-live="polite">Loading chats…</p>
+      <div id="session-list" role="list" aria-label="Chats"></div>
+      <div id="archived-list" role="list" aria-label="Archived chats" hidden></div>
+    </section>
   </aside>
 
-  <script src="/static/app.js?v=8"></script>
+  <script src="/static/app.js?v=9"></script>
 </body>
 </html>

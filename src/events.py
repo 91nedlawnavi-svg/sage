@@ -98,6 +98,32 @@ class ChatBoundary(TypedDict):
     session_id: NotRequired[str]
 
 
+class SessionMetadata(TypedDict):
+    kind: Literal["session_metadata"]
+    id: str
+    session_id: str
+    said_at: str
+    title: NotRequired[str]
+    archived: NotRequired[bool]
+
+
+class SessionOpen(TypedDict):
+    kind: Literal["session_open"]
+    id: str
+    session_id: str
+    said_at: str
+
+
+class SessionSummary(TypedDict):
+    id: str
+    title: str
+    created_at: str
+    last_active_at: str
+    event_count: int
+    archived: bool
+    active: bool
+
+
 def legacy_session_id(boundary_index: int) -> str:
     """Return the stable read-time ID for a session not tagged in old JSONL."""
     return str(uuid5(NAMESPACE_URL, f"sage:legacy-session:{boundary_index}"))
@@ -135,6 +161,7 @@ class EventStore:
         self._write_lock = threading.RLock()
         records = self._read_records()
         self._current_session_id = self._active_session_id(records) if records else str(uuid4())
+        self._resumed_session_id = self._resumed_session(records, self._current_session_id)
 
     def append(
         self,
@@ -164,6 +191,8 @@ class EventStore:
                 event["call_id"] = call_id
                 event["turn_id"] = turn_id
             self._append_record(event)
+            if session_id is None and role == "user":
+                self._resumed_session_id = None
         self._mirror_event(event)
         if save_embedding and self.embedder is not None:
             try:
@@ -210,8 +239,168 @@ class EventStore:
         with self._write_lock:
             self._append_record(record)
             self._current_session_id = record["session_id"]
+            self._resumed_session_id = None
         self._mirror_chat_boundary(record)
         return record
+
+    @property
+    def current_session_id(self) -> str:
+        return self._current_session_id
+
+    def resumed_session_history(self) -> list[Event] | None:
+        if self._resumed_session_id != self._current_session_id:
+            return None
+        return self.visible_history()
+
+    def sessions(self, *, include_archived: bool = False) -> list[SessionSummary]:
+        summaries: dict[str, SessionSummary] = {}
+        automatic_titles: dict[str, str] = {}
+        session_id = legacy_session_id(-1)
+        for index, record in enumerate(self._read_records()):
+            if not isinstance(record, dict):
+                continue
+            kind = record.get("kind")
+            if kind == "chat_boundary":
+                session_id = self._record_session_id(record, legacy_session_id(index))
+                self._ensure_session_summary(summaries, session_id, record.get("said_at"))
+            elif kind == "session_metadata":
+                target = self._record_session_id(record, "")
+                summary = summaries.get(target)
+                if summary is None:
+                    continue
+                if "title" in record:
+                    if not isinstance(record["title"], str) or not record["title"]:
+                        raise ValueError("Invalid session title")
+                    summary["title"] = record["title"]
+                if "archived" in record:
+                    if not isinstance(record["archived"], bool):
+                        raise ValueError("Invalid session archive state")
+                    summary["archived"] = record["archived"]
+            elif record.get("role") in {"user", "assistant"}:
+                event_session_id = self._record_session_id(record, session_id)
+                summary = self._ensure_session_summary(summaries, event_session_id, record.get("said_at"))
+                summary["event_count"] += 1
+                said_at = record.get("said_at")
+                if isinstance(said_at, str) and said_at > summary["last_active_at"]:
+                    summary["last_active_at"] = said_at
+                if record.get("role") == "user" and event_session_id not in automatic_titles:
+                    automatic_titles[event_session_id] = self._automatic_session_title(record.get("content"))
+
+        for summary in summaries.values():
+            if not summary["title"]:
+                summary["title"] = automatic_titles.get(summary["id"], "New chat")
+            summary["active"] = summary["id"] == self._current_session_id
+        result = [summary for summary in summaries.values() if include_archived or not summary["archived"]]
+        result.sort(key=lambda summary: summary["last_active_at"], reverse=True)
+        result.sort(key=lambda summary: not summary["active"])
+        return result
+
+    def open_session(self, session_id: str) -> SessionSummary:
+        with self._write_lock:
+            summary = self._session_summary(session_id)
+            if summary["archived"]:
+                raise ValueError("Archived chats must be restored before opening")
+            if session_id != self._current_session_id:
+                record: SessionOpen = {
+                    "kind": "session_open",
+                    "id": str(uuid4()),
+                    "session_id": session_id,
+                    "said_at": self._timestamp(),
+                }
+                self._append_record(record)
+                self._current_session_id = session_id
+                history = self.history()
+                self._resumed_session_id = session_id if history and history[-1]["session_id"] != session_id else None
+            return self._session_summary(session_id)
+
+    def rename_session(self, session_id: str, title: str) -> SessionSummary:
+        clean_title = " ".join(title.split())
+        if not clean_title or len(clean_title) > 120:
+            raise ValueError("Chat title must be 1 to 120 characters")
+        with self._write_lock:
+            self._session_summary(session_id)
+            record: SessionMetadata = {
+                "kind": "session_metadata",
+                "id": str(uuid4()),
+                "session_id": session_id,
+                "said_at": self._timestamp(),
+                "title": clean_title,
+            }
+            self._append_record(record)
+        self._mirror_session_metadata(record)
+        return self._session_summary(session_id)
+
+    def archive_session(self, session_id: str) -> SessionSummary:
+        return self._set_session_archived(session_id, True)
+
+    def unarchive_session(self, session_id: str) -> SessionSummary:
+        return self._set_session_archived(session_id, False)
+
+    def _set_session_archived(self, session_id: str, archived: bool) -> SessionSummary:
+        with self._write_lock:
+            summary = self._session_summary(session_id)
+            if summary["archived"] == archived:
+                return summary
+            record: SessionMetadata = {
+                "kind": "session_metadata",
+                "id": str(uuid4()),
+                "session_id": session_id,
+                "said_at": self._timestamp(),
+                "archived": archived,
+            }
+            boundary: ChatBoundary | None = None
+            if archived and session_id == self._current_session_id:
+                boundary = {
+                    "kind": "chat_boundary",
+                    "said_at": self._timestamp(),
+                    "session_id": str(uuid4()),
+                }
+                self._append_records([record, boundary])
+                self._current_session_id = boundary["session_id"]
+                self._resumed_session_id = None
+            else:
+                self._append_record(record)
+        self._mirror_session_metadata(record)
+        if boundary is not None:
+            self._mirror_chat_boundary(boundary)
+        return self._session_summary(session_id)
+
+    def _session_summary(self, session_id: str) -> SessionSummary:
+        if not isinstance(session_id, str) or not session_id:
+            raise KeyError("Chat not found")
+        summary = next((item for item in self.sessions(include_archived=True) if item["id"] == session_id), None)
+        if summary is None:
+            raise KeyError("Chat not found")
+        return summary
+
+    @staticmethod
+    def _ensure_session_summary(
+        summaries: dict[str, SessionSummary],
+        session_id: str,
+        said_at: object,
+    ) -> SessionSummary:
+        if not isinstance(said_at, str):
+            raise ValueError("Invalid session timestamp")
+        if session_id not in summaries:
+            summaries[session_id] = {
+                "id": session_id,
+                "title": "",
+                "created_at": said_at,
+                "last_active_at": said_at,
+                "event_count": 0,
+                "archived": False,
+                "active": False,
+            }
+        return summaries[session_id]
+
+    @staticmethod
+    def _automatic_session_title(content: object) -> str:
+        if not isinstance(content, str):
+            return "New chat"
+        title = " ".join(content.split())
+        if not title:
+            return "New chat"
+        return title if len(title) <= 48 else title[:47].rstrip() + "…"
 
     def append_entity_observation(
         self,
@@ -322,7 +511,12 @@ class EventStore:
             if isinstance(record, dict) and record.get("kind") == "chat_boundary":
                 session_id = self._record_session_id(record, legacy_session_id(index))
                 continue
-            if isinstance(record, dict) and record.get("kind") in {"privacy", "transcript_correction"}:
+            if isinstance(record, dict) and record.get("kind") in {
+                "privacy",
+                "session_metadata",
+                "session_open",
+                "transcript_correction",
+            }:
                 continue
             if self._is_legacy_search_event(record):
                 continue
@@ -511,6 +705,20 @@ class EventStore:
         except Exception:
             _log.warning("mirror: failed to write chat boundary", exc_info=True)
 
+    def _mirror_session_metadata(self, record: SessionMetadata) -> None:
+        if self._mirror is None:
+            return
+        try:
+            if "title" in record:
+                self._mirror.execute("UPDATE sessions SET title = ? WHERE id = ?", (record["title"], record["session_id"]))
+            if "archived" in record:
+                self._mirror.execute(
+                    "UPDATE sessions SET archived = ? WHERE id = ?",
+                    (int(record["archived"]), record["session_id"]),
+                )
+        except Exception:
+            _log.warning("mirror: failed to write session metadata %s", record["session_id"], exc_info=True)
+
     def _mirror_entity_observation(self, record: EntityObservation) -> None:
         if self._mirror is None:
             return
@@ -567,12 +775,15 @@ class EventStore:
             _log.warning("mirror: failed to write embedding %s", event_id, exc_info=True)
 
     def _append_record(self, record: object) -> None:
+        self._append_records([record])
+
+    def _append_records(self, records: list[object]) -> None:
         created = not self.path.exists()
         self.data_root.mkdir(parents=True, exist_ok=True)
         self.relational_dir.mkdir(parents=True, exist_ok=True)
         self.interior_dir.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as events_file:
-            events_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+            events_file.write("".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records))
             events_file.flush()
             os.fsync(events_file.fileno())
         if created:
@@ -666,6 +877,9 @@ class EventStore:
             if isinstance(record, dict) and record.get("kind") == "chat_boundary":
                 session_id = cls._record_session_id(record, legacy_session_id(index))
                 found_boundary = True
+            elif isinstance(record, dict) and record.get("kind") == "session_open":
+                session_id = cls._record_session_id(record, session_id)
+                found_boundary = True
             elif (
                 not found_boundary
                 and isinstance(record, dict)
@@ -674,6 +888,27 @@ class EventStore:
             ):
                 session_id = cls._record_session_id(record, session_id)
         return session_id
+
+    @classmethod
+    def _resumed_session(cls, records: list[object], active_session_id: str) -> str | None:
+        session_id = legacy_session_id(-1)
+        last_event_session_id: str | None = None
+        selected_by_open = False
+        for index, record in enumerate(records):
+            if isinstance(record, dict) and record.get("kind") == "chat_boundary":
+                session_id = cls._record_session_id(record, legacy_session_id(index))
+                selected_by_open = False
+            elif isinstance(record, dict) and record.get("kind") == "session_open":
+                selected_by_open = cls._record_session_id(record, session_id) == active_session_id
+            elif isinstance(record, dict) and record.get("role") in {"user", "assistant"}:
+                last_event_session_id = cls._record_session_id(record, session_id)
+                if selected_by_open and last_event_session_id == active_session_id:
+                    selected_by_open = False
+        return (
+            active_session_id
+            if selected_by_open and last_event_session_id and last_event_session_id != active_session_id
+            else None
+        )
 
     @staticmethod
     def _parse_transcript_correction(record: object) -> TranscriptCorrection:

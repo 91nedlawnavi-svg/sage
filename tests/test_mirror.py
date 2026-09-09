@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sqlite3
 import sys
 from tempfile import TemporaryDirectory
 import unittest
@@ -11,7 +12,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from database import Database, relational_db, interior_db, RELATIONAL_SCHEMA
-from events import EventStore
+from events import EventStore, legacy_session_id
 from interior import InteriorStore
 
 
@@ -64,6 +65,7 @@ class BackfillTests(unittest.TestCase):
             {"role": "user", "content": "legacy", "said_at": "2026-01-01T00:00:00Z"},
             {"id": "e1", "role": "user", "content": "a", "said_at": "2026-01-01T00:00:00Z", "source": "voice", "call_id": "call-1", "turn_id": "turn-1"},
             {"id": "e2", "role": "assistant", "content": "b", "said_at": "2026-01-01T00:00:01Z", "source": "text"},
+            {"kind": "session_metadata", "id": "sm1", "session_id": legacy_session_id(-1), "title": "Legacy chat", "archived": True, "said_at": "2026-01-01T00:00:01Z"},
             {"kind": "transcript_correction", "id": "c1", "source_event_id": "e1", "content": "corrected", "said_at": "2026-01-01T00:00:01Z"},
             {"kind": "privacy", "target_id": "e1", "sensitive": True, "source": "sensor", "said_at": "2026-01-01T00:00:02Z"},
             {"kind": "chat_boundary", "said_at": "2026-01-01T00:00:03Z"},
@@ -85,9 +87,25 @@ class BackfillTests(unittest.TestCase):
         self.assertIsNotNone(rel.fetchone("SELECT id FROM events WHERE id = 'legacy:1'"))
         self.assertEqual(rc["chat_boundaries"], 1)
         self.assertEqual(rc["heartbeat_completions"], 2)
+        session = rel.fetchone("SELECT title, archived FROM sessions WHERE id = ?", (legacy_session_id(-1),))
+        self.assertEqual(session, {"title": "Legacy chat", "archived": 1})
 
         mismatches = verify(rc, {}, self.root)
         self.assertEqual(mismatches, [])
+        rel.close()
+
+    def test_existing_sessions_table_gains_navigation_columns(self) -> None:
+        path = self.root / "relational" / "relational.db"
+        connection = sqlite3.connect(path)
+        connection.execute("CREATE TABLE sessions (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, last_active_at TEXT NOT NULL)")
+        connection.execute("INSERT INTO sessions VALUES ('old', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')")
+        connection.commit()
+        connection.close()
+
+        rel = relational_db(self.root)
+        columns = {row["name"] for row in rel.fetchall("PRAGMA table_info(sessions)")}
+        self.assertTrue({"title", "archived"}.issubset(columns))
+        self.assertEqual(rel.fetchone("SELECT archived FROM sessions WHERE id = 'old'")["archived"], 0)
         rel.close()
 
 
@@ -162,6 +180,14 @@ class DualWriteTests(unittest.TestCase):
         boundary = self.store.append_chat_boundary()
         self.assertEqual(self.rel.count("chat_boundaries"), 1)
         self.assertIsNotNone(self.rel.fetchone("SELECT id FROM sessions WHERE id = ?", (boundary["session_id"],)))
+
+    def test_session_metadata_dual_write(self) -> None:
+        event = self.store.append("user", "Original title")
+        self.store.rename_session(event["session_id"], "Renamed chat")
+        self.store.archive_session(event["session_id"])
+
+        row = self.rel.fetchone("SELECT title, archived FROM sessions WHERE id = ?", (event["session_id"],))
+        self.assertEqual(row, {"title": "Renamed chat", "archived": 1})
 
     def test_entity_observation_dual_write(self) -> None:
         ev = self.store.append("user", "about elliot")

@@ -208,7 +208,22 @@ class SageHandler(BaseHTTPRequestHandler):
                         "kind": "waiting",
                     }
                 ] + events
-            self._json(HTTPStatus.OK, {"events": events, "model": self.server.router.last_alias})
+            self._json(
+                HTTPStatus.OK,
+                {
+                    "events": events,
+                    "model": self.server.router.last_alias,
+                    "session_id": self.server.store.current_session_id,
+                },
+            )
+        elif path == "/api/sessions":
+            self._json(
+                HTTPStatus.OK,
+                {
+                    "sessions": self.server.store.sessions(include_archived=True),
+                    "active_session_id": self.server.store.current_session_id,
+                },
+            )
         elif path == "/api/calls":
             self._json(HTTPStatus.OK, {"calls": self._voice_calls()})
         elif path == "/reflections" or path == "/api/reflections":
@@ -259,6 +274,14 @@ class SageHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/chat":
             self._chat()
+            return
+        if path in {
+            "/api/sessions/open",
+            "/api/sessions/rename",
+            "/api/sessions/archive",
+            "/api/sessions/unarchive",
+        }:
+            self._session_action(path.rsplit("/", 1)[-1])
             return
         if path == "/api/waiting-message/ack":
             self.server.interior.clear_waiting_message()
@@ -509,6 +532,7 @@ class SageHandler(BaseHTTPRequestHandler):
         if voice and (not self._uuid(call_id) or not self._uuid(turn_id)):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "voice chat requires valid call and turn IDs"})
             return
+        resumed_session_events = self.server.store.resumed_session_history()
         accepted = accept_message(
             message,
             self.server.store,
@@ -557,6 +581,7 @@ class SageHandler(BaseHTTPRequestHandler):
                 build_router_messages(
                     message,
                     self.server.store,
+                    session_events=resumed_session_events,
                     exclude_event_id=accepted["id"],
                     directive=load_directive(identity_block=compose_identity_block(self.server.interior)),
                     search_context=search_context,
@@ -567,6 +592,40 @@ class SageHandler(BaseHTTPRequestHandler):
             call_id=call_id,
             turn_id=turn_id,
             session_id=accepted["session_id"],
+        )
+
+    def _session_action(self, action: str) -> None:
+        body = self._json_body()
+        if body is None:
+            return
+        session_id = body.get("session_id")
+        if not isinstance(session_id, str) or not session_id:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "session_id must be a nonblank string"})
+            return
+        try:
+            if action == "open":
+                session = self.server.store.open_session(session_id)
+            elif action == "rename":
+                title = body.get("title")
+                if not isinstance(title, str):
+                    raise ValueError("Chat title must be 1 to 120 characters")
+                session = self.server.store.rename_session(session_id, title)
+            elif action == "archive":
+                session = self.server.store.archive_session(session_id)
+            else:
+                session = self.server.store.unarchive_session(session_id)
+        except KeyError:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "Chat not found"})
+            return
+        except ValueError as exc:
+            self._json(HTTPStatus.CONFLICT if action == "open" else HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            return
+        except OSError:
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Sage could not update this chat."})
+            return
+        self._json(
+            HTTPStatus.OK,
+            {"session": session, "active_session_id": self.server.store.current_session_id},
         )
 
     def _decide_search(self, message: str, exclude_event_id: str) -> str | None:

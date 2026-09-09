@@ -170,3 +170,14 @@ product authority.
   positions around existing chat boundaries. Their JSONL records remain intact.
 - `events.jsonl` remains authoritative. SQLite stores derived session metadata
   and event-to-session links and can rebuild them from the append-only history.
+
+## 2026-09-09 — Reversible session navigation
+
+- The chat drawer lists sessions and can reopen and continue an old chat,
+  rename it, archive it, or restore it.
+- Opening, renaming, archiving, and restoring append control records to
+  `events.jsonl`; original dialogue events are not rewritten.
+- Archive hides a chat from the main list but does not remove its events from
+  global recall. Archiving the active chat starts a new empty chat.
+- Permanent deletion remains a separate unresolved destructive flow and is not
+  part of session navigation.

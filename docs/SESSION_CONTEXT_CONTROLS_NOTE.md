@@ -286,7 +286,7 @@ copy that contradicts the promise of permanent deletion.
 - Keep `~/sage_data/` JSONL authoritative.
 - Verify restart and mirror behavior.
 
-### Session 3 — Add session navigation
+### Session 3 — Add session navigation — complete
 
 - List, open, continue, rename, archive, and unarchive.
 - Keep global recall available across sessions.

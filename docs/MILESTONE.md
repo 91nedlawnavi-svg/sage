@@ -28,10 +28,14 @@ Already present and verified:
 - Recall cues built from the recent eligible exchange plus the newest message.
 - Resumed-session context has a tested bounded contract: selected-session tail,
   a two-event recent-life bridge on first resume, then global recall inside the
-  existing eight-event ceiling. Session navigation is not wired yet.
+  existing eight-event ceiling.
 - New text and voice events carry stable session IDs across restarts. New-chat
   boundaries start new IDs; legacy boundaries define deterministic sessions at
   read time without rewriting old event history.
+- Browser session navigation lists, opens, continues, renames, archives, and
+  restores chats. Control changes append new records; archive does not remove
+  events from global recall. Keyboard focus, mobile touch targets, and semantic
+  labels are built into the drawer.
 - SQLite mirrors (relational and interior) dual-written alongside JSONL with fail-soft recovery.
 - Conversational web search: Sage decides before replying when to search and
   stores query/source provenance separately from conversation events.
@@ -49,7 +53,7 @@ Already present and verified:
   Sage's normal streamed text path, and sentence-chunked Deepgram TTS. It shows
   STT, first-sentence, TTS, and total-to-audio timing while leaving direct Gemini Live
   unchanged as the baseline.
-- 117 deterministic tests passing across the current foundation and both voice
+- 121 deterministic tests passing across the current foundation and both voice
   paths.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like

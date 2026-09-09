@@ -241,6 +241,50 @@ class FoundationTests(unittest.TestCase):
             ["New session"],
         )
 
+    def test_session_navigation_is_append_only_and_archive_keeps_global_recall(self) -> None:
+        old_user = self.store.append("user", "Orchid plans for Saturday")
+        self.store.append("assistant", "Bring the small pruning shears")
+        self.store.append_chat_boundary()
+        recent = self.store.append("user", "Current chat")
+        original = self.store.path.read_bytes()
+
+        sessions = self.store.sessions(include_archived=True)
+        self.assertEqual([session["title"] for session in sessions], ["Current chat", "Orchid plans for Saturday"])
+        self.assertEqual([session["event_count"] for session in sessions], [1, 2])
+
+        self.store.open_session(old_user["session_id"])
+        self.assertEqual([event["content"] for event in self.store.resumed_session_history()], [
+            "Orchid plans for Saturday",
+            "Bring the small pruning shears",
+        ])
+        reopened_before_continue = EventStore(self.data_root)
+        self.assertEqual(reopened_before_continue.current_session_id, old_user["session_id"])
+        self.assertIsNotNone(reopened_before_continue.resumed_session_history())
+        continued = self.store.append("user", "Continue those plans")
+        self.assertEqual(continued["session_id"], old_user["session_id"])
+        self.assertIsNone(self.store.resumed_session_history())
+        restarted = EventStore(self.data_root)
+        self.assertEqual(restarted.current_session_id, old_user["session_id"])
+        self.assertIsNone(restarted.resumed_session_history())
+
+        renamed = self.store.rename_session(old_user["session_id"], "  Saturday orchids  ")
+        self.assertEqual(renamed["title"], "Saturday orchids")
+        archived = self.store.archive_session(old_user["session_id"])
+        self.assertTrue(archived["archived"])
+        self.assertNotEqual(self.store.current_session_id, old_user["session_id"])
+        self.assertIsNone(EventStore(self.data_root).resumed_session_history())
+        with self.assertRaisesRegex(ValueError, "restored"):
+            self.store.open_session(old_user["session_id"])
+        self.assertEqual(self.store.recall("pruning shears", fallback=False)[0]["session_id"], old_user["session_id"])
+
+        restored = self.store.unarchive_session(old_user["session_id"])
+        self.assertFalse(restored["archived"])
+        self.assertTrue(self.store.path.read_bytes().startswith(original))
+        self.assertEqual(recent["session_id"], sessions[0]["id"])
+        kinds = [json.loads(line).get("kind") for line in self.store.path.read_text().splitlines()]
+        self.assertIn("session_open", kinds)
+        self.assertEqual(kinds.count("session_metadata"), 3)
+
     def test_reply_keeps_user_session_if_new_chat_starts_during_provider_call(self) -> None:
         store = self.store
 
@@ -276,6 +320,10 @@ class FoundationTests(unittest.TestCase):
         new_event = EventStore(self.store.data_root).append("user", "new record")
         self.assertEqual(new_event["session_id"], first_read[1]["session_id"])
         self.assertEqual(self.store.path.read_text(encoding="utf-8")[:len(original)], original)
+        self.assertEqual(
+            [session["event_count"] for session in EventStore(self.store.data_root).sessions(include_archived=True)],
+            [2, 1],
+        )
 
     def test_resumed_session_combines_its_tail_recent_life_and_global_recall(self) -> None:
         old_events = [
@@ -465,9 +513,20 @@ class FoundationTests(unittest.TestCase):
         try:
             base_url = f"http://127.0.0.1:{web_server.server_port}"
             with urlopen(f"{base_url}/") as response:
-                self.assertIn(b"Message Sage", response.read())
+                page = response.read()
+            self.assertIn(b"Message Sage", page)
+            self.assertIn(b'aria-labelledby="drawer-chats-title"', page)
+            self.assertIn(b'aria-label="Archived chats"', page)
             with urlopen(f"{base_url}/static/app.css") as response:
-                self.assertIn(b"-webkit-tap-highlight-color: transparent", response.read())
+                stylesheet = response.read()
+            self.assertIn(b"-webkit-tap-highlight-color: transparent", stylesheet)
+            self.assertIn(b"min-height: 44px", stylesheet)
+            with urlopen(f"{base_url}/static/app.js") as response:
+                script = response.read()
+            self.assertIn(b"/api/sessions/${action}", script)
+            self.assertIn(b'element.closest("[hidden]")', script)
+            self.assertIn(b'aria-current', script)
+            self.assertNotIn(b"Delete permanently", page + script)
             with urlopen(f"{base_url}/notebook") as response:
                 self.assertIn(b"notebook-tabs", response.read())
             with urlopen(f"{base_url}/static/notebook.js") as response:
@@ -818,6 +877,72 @@ class FoundationTests(unittest.TestCase):
                 [(event["role"], event["content"]) for event in EventStore(self.data_root).read_all()],
                 [("user", "Old visible chat"), ("assistant", "Still remembered")],
             )
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_browser_session_navigation_continues_old_chat_and_restores_archive(self) -> None:
+        old = self.store.append("user", "Old orchid chat")
+        self.store.append("assistant", "Old orchid answer")
+        self.store.append_chat_boundary()
+        current = self.store.append("user", "Recent life update")
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+
+        def post(base_url: str, action: str, body: dict[str, str]) -> dict:
+            request = Request(
+                f"{base_url}/api/sessions/{action}",
+                data=json.dumps(body).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                return json.load(response)
+
+        try:
+            base_url = f"http://127.0.0.1:{web_server.server_port}"
+            with urlopen(f"{base_url}/api/sessions") as response:
+                listed = json.load(response)
+            self.assertEqual(len(listed["sessions"]), 2)
+            self.assertEqual(listed["active_session_id"], current["session_id"])
+
+            opened = post(base_url, "open", {"session_id": old["session_id"]})
+            self.assertEqual(opened["active_session_id"], old["session_id"])
+            with urlopen(f"{base_url}/api/history") as response:
+                self.assertEqual(
+                    [event["content"] for event in json.load(response)["events"]],
+                    ["Old orchid chat", "Old orchid answer"],
+                )
+
+            request = Request(
+                f"{base_url}/api/chat",
+                data=json.dumps({"message": "Continue the orchid chat"}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                self.assertEqual(read_stream(response)[-1], {"type": "done"})
+            self.assertIn("Recent life update", [message["content"] for message in FakeRouter.request_body["messages"]])
+            self.assertEqual(self.store.history()[-1]["session_id"], old["session_id"])
+
+            renamed = post(base_url, "rename", {"session_id": old["session_id"], "title": "Orchid work"})
+            self.assertEqual(renamed["session"]["title"], "Orchid work")
+            archived = post(base_url, "archive", {"session_id": old["session_id"]})
+            self.assertTrue(archived["session"]["archived"])
+            self.assertNotEqual(archived["active_session_id"], old["session_id"])
+            with urlopen(f"{base_url}/api/history") as response:
+                self.assertEqual(json.load(response)["events"], [])
+            with self.assertRaises(HTTPError) as rejected:
+                post(base_url, "open", {"session_id": old["session_id"]})
+            self.assertEqual(rejected.exception.code, 409)
+
+            restored = post(base_url, "unarchive", {"session_id": old["session_id"]})
+            self.assertFalse(restored["session"]["archived"])
+            with urlopen(f"{base_url}/api/sessions") as response:
+                sessions = json.load(response)["sessions"]
+            self.assertEqual(next(session for session in sessions if session["id"] == old["session_id"])["title"], "Orchid work")
         finally:
             web_server.shutdown()
             web_thread.join()
