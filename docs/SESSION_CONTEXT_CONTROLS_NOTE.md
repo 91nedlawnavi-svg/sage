@@ -301,8 +301,9 @@ copy that contradicts the promise of permanent deletion.
 
 ### Session 5 — Connect split voice
 
-- Associate split-voice turns with active session.
-- Settle and implement chat-model inheritance versus voice override.
+- Associate split-voice turns with active session. **Complete.**
+- Settle and implement chat-model inheritance versus voice override. **Complete:**
+  default `Same as chat`, with session-scoped `Auto` or explicit override.
 - Preserve call review and transcript correction.
 - Re-measure end-to-first-audio latency by model.
 
@@ -330,8 +331,8 @@ copy that contradicts the promise of permanent deletion.
 - Should titles use the first user message, a local rule, or a model-generated
   summary?
 - Should archive affect global recall, or only sidebar visibility?
-- Should split voice default to `Same as chat`, a separate fast `Auto`, or the
-  last voice choice?
+- Should split voice gain a separate latency-optimized `Auto` chain, or is the
+  current configured `Auto` chain sufficient?
 - Where should the configured picker list live so new models are easy to add?
 - Should a failed partial assistant response remain visible but unsaved, or be
   replaced by the error row?

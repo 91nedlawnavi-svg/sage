@@ -82,6 +82,25 @@ h1 {
   cursor: pointer;
 }
 
+#voice-model {
+  display: block;
+  min-width: 12rem;
+  margin: 0 auto 6px;
+  padding: 8px 10px;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  background: #171717;
+  color: #ececec;
+  font: inherit;
+}
+
+#voice-model-status {
+  min-height: 1.25em;
+  margin: 0 0 20px;
+  color: #8f8f8f;
+  font-size: .8rem;
+}
+
 #call-button:active { transform: scale(.98); }
 #call-button:not(.active):hover:not(:disabled) { background: #dedede; }
 #call-button:disabled { cursor: wait; opacity: .58; }

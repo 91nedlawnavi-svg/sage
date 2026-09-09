@@ -57,8 +57,10 @@ Already present and verified:
   A separate `/call/split` latency trial sends held audio through Deepgram STT,
   Sage's normal streamed text path, and sentence-chunked Deepgram TTS. It shows
   STT, first-sentence, TTS, and total-to-audio timing while leaving direct Gemini Live
-  unchanged as the baseline.
-- 126 deterministic tests passing across the current foundation and both voice
+  unchanged as the baseline. Split voice now inherits the active chat session's
+  model by default, with a persisted `Auto` or explicit voice override; reopened
+  sessions keep voice turns in the selected session.
+- 130 deterministic tests passing across the current foundation and both voice
   paths.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like

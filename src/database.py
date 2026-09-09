@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_active_at TEXT NOT NULL,
     title TEXT,
     archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1)),
-    model TEXT NOT NULL DEFAULT 'auto'
+    model TEXT NOT NULL DEFAULT 'auto',
+    voice_model TEXT NOT NULL DEFAULT 'same'
 );
 
 CREATE TABLE IF NOT EXISTS event_sessions (
@@ -184,6 +185,8 @@ class Database:
                     self._conn.execute("ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
                 if "model" not in session_columns:
                     self._conn.execute("ALTER TABLE sessions ADD COLUMN model TEXT NOT NULL DEFAULT 'auto'")
+                if "voice_model" not in session_columns:
+                    self._conn.execute("ALTER TABLE sessions ADD COLUMN voice_model TEXT NOT NULL DEFAULT 'same'")
                 event_columns = {row[1] for row in self._conn.execute("PRAGMA table_info(events)")}
                 if "model" not in event_columns:
                     self._conn.execute("ALTER TABLE events ADD COLUMN model TEXT")

@@ -303,6 +303,20 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual([record.get("model") for record in records if record.get("kind") == "session_metadata"], ["explicit-model", "auto"])
         self.assertEqual(sum(record.get("kind") == "chat_boundary" for record in records), 1)
 
+    def test_session_voice_model_defaults_to_chat_and_is_append_only(self) -> None:
+        session_id = self.store.current_session_id
+        self.assertEqual(self.store.session_voice_model(), "same")
+        selected = self.store.set_session_voice_model(session_id, "voice-model")
+        self.assertEqual(selected["voice_model"], "voice-model")
+        reopened = EventStore(self.data_root)
+        self.assertEqual(reopened.session_voice_model(session_id), "voice-model")
+        reopened.set_session_voice_model(session_id, "same")
+        records = [json.loads(line) for line in self.store.path.read_text().splitlines()]
+        self.assertEqual(
+            [record.get("voice_model") for record in records if record.get("kind") == "session_metadata"],
+            ["voice-model", "same"],
+        )
+
     def test_reply_keeps_user_session_if_new_chat_starts_during_provider_call(self) -> None:
         store = self.store
 
@@ -627,8 +641,14 @@ class FoundationTests(unittest.TestCase):
             with urlopen(f"{base_url}/static/split-call.js") as response:
                 script = response.read()
             self.assertIn(b"Hold to talk", page)
+            self.assertIn(b"Voice model", page)
             self.assertIn(b"/api/split-voice/stt", script)
             self.assertNotIn(b"server-secret", page + script)
+            with urlopen(f"{base_url}/api/split-voice/config") as response:
+                config = json.load(response)
+            self.assertEqual(config["session_id"], self.store.current_session_id)
+            self.assertEqual(config["chat_model"], "auto")
+            self.assertEqual(config["voice_model"], "same")
 
             stt_request = Request(
                 f"{base_url}/api/split-voice/stt",
@@ -1082,6 +1102,14 @@ class FoundationTests(unittest.TestCase):
         web_thread = Thread(target=web_server.serve_forever)
         web_thread.start()
         try:
+            select = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/sessions/voice-model",
+                data=json.dumps({"session_id": self.store.current_session_id, "model": "auto"}).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(select) as response:
+                self.assertEqual(json.load(response)["session"]["voice_model"], "auto")
             request = Request(
                 f"http://127.0.0.1:{web_server.server_port}/api/split-voice/chat",
                 data=json.dumps({
@@ -1097,6 +1125,62 @@ class FoundationTests(unittest.TestCase):
             self.assertEqual(streamed[-2:], [{"type": "model", "content": "second-model"}, {"type": "done"}])
             self.assertEqual(self.store.history()[-1]["model"], "second-model")
             self.assertEqual(FakeRouter.seen_models, ["first-model", "second-model", "first-model", "second-model"])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_split_voice_same_as_chat_uses_active_session_model(self) -> None:
+        router = RouterClient(["first-model", "second-model"], self.base_url)
+        self.store.set_session_model(self.store.current_session_id, "first-model")
+        FakeRouter.fail_models = {"first-model"}
+        web_server = SageServer(("127.0.0.1", 0), self.store, router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/split-voice/chat",
+                data=json.dumps({
+                    "message": "Voice inherits chat",
+                    "call_id": "66666666-6666-4666-8666-666666666666",
+                    "turn_id": "77777777-7777-4777-8777-777777777777",
+                }).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                self.assertEqual(read_stream(response)[-1]["type"], "model_error")
+            self.assertEqual(FakeRouter.seen_models, ["first-model", "second-model", "first-model"])
+            self.assertEqual([event["role"] for event in self.store.history()], ["user"])
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_split_voice_uses_active_reopened_session(self) -> None:
+        old = self.store.append("user", "Old voice chapter")
+        self.store.append_chat_boundary()
+        self.store.append("user", "Current chapter")
+        self.store.open_session(old["session_id"])
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/split-voice/chat",
+                data=json.dumps({
+                    "message": "Continue old voice chapter",
+                    "call_id": "88888888-8888-4888-8888-888888888888",
+                    "turn_id": "99999999-9999-4999-8999-999999999999",
+                }).encode(),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                self.assertEqual(read_stream(response)[-1], {"type": "done"})
+            saved = self.store.history()
+            self.assertEqual(saved[-2]["session_id"], old["session_id"])
+            self.assertEqual(saved[-1]["session_id"], old["session_id"])
         finally:
             web_server.shutdown()
             web_thread.join()

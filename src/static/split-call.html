@@ -17,11 +17,16 @@
     <section aria-labelledby="call-title">
       <h1 id="call-title">Split Call</h1>
       <p id="status" role="status" aria-live="polite">Hold to talk.</p>
+      <label for="voice-model">Voice model</label>
+      <select id="voice-model" aria-label="Voice model" disabled>
+        <option value="same">Same as chat</option>
+      </select>
+      <p id="voice-model-status" aria-live="polite"></p>
       <button id="call-button" type="button">Hold to talk</button>
       <p id="timing" aria-live="polite"></p>
       <p id="note">Deepgram listens, Sage writes, then Deepgram speaks each completed sentence. Audio is not stored.</p>
     </section>
   </main>
-  <script src="/static/split-call.js?v=1"></script>
+  <script src="/static/split-call.js?v=2"></script>
 </body>
 </html>

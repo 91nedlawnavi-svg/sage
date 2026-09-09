@@ -233,6 +233,16 @@ class SageHandler(BaseHTTPRequestHandler):
                     "active_session_id": self.server.store.current_session_id,
                 },
             )
+        elif path == "/api/split-voice/config":
+            self._json(
+                HTTPStatus.OK,
+                {
+                    "session_id": self.server.store.current_session_id,
+                    "chat_model": self.server.store.session_model(),
+                    "voice_model": self.server.store.session_voice_model(),
+                    "models": list(self.server.router.aliases),
+                },
+            )
         elif path == "/api/calls":
             self._json(HTTPStatus.OK, {"calls": self._voice_calls()})
         elif path == "/reflections" or path == "/api/reflections":
@@ -290,6 +300,7 @@ class SageHandler(BaseHTTPRequestHandler):
             "/api/sessions/archive",
             "/api/sessions/unarchive",
             "/api/sessions/model",
+            "/api/sessions/voice-model",
         }:
             self._session_action(path.rsplit("/", 1)[-1])
             return
@@ -606,7 +617,10 @@ class SageHandler(BaseHTTPRequestHandler):
             self._write_stream_event("search_error", "Could not decide whether to search")
 
         selected_model = self.server.store.session_model(accepted["session_id"])
-        requested_model = None if voice or retry_with_auto or selected_model == "auto" else selected_model
+        if voice:
+            voice_model = self.server.store.session_voice_model(accepted["session_id"])
+            selected_model = selected_model if voice_model == "same" else voice_model
+        requested_model = None if retry_with_auto or selected_model == "auto" else selected_model
         stream = (
             iter(())
             if requested_model is not None and requested_model not in self.server.router.aliases
@@ -656,6 +670,11 @@ class SageHandler(BaseHTTPRequestHandler):
                 if model != "auto" and model not in self.server.router.aliases:
                     raise ValueError("Chat model must be Auto or a configured model")
                 session = self.server.store.set_session_model(session_id, model)
+            elif action == "voice-model":
+                model = body.get("model")
+                if model != "same" and model != "auto" and model not in self.server.router.aliases:
+                    raise ValueError("Voice model must be Same as chat, Auto, or a configured model")
+                session = self.server.store.set_session_voice_model(session_id, model)
             else:
                 session = self.server.store.unarchive_session(session_id)
         except KeyError:

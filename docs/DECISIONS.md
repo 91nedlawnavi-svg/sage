@@ -195,5 +195,19 @@ product authority.
 - A failed answer leaves the accepted user event intact and saves no partial
   assistant event. `Retry` and `Retry with Auto` reuse that same user event.
 - Foreground selection does not change extraction, heartbeat, metabolism, or
-  direct Gemini Live routing. Split-voice inheritance remains an open Session 5
-  decision; Session 4 does not settle it.
+  direct Gemini Live routing. Split-voice inheritance is settled by the Session
+  5 decision below.
+
+## 2026-09-09 — Split voice follows chat by default
+
+- Split voice uses active session's model and session identity. Reopening a
+  chat and speaking on `/call/split` continues that chat; it does not create a
+  separate voice memory pool.
+- Split voice preference defaults to `Same as chat` and is stored as
+  append-only session metadata. Elliot may choose `Auto` or one configured
+  conversational model as a session-scoped voice override.
+- `Same as chat` inherits both `Auto` failover and explicit-model honesty. An
+  override changes only split voice; text chat, direct Gemini Live, extraction,
+  heartbeat, and metabolism keep their own routes.
+- Voice turns retain session ID, call ID, turn ID, actual answering model,
+  append-only corrections, and Call Review grouping. Audio remains unstored.

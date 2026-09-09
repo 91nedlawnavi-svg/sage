@@ -107,6 +107,7 @@ class SessionMetadata(TypedDict):
     title: NotRequired[str]
     archived: NotRequired[bool]
     model: NotRequired[str]
+    voice_model: NotRequired[str]
 
 
 class SessionOpen(TypedDict):
@@ -125,6 +126,7 @@ class SessionSummary(TypedDict):
     archived: bool
     active: bool
     model: str
+    voice_model: str
 
 
 def legacy_session_id(boundary_index: int) -> str:
@@ -264,6 +266,15 @@ class EventStore:
                 return "auto"
             raise
 
+    def session_voice_model(self, session_id: str | None = None) -> str:
+        target = session_id or self._current_session_id
+        try:
+            return self._session_summary(target)["voice_model"]
+        except KeyError:
+            if target == self._current_session_id:
+                return "same"
+            raise
+
     def resumed_session_history(self) -> list[Event] | None:
         if self._resumed_session_id != self._current_session_id:
             return None
@@ -297,6 +308,10 @@ class EventStore:
                     if not isinstance(record["model"], str) or not record["model"]:
                         raise ValueError("Invalid session model")
                     summary["model"] = record["model"]
+                if "voice_model" in record:
+                    if not isinstance(record["voice_model"], str) or not record["voice_model"]:
+                        raise ValueError("Invalid voice model")
+                    summary["voice_model"] = record["voice_model"]
             elif record.get("role") in {"user", "assistant"}:
                 event_session_id = self._record_session_id(record, session_id)
                 summary = self._ensure_session_summary(summaries, event_session_id, record.get("said_at"))
@@ -388,6 +403,37 @@ class EventStore:
         self._mirror_session_metadata(record)
         return self._session_summary(session_id)
 
+    def set_session_voice_model(self, session_id: str, model: str) -> SessionSummary:
+        if not model:
+            raise ValueError("Voice model must not be blank")
+        with self._write_lock:
+            try:
+                summary = self._session_summary(session_id)
+            except KeyError:
+                if session_id != self._current_session_id:
+                    raise
+                boundary: ChatBoundary | None = {
+                    "kind": "chat_boundary",
+                    "said_at": self._timestamp(),
+                    "session_id": session_id,
+                }
+            else:
+                boundary = None
+                if summary["voice_model"] == model:
+                    return summary
+            record: SessionMetadata = {
+                "kind": "session_metadata",
+                "id": str(uuid4()),
+                "session_id": session_id,
+                "said_at": self._timestamp(),
+                "voice_model": model,
+            }
+            self._append_records([boundary, record] if boundary is not None else [record])
+        if boundary is not None:
+            self._mirror_chat_boundary(boundary)
+        self._mirror_session_metadata(record)
+        return self._session_summary(session_id)
+
     def _set_session_archived(self, session_id: str, archived: bool) -> SessionSummary:
         with self._write_lock:
             summary = self._session_summary(session_id)
@@ -443,6 +489,7 @@ class EventStore:
                 "archived": False,
                 "active": False,
                 "model": "auto",
+                "voice_model": "same",
             }
         return summaries[session_id]
 
@@ -773,6 +820,11 @@ class EventStore:
                 self._mirror.execute(
                     "UPDATE sessions SET model = ? WHERE id = ?",
                     (record["model"], record["session_id"]),
+                )
+            if "voice_model" in record:
+                self._mirror.execute(
+                    "UPDATE sessions SET voice_model = ? WHERE id = ?",
+                    (record["voice_model"], record["session_id"]),
                 )
         except Exception:
             _log.warning("mirror: failed to write session metadata %s", record["session_id"], exc_info=True)

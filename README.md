@@ -21,7 +21,9 @@ context, can recall relevant local events during the call, and saves completed
 transcripts as voice-tagged episodic history. Later corrections remain linked
 to the untouched original transcript and become the wording used by recall.
 New calls can be inspected and corrected locally at `/calls`, grouped by call
-and turn. `/call/split` is a side-by-side latency trial: Deepgram transcribes a
+and turn. `/call/split` follows the active chat session and its model by
+default; its picker can persist an `Auto` or explicit voice override. It is a
+side-by-side latency trial: Deepgram transcribes a
 held recording, Sage's normal text path streams the reply, and completed
 sentences are synthesized and queued while later text is still arriving. Audio
 itself is not stored.

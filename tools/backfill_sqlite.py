@@ -59,6 +59,7 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
     session_titles: dict[str, str] = {}
     session_archived: dict[str, bool] = {}
     session_models: dict[str, str] = {}
+    session_voice_models: dict[str, str] = {}
     event_sessions = []
     event_sources = []
     voice_event_context = []
@@ -81,6 +82,8 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
                 session_archived[r["session_id"]] = r["archived"]
             if isinstance(r.get("model"), str):
                 session_models[r["session_id"]] = r["model"]
+            if isinstance(r.get("voice_model"), str):
+                session_voice_models[r["session_id"]] = r["voice_model"]
         elif r.get("role") in ("user", "assistant"):
             event_id = r.get("id", f"legacy:{index}")
             event_session_id = r.get("session_id") if isinstance(r.get("session_id"), str) else session_id
@@ -111,13 +114,13 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
 
     if sessions:
         db.executemany(
-            "INSERT INTO sessions (id, created_at, last_active_at, title, archived, model) VALUES (?, ?, ?, ?, ?, ?) "
+            "INSERT INTO sessions (id, created_at, last_active_at, title, archived, model, voice_model) VALUES (?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET "
             "created_at = MIN(created_at, excluded.created_at), "
             "last_active_at = MAX(last_active_at, excluded.last_active_at), "
-            "title = excluded.title, archived = excluded.archived, model = excluded.model",
+            "title = excluded.title, archived = excluded.archived, model = excluded.model, voice_model = excluded.voice_model",
             [
-                (session, *timestamps, session_titles.get(session), int(session_archived.get(session, False)), session_models.get(session, "auto"))
+                (session, *timestamps, session_titles.get(session), int(session_archived.get(session, False)), session_models.get(session, "auto"), session_voice_models.get(session, "same"))
                 for session, timestamps in sessions.items()
             ],
         )

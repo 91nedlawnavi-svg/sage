@@ -43,7 +43,7 @@ flowchart LR
 | **Identity + Wonder** · Sep 1–3 | Self-observation, identity proposals and rulings, conversational search, autonomous metabolism, waiting messages. | Building an evidence-based identity and exploring genuine knowledge gaps. | Elliot ratifies identity; background activity stays bounded and may end in silence. |
 | **Simplification** · Sep 6 | Sensitive mode removed, provider boundary clarified, mirror and retry faults repaired, search records separated from dialogue. | Treating every message as normal conversation without hidden privacy state. | Preserve lived history; delete obsolete machinery instead of rebuilding Sage. |
 | **Architecture map** · Sep 6 | Stack, layers, architecture, modules, and product records became legible. | Growing without Elliot or future developers losing the shape of Sage. | Map current truth; build one complete behavior at a time. |
-| **Voice trial** · Sep 7–8 | `/call` connected the browser directly to Gemini Live, then gained recall, transcript correction, and Call Review. `/call/split` now measures Deepgram STT, Sage text, and sentence-chunked TTS beside it. | Comparing native audio speed against exact Sage-written replies while preserving reviewable voice history. | Keep direct Live as baseline; measure whether split-chain wording earns its added delay. |
+| **Voice trial** · Sep 7–9 | `/call` connected the browser directly to Gemini Live, then gained recall, transcript correction, and Call Review. `/call/split` measures Deepgram STT, Sage text, and sentence-chunked TTS beside it; it now follows the active session's model by default with an explicit voice override. | Comparing native audio speed against exact Sage-written replies while preserving reviewable voice history and session continuity. | Keep direct Live as baseline; measure whether split-chain wording earns its added delay. |
 | **Felt continuity** · now | Relevant episodes, associations, and contradictions influence ordinary replies naturally. Past chats can be reopened, continued, renamed, archived, restored, and given a per-chat text model without splitting lifetime memory. Safe answer retries reuse the saved turn. | Feeling like one continuing intelligence across daily life while models remain replaceable engines. | Memory must improve the exchange, not announce retrieval; explicit model failure must stay honest. |
 | **Capability** · next | Writing, coding, research, planning, and tools broaden behind one identity. | Helping across more of Elliot's life. | Add capabilities for real use, not architectural fashion. |
 | **Agency + presence** · later | Calibrated preparation and approved action; possibly voice, vision, and broader reach. | Acting usefully while knowing when to hold back. | Permission, ownership, and restraint remain system-wide boundaries. |
@@ -57,7 +57,9 @@ ordinary text and voice conversation. The native-audio trial now connects to
 Sage's identity and episodic memory. New call events retain voice provenance,
 and later corrections can guide recall without rewriting original transcripts.
 The split-chain trial now routes transcripts through the normal text path and
-shows stage timing beside the unchanged direct-audio baseline. Both remain
+shows stage timing beside the unchanged direct-audio baseline. Split voice
+follows the active chat session by default and permits a session-scoped voice
+override. Both remain
 experimental; automated transcript evaluation is still absent. New dialogue
 events now carry stable session identity, while older boundary-separated history
 is interpreted as sessions without rewriting lived records. The chat drawer now

@@ -1,12 +1,15 @@
 const button = document.querySelector("#call-button");
 const status = document.querySelector("#status");
 const timing = document.querySelector("#timing");
+const voiceModelPicker = document.querySelector("#voice-model");
+const voiceModelStatus = document.querySelector("#voice-model-status");
 
 const state = {
   recorder: null,
   stream: null,
   chunks: [],
   callId: crypto.randomUUID(),
+  sessionId: "",
   generation: 0,
   controller: null,
   audio: null,
@@ -22,6 +25,7 @@ const state = {
   sageMs: 0,
   ttsMs: 0,
   firstAudioMs: 0,
+  model: "",
   holding: false,
 };
 
@@ -55,8 +59,59 @@ function updateTiming() {
   if (state.sageMs) parts.push(`Sage sentence ${Math.round(state.sageMs)} ms`);
   if (state.ttsMs) parts.push(`TTS ${Math.round(state.ttsMs)} ms`);
   if (state.firstAudioMs) parts.push(`total ${Math.round(state.firstAudioMs)} ms`);
+  if (state.model) parts.unshift(`Model ${state.model.split("/").pop().replace(":free", "")}`);
   timing.textContent = parts.join(" · ");
 }
+
+function modelName(alias) {
+  return alias === "auto" ? "Auto" : alias.split("/").pop().replace(":free", "");
+}
+
+async function loadVoiceConfig() {
+  try {
+    const response = await fetch("/api/split-voice/config");
+    if (!response.ok) throw new Error("voice settings unavailable");
+    const config = await response.json();
+    voiceModelPicker.replaceChildren();
+    for (const [value, label] of [["same", "Same as chat"], ["auto", "Auto"], ...(config.models || []).map((alias) => [alias, modelName(alias)])]) {
+      const option = new Option(label, value);
+      voiceModelPicker.append(option);
+    }
+    if (config.voice_model && !["same", "auto", ...(config.models || [])].includes(config.voice_model)) {
+      voiceModelPicker.append(new Option(`${modelName(config.voice_model)} (unavailable)`, config.voice_model));
+    }
+    voiceModelPicker.value = config.voice_model || "same";
+    voiceModelPicker.dataset.selected = voiceModelPicker.value;
+    state.sessionId = config.session_id;
+    voiceModelPicker.disabled = false;
+    voiceModelStatus.textContent = `Chat: ${modelName(config.chat_model || "auto")}`;
+  } catch {
+    voiceModelStatus.textContent = "Voice settings unavailable.";
+  }
+}
+
+voiceModelPicker.addEventListener("change", async () => {
+  const previous = voiceModelPicker.dataset.selected || "same";
+  voiceModelPicker.disabled = true;
+  try {
+    const response = await fetch("/api/sessions/voice-model", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({session_id: state.sessionId, model: voiceModelPicker.value}),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "voice model update failed");
+    voiceModelPicker.dataset.selected = result.session.voice_model;
+    voiceModelStatus.textContent = result.session.voice_model === "same"
+      ? `Same as chat (${modelName(result.session.model)})`
+      : `Voice: ${modelName(result.session.voice_model)}`;
+  } catch (error) {
+    voiceModelPicker.value = previous;
+    voiceModelStatus.textContent = error.message;
+  } finally {
+    voiceModelPicker.disabled = false;
+  }
+});
 
 async function synthesize(text, slot, generation) {
   try {
@@ -168,6 +223,11 @@ async function streamSage(transcript) {
         flushSpeakable();
       } else if (event.type === "error") {
         throw new Error(event.content || "Sage failed");
+      } else if (event.type === "model_error") {
+        throw new Error(`Model error: ${event.attempted_model || "voice model"}`);
+      } else if (event.type === "model") {
+        state.model = event.content;
+        updateTiming();
       }
     }
     if (result.done) break;
@@ -183,6 +243,7 @@ async function processRecording(blob) {
   state.sageMs = 0;
   state.ttsMs = 0;
   state.firstAudioMs = 0;
+  state.model = "";
   timing.textContent = "";
   try {
     setStatus("Transcribing…");
@@ -263,3 +324,5 @@ window.addEventListener("beforeunload", () => {
   stopOutput();
   state.stream?.getTracks().forEach((track) => track.stop());
 });
+
+loadVoiceConfig();

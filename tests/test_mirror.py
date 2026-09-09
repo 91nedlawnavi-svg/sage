@@ -192,6 +192,12 @@ class DualWriteTests(unittest.TestCase):
         row = self.rel.fetchone("SELECT title, archived, model FROM sessions WHERE id = ?", (event["session_id"],))
         self.assertEqual(row, {"title": "Renamed chat", "archived": 1, "model": "explicit-model"})
 
+    def test_voice_model_metadata_dual_write(self) -> None:
+        event = self.store.append("user", "Voice preference")
+        self.store.set_session_voice_model(event["session_id"], "voice-model")
+        row = self.rel.fetchone("SELECT voice_model FROM sessions WHERE id = ?", (event["session_id"],))
+        self.assertEqual(row["voice_model"], "voice-model")
+
     def test_entity_observation_dual_write(self) -> None:
         ev = self.store.append("user", "about elliot")
         self.store.append_entity_observation("elliot", "Elliot", "mentioned", source_event_id=ev["id"])

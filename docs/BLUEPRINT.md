@@ -172,6 +172,9 @@ telemetry, decorative effects, and dense administration surfaces.
   model and reports failure instead of silently switching.
 - Valid assistant events retain which model actually answered. A safe retry
   reuses the already-saved user event rather than creating duplicate history.
+- Split voice follows the active session and inherits its chat model by default.
+  A session-scoped `Auto` or explicit voice override changes split voice only;
+  direct Gemini Live and background routes remain separate.
 - Lived memory remains locally stored.
 - Current messages and relevant context may pass through the configured local
   router, or through an explicitly approved direct real-time provider
