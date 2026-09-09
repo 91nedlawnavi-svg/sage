@@ -31,6 +31,21 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_said_at ON events(said_at);
 CREATE INDEX IF NOT EXISTS idx_events_role ON events(role);
 
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    last_active_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS event_sessions (
+    event_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    FOREIGN KEY(event_id) REFERENCES events(id),
+    FOREIGN KEY(session_id) REFERENCES sessions(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_sessions_session ON event_sessions(session_id);
+
 CREATE TABLE IF NOT EXISTS event_sources (
     event_id TEXT PRIMARY KEY,
     source TEXT NOT NULL CHECK(source IN ('text', 'voice'))

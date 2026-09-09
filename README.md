@@ -10,7 +10,7 @@ only.
 ## What Sage does today
 
 **Conversation** — browser chat (mobile and desktop) with streaming replies,
-one normal message path, and new-chat boundaries.
+one normal message path, and stable session identity across new-chat boundaries.
 
 **Experimental voice** — `/call` uses Gemini 3.1 Flash Live Preview for a
 direct, native audio-to-audio conversation. Sage supplies identity and recent
@@ -61,7 +61,7 @@ rebuildable.
 reflection, identity proposal, and metabolism trigger check. Successful passes
 use completion records to prevent duplicate work.
 
-**110 deterministic tests** covering the current foundation.
+**117 deterministic tests** covering the current foundation.
 
 ## Running
 
@@ -148,9 +148,10 @@ A normal conversation follows this path:
 5. The local router tries the talk models in order.
 6. A complete reply streams to the browser and is then saved.
 
-Starting a new chat adds a boundary; it does not delete old events. Background
-work follows a separate path: conversation, reflection, optional exploration,
-and at most one waiting message.
+Starting a new chat adds a boundary with a new stable session ID; it does not
+delete old events. Legacy boundaries define sessions at read time without
+rewriting old history. Background work follows a separate path: conversation,
+reflection, optional exploration, and at most one waiting message.
 
 The `/call` trial keeps audio on a separate low-latency path: Sage issues a
 short-lived token, then the browser streams audio directly to Gemini Live.
@@ -184,7 +185,7 @@ and Call Review path as direct calls.
 - `src/metabolism.py` — explores gaps after conversation becomes quiet.
 - `src/static/` — browser chat, voice call, Call Review, and Notebook.
 - `tools/` — backfill and model-checking utilities.
-- `tests/` — 113 deterministic checks.
+- `tests/` — 117 deterministic checks.
 
 ## Tests
 

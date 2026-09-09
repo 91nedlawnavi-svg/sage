@@ -366,6 +366,7 @@ class SageHandler(BaseHTTPRequestHandler):
 
         saved_ids: list[str] = []
         turn_id = str(uuid4())
+        session_id: str | None = None
         if user:
             accepted = accept_message(
                 user,
@@ -378,6 +379,7 @@ class SageHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_FAILURE})
                 return
             saved_ids.append(accepted["id"])
+            session_id = accepted["session_id"]
             self.server.interior.clear_waiting_message()
         if assistant:
             try:
@@ -388,6 +390,7 @@ class SageHandler(BaseHTTPRequestHandler):
                         source="voice",
                         call_id=call_id,
                         turn_id=turn_id,
+                        session_id=session_id,
                     )["id"]
                 )
             except OSError:
@@ -563,6 +566,7 @@ class SageHandler(BaseHTTPRequestHandler):
             source="voice" if voice else "text",
             call_id=call_id,
             turn_id=turn_id,
+            session_id=accepted["session_id"],
         )
 
     def _decide_search(self, message: str, exclude_event_id: str) -> str | None:
@@ -671,6 +675,7 @@ class SageHandler(BaseHTTPRequestHandler):
         source: str = "text",
         call_id: str | None = None,
         turn_id: str | None = None,
+        session_id: str | None = None,
     ) -> None:
         reply: list[str] = []
         completed = False
@@ -692,6 +697,7 @@ class SageHandler(BaseHTTPRequestHandler):
                         source=source,
                         call_id=call_id,
                         turn_id=turn_id,
+                        session_id=session_id,
                     )
                 except OSError:
                     self._write_stream_event("error", SAVE_REPLY_FAILURE)

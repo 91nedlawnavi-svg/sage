@@ -172,6 +172,7 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(FakeRouter.request_body["messages"][-1], {"role": "user", "content": "Hello Sage"})
         events = EventStore(self.store.data_root).read_all()
         self.assertEqual([(event["role"], event["content"]) for event in events], [("user", "Hello Sage"), ("assistant", "Hello.")])
+        self.assertEqual(len({event["session_id"] for event in events}), 1)
         for event in events:
             self.assertEqual(datetime.fromisoformat(event["said_at"].replace("Z", "+00:00")).utcoffset().total_seconds(), 0)
 
@@ -223,6 +224,58 @@ class FoundationTests(unittest.TestCase):
         self.assertIn({"role": "user", "content": "I keep buying potatoes"}, messages)
         self.assertEqual(messages[-1], {"role": "user", "content": "I made potatoes again"})
         self.assertEqual(build_router_messages("Unrelated weather update", reopened), [{"role": "user", "content": "Unrelated weather update"}])
+
+    def test_session_ids_survive_restart_and_new_chat(self) -> None:
+        first = self.store.append("user", "First session")
+        reopened = EventStore(self.store.data_root)
+        second = reopened.append("assistant", "Same session")
+
+        self.assertEqual(first["session_id"], second["session_id"])
+        boundary = reopened.append_chat_boundary()
+        next_event = EventStore(self.store.data_root).append("user", "New session")
+
+        self.assertEqual(next_event["session_id"], boundary["session_id"])
+        self.assertNotEqual(next_event["session_id"], first["session_id"])
+        self.assertEqual(
+            [event["content"] for event in EventStore(self.store.data_root).visible_history()],
+            ["New session"],
+        )
+
+    def test_reply_keeps_user_session_if_new_chat_starts_during_provider_call(self) -> None:
+        store = self.store
+
+        class BoundaryRouter:
+            def chat_with_messages(self, messages):
+                store.append_chat_boundary()
+                return RouterResult("Late reply")
+
+        self.assertEqual(handle_message("Old session turn", store, BoundaryRouter()), "Late reply")
+
+        events = EventStore(store.data_root).history()
+        self.assertEqual(events[0]["session_id"], events[1]["session_id"])
+        self.assertEqual(EventStore(store.data_root).visible_history(), [])
+
+    def test_legacy_boundaries_define_stable_sessions_without_rewrite(self) -> None:
+        original = (
+            '{"role":"user","content":"old one","said_at":"2026-01-01T00:00:00Z"}\n'
+            '{"kind":"chat_boundary","said_at":"2026-01-02T00:00:00Z"}\n'
+            '{"role":"assistant","content":"old two","said_at":"2026-01-02T00:00:01Z"}\n'
+        )
+        self.store.path.write_text(original, encoding="utf-8")
+
+        first_read = EventStore(self.store.data_root).history()
+        second_read = EventStore(self.store.data_root).history()
+
+        self.assertNotEqual(first_read[0]["session_id"], first_read[1]["session_id"])
+        self.assertEqual(
+            [event["session_id"] for event in first_read],
+            [event["session_id"] for event in second_read],
+        )
+        self.assertEqual(self.store.path.read_text(encoding="utf-8"), original)
+
+        new_event = EventStore(self.store.data_root).append("user", "new record")
+        self.assertEqual(new_event["session_id"], first_read[1]["session_id"])
+        self.assertEqual(self.store.path.read_text(encoding="utf-8")[:len(original)], original)
 
     def test_resumed_session_combines_its_tail_recent_life_and_global_recall(self) -> None:
         old_events = [
@@ -536,6 +589,7 @@ class FoundationTests(unittest.TestCase):
             self.assertEqual([(event["role"], event["content"]) for event in saved], [("user", "Hello Sage"), ("assistant", "Hello.")])
             self.assertTrue(all(event["source"] == "voice" for event in saved))
             self.assertTrue(all(event["call_id"] == call_id and event["turn_id"] == turn_id for event in saved))
+            self.assertEqual(len({event["session_id"] for event in saved}), 1)
         finally:
             web_server.shutdown()
             web_thread.join()
@@ -667,6 +721,7 @@ class FoundationTests(unittest.TestCase):
             self.assertEqual(events[0]["call_id"], "11111111-1111-4111-8111-111111111111")
             self.assertEqual(events[0]["turn_id"], events[1]["turn_id"])
             self.assertEqual(body["turn_id"], events[0]["turn_id"])
+            self.assertEqual(events[0]["session_id"], events[1]["session_id"])
         finally:
             web_server.shutdown()
             web_thread.join()

@@ -279,7 +279,7 @@ copy that contradicts the promise of permanent deletion.
 - Test new, long-running, and resumed-old-session examples.
 - Record settled behavior before changing persistence.
 
-### Session 2 — Add session identity safely
+### Session 2 — Add session identity safely — complete
 
 - Add stable session metadata for new events.
 - Interpret legacy boundaries as legacy sessions without rewriting events.

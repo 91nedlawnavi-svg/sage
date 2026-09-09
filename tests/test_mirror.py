@@ -77,6 +77,8 @@ class BackfillTests(unittest.TestCase):
         rel = relational_db(self.root)
         rc = backfill_relational(rel, self.root)
         self.assertEqual(rc["events"], 3)
+        self.assertEqual(rc["sessions"], 2)
+        self.assertEqual(rc["event_sessions"], 3)
         self.assertEqual(rc["event_sources"], 2)
         self.assertEqual(rc["voice_event_context"], 1)
         self.assertEqual(rc["transcript_corrections"], 1)
@@ -133,6 +135,16 @@ class DualWriteTests(unittest.TestCase):
         self.assertEqual(row["role"], "user")
         source = self.rel.fetchone("SELECT source FROM event_sources WHERE event_id = ?", (ev["id"],))
         self.assertEqual(source["source"], "text")
+        session = self.rel.fetchone("SELECT * FROM sessions WHERE id = ?", (ev["session_id"],))
+        self.assertEqual(session["created_at"], ev["said_at"])
+        self.assertEqual(session["last_active_at"], ev["said_at"])
+        link = self.rel.fetchone("SELECT session_id FROM event_sessions WHERE event_id = ?", (ev["id"],))
+        self.assertEqual(link["session_id"], ev["session_id"])
+        later = self.store.append("assistant", "later in same session")
+        session = self.rel.fetchone("SELECT * FROM sessions WHERE id = ?", (ev["session_id"],))
+        self.assertEqual(later["session_id"], ev["session_id"])
+        self.assertEqual(session["created_at"], ev["said_at"])
+        self.assertEqual(session["last_active_at"], later["said_at"])
 
     def test_transcript_correction_dual_write(self) -> None:
         ev = self.store.append("user", "wrong words", source="voice", call_id="call-1", turn_id="turn-1")
@@ -147,8 +159,9 @@ class DualWriteTests(unittest.TestCase):
         self.assertEqual(context["turn_id"], "turn-1")
 
     def test_chat_boundary_dual_write(self) -> None:
-        self.store.append_chat_boundary()
+        boundary = self.store.append_chat_boundary()
         self.assertEqual(self.rel.count("chat_boundaries"), 1)
+        self.assertIsNotNone(self.rel.fetchone("SELECT id FROM sessions WHERE id = ?", (boundary["session_id"],)))
 
     def test_entity_observation_dual_write(self) -> None:
         ev = self.store.append("user", "about elliot")

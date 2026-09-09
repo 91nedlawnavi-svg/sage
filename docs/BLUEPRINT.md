@@ -98,6 +98,10 @@ history. Later processing may form episodes, associations, summaries, or
 tentative patterns, but original events and contradictions remain available.
 Derived meaning keeps its sources and remains revisable.
 
+Dialogue events belong to stable sessions inside that one lifetime history.
+New session identity is stored with new events; old chat boundaries define
+legacy sessions at read time without rewriting original records.
+
 Recall begins with the present conversation and situation. It may combine
 lexical, semantic, temporal, episodic, entity, and pattern signals, then provide
 only the context useful now.

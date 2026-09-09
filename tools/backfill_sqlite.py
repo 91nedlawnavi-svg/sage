@@ -19,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from database import Database, relational_db, interior_db  # noqa: E402
+from events import legacy_session_id  # noqa: E402
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -54,25 +55,37 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
     records = _read_jsonl(events_path)
 
     events = []
+    sessions: dict[str, tuple[str, str]] = {}
+    event_sessions = []
     event_sources = []
     voice_event_context = []
     boundaries = []
     transcript_corrections = []
 
+    session_id = legacy_session_id(-1)
     for index, r in enumerate(records):
         kind = r.get("kind")
         if kind == "chat_boundary":
             boundaries.append((r["said_at"],))
+            session_id = r.get("session_id") if isinstance(r.get("session_id"), str) else legacy_session_id(index)
+            sessions.setdefault(session_id, (r["said_at"], r["said_at"]))
         elif kind == "transcript_correction":
             transcript_corrections.append((r["id"], r["source_event_id"], r["content"], r["said_at"]))
         elif r.get("role") in ("user", "assistant"):
             event_id = r.get("id", f"legacy:{index}")
+            event_session_id = r.get("session_id") if isinstance(r.get("session_id"), str) else session_id
             events.append((
                 event_id,
                 r["role"],
                 r["content"],
                 r["said_at"],
             ))
+            created_at, last_active_at = sessions.get(event_session_id, (r["said_at"], r["said_at"]))
+            sessions[event_session_id] = (
+                min(created_at, r["said_at"]),
+                max(last_active_at, r["said_at"]),
+            )
+            event_sessions.append((event_id, event_session_id))
             if r.get("source") in {"text", "voice"}:
                 event_sources.append((event_id, r["source"]))
             if isinstance(r.get("call_id"), str) and isinstance(r.get("turn_id"), str):
@@ -84,6 +97,23 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
             events,
         )
     counts["events"] = db.count("events")
+
+    if sessions:
+        db.executemany(
+            "INSERT INTO sessions (id, created_at, last_active_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET "
+            "created_at = MIN(created_at, excluded.created_at), "
+            "last_active_at = MAX(last_active_at, excluded.last_active_at)",
+            [(session, *timestamps) for session, timestamps in sessions.items()],
+        )
+    counts["sessions"] = db.count("sessions")
+
+    if event_sessions:
+        db.executemany(
+            "INSERT OR IGNORE INTO event_sessions (event_id, session_id) VALUES (?, ?)",
+            event_sessions,
+        )
+    counts["event_sessions"] = db.count("event_sessions")
 
     if event_sources:
         db.executemany(
@@ -234,9 +264,25 @@ def verify(rel_counts: dict[str, int], int_counts: dict[str, int], data_root: Pa
             and isinstance(r.get("call_id"), str)
             and isinstance(r.get("turn_id"), str)
         )
+        expected_sessions: set[str] = set()
+        expected_event_sessions = 0
+        session_id = legacy_session_id(-1)
+        for index, record in enumerate(records):
+            if record.get("kind") == "chat_boundary":
+                session_id = record.get("session_id") if isinstance(record.get("session_id"), str) else legacy_session_id(index)
+                expected_sessions.add(session_id)
+            elif record.get("role") in ("user", "assistant"):
+                expected_sessions.add(record.get("session_id") if isinstance(record.get("session_id"), str) else session_id)
+                expected_event_sessions += 1
 
         if rel_counts.get("events", 0) != expected_events:
             mismatches.append(f"events: expected {expected_events}, got {rel_counts.get('events', 0)}")
+        if rel_counts.get("sessions", 0) != len(expected_sessions):
+            mismatches.append(f"sessions: expected {len(expected_sessions)}, got {rel_counts.get('sessions', 0)}")
+        if rel_counts.get("event_sessions", 0) != expected_event_sessions:
+            mismatches.append(
+                f"event_sessions: expected {expected_event_sessions}, got {rel_counts.get('event_sessions', 0)}"
+            )
         if rel_counts.get("chat_boundaries", 0) != expected_boundaries:
             mismatches.append(f"chat_boundaries: expected {expected_boundaries}, got {rel_counts.get('chat_boundaries', 0)}")
         if rel_counts.get("event_sources", 0) != expected_sources:

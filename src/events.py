@@ -8,9 +8,10 @@ import logging
 import math
 import os
 import re
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from router import EmbeddingClient
 
@@ -43,6 +44,7 @@ class Event(TypedDict):
     role: Literal["user", "assistant"]
     content: str
     said_at: str
+    session_id: str
     id: NotRequired[str]
     source: NotRequired[Literal["text", "voice"]]
     call_id: NotRequired[str]
@@ -93,6 +95,12 @@ class SearchRecord(TypedDict):
 class ChatBoundary(TypedDict):
     kind: Literal["chat_boundary"]
     said_at: str
+    session_id: NotRequired[str]
+
+
+def legacy_session_id(boundary_index: int) -> str:
+    """Return the stable read-time ID for a session not tagged in old JSONL."""
+    return str(uuid5(NAMESPACE_URL, f"sage:legacy-session:{boundary_index}"))
 
 
 def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
@@ -124,6 +132,9 @@ class EventStore:
         self.searches_path = self.relational_dir / "searches.jsonl"
         self.embedder = embedder
         self._mirror = mirror
+        self._write_lock = threading.RLock()
+        records = self._read_records()
+        self._current_session_id = self._active_session_id(records) if records else str(uuid4())
 
     def append(
         self,
@@ -134,20 +145,25 @@ class EventStore:
         source: Literal["text", "voice"] = "text",
         call_id: str | None = None,
         turn_id: str | None = None,
+        session_id: str | None = None,
     ) -> Event:
         if (call_id is None) != (turn_id is None) or (call_id is not None and source != "voice"):
             raise ValueError("Call context requires a voice event with both call and turn IDs")
-        event: Event = {
-            "id": str(uuid4()),
-            "role": role,
-            "content": content,
-            "said_at": self._timestamp(),
-            "source": source,
-        }
-        if call_id is not None and turn_id is not None:
-            event["call_id"] = call_id
-            event["turn_id"] = turn_id
-        self._append_record(event)
+        if session_id is not None and not session_id:
+            raise ValueError("Session ID must not be blank")
+        with self._write_lock:
+            event: Event = {
+                "id": str(uuid4()),
+                "role": role,
+                "content": content,
+                "said_at": self._timestamp(),
+                "session_id": session_id or self._current_session_id,
+                "source": source,
+            }
+            if call_id is not None and turn_id is not None:
+                event["call_id"] = call_id
+                event["turn_id"] = turn_id
+            self._append_record(event)
         self._mirror_event(event)
         if save_embedding and self.embedder is not None:
             try:
@@ -186,8 +202,14 @@ class EventStore:
         ]
 
     def append_chat_boundary(self) -> ChatBoundary:
-        record: ChatBoundary = {"kind": "chat_boundary", "said_at": self._timestamp()}
-        self._append_record(record)
+        record: ChatBoundary = {
+            "kind": "chat_boundary",
+            "said_at": self._timestamp(),
+            "session_id": str(uuid4()),
+        }
+        with self._write_lock:
+            self._append_record(record)
+            self._current_session_id = record["session_id"]
         self._mirror_chat_boundary(record)
         return record
 
@@ -295,12 +317,17 @@ class EventStore:
                 correction = self._parse_transcript_correction(record)
                 corrections[correction["source_event_id"]] = correction["content"]
         events: list[Event] = []
+        session_id = legacy_session_id(-1)
         for index, record in enumerate(records):
-            if isinstance(record, dict) and record.get("kind") in {"privacy", "chat_boundary", "transcript_correction"}:
+            if isinstance(record, dict) and record.get("kind") == "chat_boundary":
+                session_id = self._record_session_id(record, legacy_session_id(index))
+                continue
+            if isinstance(record, dict) and record.get("kind") in {"privacy", "transcript_correction"}:
                 continue
             if self._is_legacy_search_event(record):
                 continue
-            event = self._parse_event(record, index)
+            event_session_id = self._record_session_id(record, session_id)
+            event = self._parse_event(record, index, event_session_id)
             corrected = corrections.get(event["id"]) if event.get("source") == "voice" else None
             if corrected is not None:
                 event["original_content"] = event["content"]
@@ -312,17 +339,7 @@ class EventStore:
         return self.history()
 
     def visible_history(self) -> list[Event]:
-        records = self._read_records()
-        boundary_index = max(
-            (index for index, record in enumerate(records) if isinstance(record, dict) and record.get("kind") == "chat_boundary"),
-            default=-1,
-        )
-        visible_ids = {
-            record.get("id", f"legacy:{index}")
-            for index, record in enumerate(records)
-            if index > boundary_index and isinstance(record, dict) and record.get("role") in {"user", "assistant"}
-        }
-        return [event for event in self.history() if event["id"] in visible_ids]
+        return [event for event in self.history() if event["session_id"] == self._current_session_id]
 
     def recall(
         self,
@@ -448,6 +465,17 @@ class EventStore:
                 "INSERT OR IGNORE INTO event_sources (event_id, source) VALUES (?, ?)",
                 (event["id"], event["source"]),
             )
+            self._mirror.execute(
+                "INSERT INTO sessions (id, created_at, last_active_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "created_at = MIN(created_at, excluded.created_at), "
+                "last_active_at = MAX(last_active_at, excluded.last_active_at)",
+                (event["session_id"], event["said_at"], event["said_at"]),
+            )
+            self._mirror.execute(
+                "INSERT OR IGNORE INTO event_sessions (event_id, session_id) VALUES (?, ?)",
+                (event["id"], event["session_id"]),
+            )
             if "call_id" in event and "turn_id" in event:
                 self._mirror.execute(
                     "INSERT OR IGNORE INTO voice_event_context (event_id, call_id, turn_id) VALUES (?, ?, ?)",
@@ -475,6 +503,11 @@ class EventStore:
                 "INSERT OR IGNORE INTO chat_boundaries (said_at) VALUES (?)",
                 (record["said_at"],),
             )
+            if "session_id" in record:
+                self._mirror.execute(
+                    "INSERT OR IGNORE INTO sessions (id, created_at, last_active_at) VALUES (?, ?, ?)",
+                    (record["session_id"], record["said_at"], record["said_at"]),
+                )
         except Exception:
             _log.warning("mirror: failed to write chat boundary", exc_info=True)
 
@@ -586,7 +619,7 @@ class EventStore:
             os.close(descriptor)
 
     @staticmethod
-    def _parse_event(record: object, index: int) -> Event:
+    def _parse_event(record: object, index: int, session_id: str) -> Event:
         if (
             not isinstance(record, dict)
             or record.get("role") not in {"user", "assistant"}
@@ -594,7 +627,12 @@ class EventStore:
             or not isinstance(record.get("said_at"), str)
         ):
             raise ValueError("Invalid event record")
-        event: Event = Event(role=record["role"], content=record["content"], said_at=record["said_at"])
+        event: Event = Event(
+            role=record["role"],
+            content=record["content"],
+            said_at=record["said_at"],
+            session_id=session_id,
+        )
         if "id" in record:
             if not isinstance(record["id"], str):
                 raise ValueError("Invalid event record")
@@ -611,6 +649,31 @@ class EventStore:
             event["call_id"] = record["call_id"]
             event["turn_id"] = record["turn_id"]
         return event
+
+    @staticmethod
+    def _record_session_id(record: object, fallback: str) -> str:
+        if not isinstance(record, dict) or "session_id" not in record:
+            return fallback
+        if not isinstance(record["session_id"], str) or not record["session_id"]:
+            raise ValueError("Invalid session ID")
+        return record["session_id"]
+
+    @classmethod
+    def _active_session_id(cls, records: list[object]) -> str:
+        session_id = legacy_session_id(-1)
+        found_boundary = False
+        for index, record in enumerate(records):
+            if isinstance(record, dict) and record.get("kind") == "chat_boundary":
+                session_id = cls._record_session_id(record, legacy_session_id(index))
+                found_boundary = True
+            elif (
+                not found_boundary
+                and isinstance(record, dict)
+                and record.get("role") in {"user", "assistant"}
+                and "session_id" in record
+            ):
+                session_id = cls._record_session_id(record, session_id)
+        return session_id
 
     @staticmethod
     def _parse_transcript_correction(record: object) -> TranscriptCorrection:

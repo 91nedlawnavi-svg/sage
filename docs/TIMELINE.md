@@ -58,4 +58,7 @@ Sage's identity and episodic memory. New call events retain voice provenance,
 and later corrections can guide recall without rewriting original transcripts.
 The split-chain trial now routes transcripts through the normal text path and
 shows stage timing beside the unchanged direct-audio baseline. Both remain
-experimental; automated transcript evaluation is still absent.
+experimental; automated transcript evaluation is still absent. New dialogue
+events now carry stable session identity, while older boundary-separated history
+is interpreted as sessions without rewriting lived records. Session navigation
+remains next work.

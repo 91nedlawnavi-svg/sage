@@ -159,3 +159,14 @@ product authority.
   reach the provider.
 - Eight events is the conservative initial budget, not a claim that larger model
   windows should be filled. Real use may justify later token-based tuning.
+
+## 2026-09-09 — Append-only session identity
+
+- Every new user or assistant event carries a stable session UUID. Text, direct
+  voice transcripts, and split-voice transcripts use the same rule.
+- Starting a new chat appends a boundary containing the new session UUID. It
+  does not edit or remove older events.
+- Old untagged events receive deterministic session IDs at read time from their
+  positions around existing chat boundaries. Their JSONL records remain intact.
+- `events.jsonl` remains authoritative. SQLite stores derived session metadata
+  and event-to-session links and can rebuild them from the append-only history.
