@@ -224,6 +224,41 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(messages[-1], {"role": "user", "content": "I made potatoes again"})
         self.assertEqual(build_router_messages("Unrelated weather update", reopened), [{"role": "user", "content": "Unrelated weather update"}])
 
+    def test_resumed_session_combines_its_tail_recent_life_and_global_recall(self) -> None:
+        old_events = [
+            self.store.append("user", "My grandmother kept rare orchids"),
+            self.store.append("assistant", "That sounds worth remembering."),
+            self.store.append("user", "Old session detail one"),
+            self.store.append("assistant", "Old answer one"),
+            self.store.append("user", "Old session detail two"),
+            self.store.append("assistant", "Old answer two"),
+        ]
+        self.store.append_chat_boundary()
+        recent_user = self.store.append("user", "I changed jobs this week")
+        recent_assistant = self.store.append("assistant", "That is a major recent change.")
+
+        messages = build_router_messages(
+            "I was thinking about those orchids again",
+            self.store,
+            session_events=old_events,
+        )
+
+        contents = [message["content"] for message in messages]
+        self.assertEqual(len(messages), 9)  # eight context events plus current message
+        self.assertIn("My grandmother kept rare orchids", contents)
+        self.assertEqual(contents[-7:-5], ["Old session detail one", "Old answer one"])
+        self.assertEqual(contents[-3:-1], [recent_user["content"], recent_assistant["content"]])
+        self.assertEqual(contents[-1], "I was thinking about those orchids again")
+        self.assertEqual(len(contents), len(set(contents)))
+
+        bounded = build_router_messages(
+            "I was thinking about those orchids again",
+            self.store,
+            max_context=4,
+            session_events=old_events,
+        )
+        self.assertEqual(len(bounded), 5)  # four context events plus current message
+
     def test_chat_sends_relevant_contradictory_history(self) -> None:
         self.store.append("user", "I love hosting friends for dinner")
         self.store.append("assistant", "That usually makes the place feel alive.")

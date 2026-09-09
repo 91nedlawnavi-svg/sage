@@ -26,6 +26,9 @@ Already present and verified:
 - Refreshed directive injected into foreground browser and terminal chat.
 - Ordered talk-model failover: Qwen 3.8 Max, DeepSeek V4 Pro, then DeepSeek V4 Flash.
 - Recall cues built from the recent eligible exchange plus the newest message.
+- Resumed-session context has a tested bounded contract: selected-session tail,
+  a two-event recent-life bridge on first resume, then global recall inside the
+  existing eight-event ceiling. Session navigation is not wired yet.
 - SQLite mirrors (relational and interior) dual-written alongside JSONL with fail-soft recovery.
 - Conversational web search: Sage decides before replying when to search and
   stores query/source provenance separately from conversation events.
@@ -43,7 +46,7 @@ Already present and verified:
   Sage's normal streamed text path, and sentence-chunked Deepgram TTS. It shows
   STT, first-sentence, TTS, and total-to-audio timing while leaving direct Gemini Live
   unchanged as the baseline.
-- 113 deterministic tests passing across the current foundation and both voice
+- 114 deterministic tests passing across the current foundation and both voice
   paths.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like

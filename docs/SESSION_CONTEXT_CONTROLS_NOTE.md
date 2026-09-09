@@ -86,10 +86,12 @@ usually be the same events. For a resumed old session, they are distinct: the
 old tail restores that chapter, while recent-life context tells Sage what has
 happened since.
 
-Exact event counts and token shares remain open. They should be measured against
-real conversations instead of chosen by intuition. A likely starting shape is a
-guaranteed session tail, a smaller recent-life bridge, then global recall using
-the remaining context budget.
+The conservative first contract keeps the existing eight-event ceiling: up to
+four selected-session tail events, up to two recent-life bridge events on the
+first resumed turn, then global recall using the remaining room. Events are
+deduplicated and returned to chronology. Real use may justify later token-based
+tuning; larger advertised windows are not a reason to send more history by
+default.
 
 ## Session model
 
@@ -270,7 +272,7 @@ copy that contradicts the promise of permanent deletion.
 
 ## Small implementation sessions
 
-### Session 1 — Settle context contract
+### Session 1 — Settle context contract — complete
 
 - Define selected-session tail, recent-life bridge, and global-recall budgets.
 - Define deduplication and ordering.
@@ -321,10 +323,10 @@ copy that contradicts the promise of permanent deletion.
 
 ## Questions still open
 
-- How many events or tokens belong to session tail, recent-life bridge, and
-  global recall?
-- Should recent-life context include raw recent messages, a local summary, or
-  only events selected for relevance?
+- Does real use justify replacing the conservative eight-event ceiling with a
+  token-based budget?
+- Should the small raw recent-life bridge eventually become a local summary or
+  relevance-selected bridge?
 - Should titles use the first user message, a local rule, or a model-generated
   summary?
 - Should archive affect global recall, or only sidebar visibility?

@@ -146,3 +146,16 @@ product authority.
 - Split turns keep normal voice provenance, append-only transcript correction,
   and Call Review grouping. Audio remains unstored and provider keys remain on
   the server.
+
+## 2026-09-09 — Bounded reconstructed session context
+
+- Sage sessions remain chapters inside one global lifetime memory, not isolated
+  memory silos and not ever-growing provider conversations.
+- A normal active chat keeps the established bounded context: up to four events
+  from its tail, then relevant global recall within an eight-event budget.
+- The first resumed turn in an older session also receives up to two newest
+  events from life since that session. Global recall fills the remaining budget.
+- Selected events are deduplicated and restored to event chronology before they
+  reach the provider.
+- Eight events is the conservative initial budget, not a claim that larger model
+  windows should be filled. Real use may justify later token-based tuning.

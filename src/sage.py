@@ -34,6 +34,7 @@ def build_router_messages(
     store: EventStore,
     *,
     max_context: int = 8,
+    session_events: list[Event] | None = None,
     exclude_event_id: str | None = None,
     directive: str | None = None,
     search_context: str = "",
@@ -44,20 +45,40 @@ def build_router_messages(
         if event["role"] in {"user", "assistant"}
         and event["id"] != exclude_event_id
     ]
-    visible_ids = {event["id"] for event in store.visible_history()}
-    eligible_history = [event for event in full_history if event["id"] in visible_ids]
-    recent = eligible_history[-min(4, max_context):] if max_context > 0 else []
-    recall_query = "\n".join(f"{event['role']}: {event['content']}" for event in (*recent, {"role": "user", "content": message}))
-    recent_ids = {event["id"] for event in recent}
-    remaining = max_context - len(recent)
+    eligible_ids = {
+        event["id"]
+        for event in (store.visible_history() if session_events is None else session_events)
+        if event["id"] != exclude_event_id
+    }
+    eligible_history = [event for event in full_history if event["id"] in eligible_ids]
+    session_tail = eligible_history[-min(4, max_context):] if max_context > 0 else []
+    selected_ids = {event["id"] for event in session_tail}
+
+    # A resumed older session receives a tiny bridge from life since that chat.
+    recent_life: list[Event] = []
+    remaining = max_context - len(session_tail)
+    if (
+        remaining > 0
+        and session_events is not None
+        and full_history
+        and full_history[-1]["id"] not in eligible_ids
+    ):
+        recent_life = [event for event in full_history if event["id"] not in eligible_ids][-min(2, remaining):]
+        selected_ids.update(event["id"] for event in recent_life)
+        remaining -= len(recent_life)
+
+    recall_query = "\n".join(
+        f"{event['role']}: {event['content']}"
+        for event in (*session_tail, *recent_life, {"role": "user", "content": message})
+    )
     recalled = store.recall(
         recall_query,
         limit=len(full_history),
         exclude_event_id=exclude_event_id,
         fallback=False,
     ) if remaining > 0 else []
-    older_ids = [event["id"] for event in recalled if event["id"] not in recent_ids]
-    selected_ids = recent_ids | set(older_ids[:remaining])
+    recalled_ids = [event["id"] for event in recalled if event["id"] not in selected_ids]
+    selected_ids.update(recalled_ids[:remaining])
     context = [event for event in full_history if event["id"] in selected_ids]
     messages = [{"role": event["role"], "content": event["content"]} for event in context]
     if directive:
