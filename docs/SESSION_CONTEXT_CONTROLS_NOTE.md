@@ -304,8 +304,19 @@ copy that contradicts the promise of permanent deletion.
 - Associate split-voice turns with active session. **Complete.**
 - Settle and implement chat-model inheritance versus voice override. **Complete:**
   default `Same as chat`, with session-scoped `Auto` or explicit override.
-- Preserve call review and transcript correction.
-- Re-measure end-to-first-audio latency by model.
+- Preserve call review and transcript correction. **Complete.**
+- Re-measure end-to-first-audio latency by model. **Complete as a routed
+  transcript-to-first-playable-audio probe:** two runs per model on 2026-09-09;
+  microphone capture and STT were excluded from this backend check.
+
+  | Voice model | Result |
+  | --- | ---: |
+  | Qwen 3.8 Max | 0/2 valid streamed replies |
+  | DeepSeek V4 Pro | 8.53s median |
+  | DeepSeek V4 Flash | 5.08s median |
+
+  The split-call screen continues to show full-turn STT, Sage, TTS, and
+  end-to-first-playing timing for real microphone use.
 
 ### Session 6 — Design and implement purge
 

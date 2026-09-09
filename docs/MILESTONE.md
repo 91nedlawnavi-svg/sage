@@ -60,6 +60,11 @@ Already present and verified:
   unchanged as the baseline. Split voice now inherits the active chat session's
   model by default, with a persisted `Auto` or explicit voice override; reopened
   sessions keep voice turns in the selected session.
+- Routed split-voice timing was rechecked twice per configured model: Qwen 3.8
+  Max produced 0/2 valid streamed replies, DeepSeek V4 Pro measured 8.53s
+  median, and DeepSeek V4 Flash measured 5.08s median to the first complete TTS
+  audio blob. This backend probe excludes microphone capture and STT; the live
+  screen reports those stages separately.
 - 130 deterministic tests passing across the current foundation and both voice
   paths.
 
