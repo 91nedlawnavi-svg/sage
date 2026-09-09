@@ -17,6 +17,8 @@ from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
 from events import EventStore
+from deletion import DeletionError, build_deletion_plan, execute_deletion
+from database import Database
 from interior import InteriorStore
 from router import EmbeddingClient, RouterClient
 from sage import ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_messages, compose_identity_block, load_directive
@@ -146,11 +148,15 @@ class SageServer(ThreadingHTTPServer):
         store: EventStore,
         router: RouterClient,
         interior: InteriorStore | None = None,
+        relational: Database | None = None,
+        interior_db: Database | None = None,
     ) -> None:
         super().__init__(address, SageHandler)
         self.store = store
         self.router = router
         self.interior = interior or InteriorStore(store.data_root)
+        self.relational = relational
+        self.interior_db = interior_db
 
 
 class SageHandler(BaseHTTPRequestHandler):
@@ -233,6 +239,15 @@ class SageHandler(BaseHTTPRequestHandler):
                     "active_session_id": self.server.store.current_session_id,
                 },
             )
+        elif path == "/api/sessions/deletion-preview":
+            query = urlparse(self.path).query
+            session_id = query.split("session_id=", 1)[1] if "session_id=" in query else ""
+            try:
+                plan = build_deletion_plan(self.server.store, self.server.interior, unquote(session_id))
+            except KeyError:
+                self._json(HTTPStatus.NOT_FOUND, {"error": "Chat not found"})
+                return
+            self._json(HTTPStatus.OK, plan.as_dict())
         elif path == "/api/split-voice/config":
             self._json(
                 HTTPStatus.OK,
@@ -303,6 +318,9 @@ class SageHandler(BaseHTTPRequestHandler):
             "/api/sessions/voice-model",
         }:
             self._session_action(path.rsplit("/", 1)[-1])
+            return
+        if path == "/api/sessions/delete":
+            self._delete_session()
             return
         if path == "/api/waiting-message/ack":
             self.server.interior.clear_waiting_message()
@@ -690,6 +708,42 @@ class SageHandler(BaseHTTPRequestHandler):
             HTTPStatus.OK,
             {"session": session, "active_session_id": self.server.store.current_session_id},
         )
+
+    def _delete_session(self) -> None:
+        body = self._json_body()
+        if body is None:
+            return
+        session_id = body.get("session_id")
+        confirmation = body.get("confirmation")
+        if not isinstance(session_id, str) or not session_id:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "session_id must be a nonblank string"})
+            return
+        if not isinstance(confirmation, str):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "confirmation must be DELETE"})
+            return
+        was_current = session_id == self.server.store.current_session_id
+        try:
+            plan = build_deletion_plan(self.server.store, self.server.interior, session_id)
+            result = execute_deletion(
+                self.server.store,
+                self.server.interior,
+                getattr(self.server, "relational", None),
+                getattr(self.server, "interior_db", None),
+                plan,
+                confirmation,
+            )
+            if was_current:
+                self.server.store.append_chat_boundary()
+        except KeyError:
+            self._json(HTTPStatus.NOT_FOUND, {"error": "Chat not found"})
+            return
+        except DeletionError as exc:
+            self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
+            return
+        except OSError:
+            self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Sage could not delete this chat."})
+            return
+        self._json(HTTPStatus.OK, {"deleted": result, "active_session_id": self.server.store.current_session_id})
 
     def _decide_search(self, message: str, exclude_event_id: str) -> str | None:
         """Ask the model if web search is needed. Sets _search_decision_failed on router error."""

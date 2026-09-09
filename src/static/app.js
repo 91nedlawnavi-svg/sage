@@ -234,7 +234,7 @@ function sessionRow(session, archived = false) {
     } else {
       const actions = document.createElement("div");
       actions.className = "session-actions";
-      for (const [action, label] of [["rename", "Rename"], ["archive", "Archive"]]) {
+      for (const [action, label] of [["rename", "Rename"], ["archive", "Archive"], ["delete", "Delete permanently"]]) {
         const button = document.createElement("button");
         button.type = "button";
         button.dataset.sessionAction = action;
@@ -307,6 +307,29 @@ async function updateSession(action, sessionId, title = null) {
   }
 }
 
+async function deleteSession(sessionId) {
+  if (busy) return;
+  const previewResponse = await fetch(`/api/sessions/deletion-preview?session_id=${encodeURIComponent(sessionId)}`);
+  const preview = await previewResponse.json();
+  if (!previewResponse.ok) throw new Error(preview.error || "Deletion preview unavailable.");
+  const counts = Object.entries(preview.counts || {}).map(([name, count]) => `${name}: ${count}`).join(", ");
+  const typed = window.prompt(
+    `Permanently delete “${preview.title}”? This cannot be undone.\n\nAffected local records: ${counts || "none"}\n\n${preview.backup_disclosure}\n\nType DELETE exactly:`,
+  );
+  if (typed === null) return;
+  sessionStatus.textContent = "Deleting chat…";
+  const response = await fetch("/api/sessions/delete", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({session_id: sessionId, confirmation: typed}),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "Chat could not be deleted.");
+  if (sessionId === activeSessionId) await loadHistory();
+  await loadSessions();
+  sessionStatus.textContent = "Chat permanently deleted.";
+}
+
 async function startNewChat() {
   if (busy) return;
   drawerNewChat.disabled = true;
@@ -361,6 +384,8 @@ drawer.addEventListener("click", (event) => {
     renamingSessionId = null;
     renderSessions(knownSessions);
     document.querySelector(`.session-more[data-session-id="${CSS.escape(sessionId)}"]`)?.focus();
+  } else if (action === "delete") {
+    deleteSession(sessionId).catch((error) => { sessionStatus.textContent = error.message; });
   } else {
     updateSession(action, sessionId).catch((error) => { sessionStatus.textContent = error.message; });
   }

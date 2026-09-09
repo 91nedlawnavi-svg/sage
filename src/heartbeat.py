@@ -222,7 +222,15 @@ class Heartbeat:
         _, claim = parse_reflection(result.reply)
         if not claim:
             return
-        self.interior_store.append_identity_proposal(claim, [r["id"] for r in candidates])
+        self.interior_store.append_identity_proposal(
+            claim,
+            [r["id"] for r in candidates],
+            source_event_ids=[
+                reflection["source_event_id"]
+                for reflection in candidates
+                if reflection.get("source_event_id")
+            ],
+        )
 
     def _metabolism_pass(self) -> None:
         """Trigger metabolism if conversation has been silent long enough."""

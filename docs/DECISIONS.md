@@ -179,8 +179,11 @@ product authority.
   `events.jsonl`; original dialogue events are not rewritten.
 - Archive hides a chat from the main list but does not remove its events from
   global recall. Archiving the active chat starts a new empty chat.
-- Permanent deletion remains a separate unresolved destructive flow and is not
-  part of session navigation.
+- Permanent deletion is a separate destructive flow. It previews exact local
+  scope, requires typing `DELETE`, rewrites affected JSONL per file, and cleans
+  SQLite mirrors. External backups are disclosed but not claimed to be erased.
+  Derived identity material is deleted only when event provenance is complete;
+  shared or unproven downstream material blocks the claim.
 
 ## 2026-09-09 — Per-session text models and safe retry
 

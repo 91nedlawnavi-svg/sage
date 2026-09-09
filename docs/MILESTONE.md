@@ -65,8 +65,12 @@ Already present and verified:
   median, and DeepSeek V4 Flash measured 5.08s median to the first complete TTS
   audio blob. This backend probe excludes microphone capture and STT; the live
   screen reports those stages separately.
-- 130 deterministic tests passing across the current foundation and both voice
-  paths.
+- 132 deterministic tests passing across the current foundation, both voice
+  paths, and temporary-data deletion checks.
+- Permanent session deletion previews exact local scope, requires typed
+  `DELETE`, removes directly and safely-proven derived records, cleans SQLite
+  mirrors, and discloses the external-backup boundary. Tests cover interruption,
+  restart, recall removal, voice corrections/call grouping, and derived records.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.

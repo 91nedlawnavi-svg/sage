@@ -141,7 +141,8 @@ CREATE TABLE IF NOT EXISTS identity_entries (
     evidence TEXT,
     target_id TEXT,
     verdict TEXT,
-    said_at TEXT
+    said_at TEXT,
+    source_event_ids TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_identity_target ON identity_entries(target_id);
@@ -151,7 +152,8 @@ CREATE TABLE IF NOT EXISTS waiting_message (
     content TEXT NOT NULL,
     said_at TEXT NOT NULL,
     revised_at TEXT,
-    read INTEGER NOT NULL DEFAULT 0
+    read INTEGER NOT NULL DEFAULT 0,
+    source_event_id TEXT
 );
 """
 
@@ -190,6 +192,13 @@ class Database:
                 event_columns = {row[1] for row in self._conn.execute("PRAGMA table_info(events)")}
                 if "model" not in event_columns:
                     self._conn.execute("ALTER TABLE events ADD COLUMN model TEXT")
+            elif self.schema == INTERIOR_SCHEMA:
+                identity_columns = {row[1] for row in self._conn.execute("PRAGMA table_info(identity_entries)")}
+                if "source_event_ids" not in identity_columns:
+                    self._conn.execute("ALTER TABLE identity_entries ADD COLUMN source_event_ids TEXT")
+                waiting_columns = {row[1] for row in self._conn.execute("PRAGMA table_info(waiting_message)")}
+                if "source_event_id" not in waiting_columns:
+                    self._conn.execute("ALTER TABLE waiting_message ADD COLUMN source_event_id TEXT")
         return self._conn
 
     def close(self) -> None:
@@ -226,6 +235,59 @@ class Database:
     def count(self, table: str) -> int:
         row = self.fetchone(f"SELECT COUNT(*) AS n FROM {table}")
         return int(row["n"]) if row else 0
+
+    def delete_session(self, session_id: str, event_ids: set[str], boundary_times: set[str] | None = None) -> None:
+        """Delete relational rows proven to belong to one session."""
+        with self._lock:
+            connection = self.conn
+            connection.execute("BEGIN")
+            try:
+                ids = tuple(event_ids)
+                if ids:
+                    marks = ",".join("?" for _ in ids)
+                    for table, column in (
+                        ("transcript_corrections", "source_event_id"),
+                        ("entity_observations", "source_event_id"),
+                        ("heartbeat_completions", "source_event_id"),
+                        ("metabolism_completions", "source_event_id"),
+                        ("search_records", "source_event_id"),
+                        ("embeddings", "event_id"),
+                        ("voice_event_context", "event_id"),
+                        ("event_sources", "event_id"),
+                        ("event_sessions", "event_id"),
+                        ("events", "id"),
+                    ):
+                        connection.execute(f"DELETE FROM {table} WHERE {column} IN ({marks})", ids)
+                connection.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+                if boundary_times:
+                    marks = ",".join("?" for _ in boundary_times)
+                    connection.execute(f"DELETE FROM chat_boundaries WHERE said_at IN ({marks})", tuple(boundary_times))
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+
+    def delete_sources(self, event_ids: set[str], identity_ids: set[str], waiting: bool) -> None:
+        with self._lock:
+            connection = self.conn
+            connection.execute("BEGIN")
+            try:
+                ids = tuple(event_ids)
+                if ids:
+                    marks = ",".join("?" for _ in ids)
+                    connection.execute(f"DELETE FROM reflections WHERE source_event_id IN ({marks})", ids)
+                if identity_ids:
+                    marks = ",".join("?" for _ in identity_ids)
+                    connection.execute(
+                        f"DELETE FROM identity_entries WHERE id IN ({marks}) OR target_id IN ({marks})",
+                        tuple(identity_ids) * 2,
+                    )
+                if waiting:
+                    connection.execute("DELETE FROM waiting_message WHERE id = 1")
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
 
     def store_embedding_vector(self, event_id: str, vector: list[float]) -> None:
         self.execute(

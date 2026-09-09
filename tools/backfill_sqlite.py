@@ -238,11 +238,12 @@ def backfill_interior(db: Database, data_root: Path) -> dict[str, int]:
         if not r.get("id"):
             continue
         db.execute(
-            "INSERT OR IGNORE INTO identity_entries (id, kind, claim, evidence, target_id, verdict, said_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO identity_entries (id, kind, claim, evidence, target_id, verdict, said_at, source_event_ids)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (r["id"], r.get("kind"), r.get("claim"),
              json.dumps(r["evidence"]) if isinstance(r.get("evidence"), list) else None,
-             r.get("target_id"), r.get("verdict"), r.get("said_at")),
+             r.get("target_id"), r.get("verdict"), r.get("said_at"),
+             json.dumps(r.get("source_event_ids", [])) if r.get("source_event_ids") else None),
         )
     counts["identity_entries"] = db.count("identity_entries")
 
@@ -252,8 +253,8 @@ def backfill_interior(db: Database, data_root: Path) -> dict[str, int]:
             msg = json.loads(waiting_path.read_text(encoding="utf-8"))
             if isinstance(msg, dict) and "content" in msg:
                 db.execute(
-                    "INSERT OR REPLACE INTO waiting_message (id, content, said_at, revised_at, read) VALUES (1, ?, ?, ?, ?)",
-                    (msg["content"], msg["said_at"], msg.get("revised_at"), int(msg.get("read", False))),
+                    "INSERT OR REPLACE INTO waiting_message (id, content, said_at, revised_at, read, source_event_id) VALUES (1, ?, ?, ?, ?, ?)",
+                    (msg["content"], msg["said_at"], msg.get("revised_at"), int(msg.get("read", False)), msg.get("source_event_id")),
                 )
         except (json.JSONDecodeError, OSError, KeyError):
             pass

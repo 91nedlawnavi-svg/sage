@@ -324,7 +324,10 @@ copy that contradicts the promise of permanent deletion.
 - Add missing provenance before promising complete deletion.
 - Build typed `DELETE` confirmation and exact scope preview.
 - Test interruption, atomicity, restart, mirrors, recall, and external-backup
-  disclosure.
+  disclosure. **Complete:** local active-store scope is previewed, exact
+  `DELETE` is required, direct and provenance-safe derived records are removed,
+  SQLite mirrors are cleaned, and external backups are disclosed as outside the
+  operation. Shared or unproven identity provenance blocks deletion claims.
 
 ### Session 7 — Final integration review
 
@@ -349,8 +352,9 @@ copy that contradicts the promise of permanent deletion.
   replaced by the error row?
 - May a minimal non-content tombstone record that a deletion occurred, or must
   even the session's existence disappear?
-- What provenance is required before deleting reflections and identity material
-  influenced by a removed session?
+- Provenance required for downstream deletion is explicit event provenance;
+  shared or missing provenance remains outside the deletion claim and blocks a
+  purge when the affected record cannot be scoped safely.
 
 ## Working discipline
 

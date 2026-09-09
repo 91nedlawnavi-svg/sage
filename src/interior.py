@@ -33,6 +33,7 @@ class IdentityProposal(TypedDict):
     claim: str
     evidence: list[str]
     said_at: str
+    source_event_ids: NotRequired[list[str]]
 
 
 class IdentityRuling(TypedDict):
@@ -57,6 +58,7 @@ class WaitingMessage(TypedDict):
     said_at: str
     revised_at: NotRequired[str]
     read: bool
+    source_event_id: NotRequired[str]
 
 
 class InteriorStore:
@@ -114,7 +116,9 @@ class InteriorStore:
 
     # -- self-authored identity: proposals Elliot rules on, folded at read time --
 
-    def append_identity_proposal(self, claim: str, evidence: list[str]) -> IdentityProposal:
+    def append_identity_proposal(
+        self, claim: str, evidence: list[str], *, source_event_ids: list[str] | None = None
+    ) -> IdentityProposal:
         if not claim.strip():
             raise ValueError("identity proposal needs a claim")
         proposal: IdentityProposal = {
@@ -124,6 +128,8 @@ class InteriorStore:
             "evidence": list(evidence),
             "said_at": self._timestamp(),
         }
+        if source_event_ids:
+            proposal["source_event_ids"] = list(dict.fromkeys(source_event_ids))
         self._append_identity(proposal)
         return proposal
 
@@ -155,6 +161,7 @@ class InteriorStore:
                 "evidence": r.get("evidence") or [],
                 "said_at": r.get("said_at", ""),
                 "status": verdicts.get(r["id"], "proposed"),
+                **({"source_event_ids": r.get("source_event_ids", [])} if r.get("source_event_ids") else {}),
             }
             for r in records
             if r.get("kind") == "proposal" and r.get("id")
@@ -202,7 +209,7 @@ class InteriorStore:
             return None
         return None
 
-    def set_waiting_message(self, content: str) -> WaitingMessage:
+    def set_waiting_message(self, content: str, *, source_event_id: str | None = None) -> WaitingMessage:
         self._ensure_dir()
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         existing = self.get_waiting_message()
@@ -213,6 +220,8 @@ class InteriorStore:
         }
         if existing:
             msg["revised_at"] = now
+        if source_event_id is not None:
+            msg["source_event_id"] = source_event_id
         with self.waiting_message_path.open("w", encoding="utf-8") as f:
             json.dump(msg, f, ensure_ascii=False)
             f.flush()
@@ -258,11 +267,12 @@ class InteriorStore:
         data = dict(record)
         try:
             self._mirror.execute(
-                "INSERT OR IGNORE INTO identity_entries (id, kind, claim, evidence, target_id, verdict, said_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO identity_entries (id, kind, claim, evidence, target_id, verdict, said_at, source_event_ids)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (data["id"], data["kind"], data.get("claim"),
                  json.dumps(data["evidence"]) if "evidence" in data else None,
-                 data.get("target_id"), data.get("verdict"), data["said_at"]),
+                 data.get("target_id"), data.get("verdict"), data["said_at"],
+                 json.dumps(data.get("source_event_ids", [])) if "source_event_ids" in data else None),
             )
         except Exception:
             _log.warning("mirror: failed to write identity entry %s", data.get("id"), exc_info=True)
@@ -272,8 +282,8 @@ class InteriorStore:
             return
         try:
             self._mirror.execute(
-                "INSERT OR REPLACE INTO waiting_message (id, content, said_at, revised_at, read) VALUES (1, ?, ?, ?, ?)",
-                (msg["content"], msg["said_at"], msg.get("revised_at"), int(msg.get("read", False))),
+                "INSERT OR REPLACE INTO waiting_message (id, content, said_at, revised_at, read, source_event_id) VALUES (1, ?, ?, ?, ?, ?)",
+                (msg["content"], msg["said_at"], msg.get("revised_at"), int(msg.get("read", False)), msg.get("source_event_id")),
             )
         except Exception:
             _log.warning("mirror: failed to write waiting message", exc_info=True)

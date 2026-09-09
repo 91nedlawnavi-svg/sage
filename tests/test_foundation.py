@@ -573,7 +573,7 @@ class FoundationTests(unittest.TestCase):
             self.assertIn(b'"Retry with Auto"', script)
             self.assertIn(b'"Model error"', script)
             self.assertIn(b'dataset.retryEventId', script)
-            self.assertNotIn(b"Delete permanently", page + script)
+            self.assertIn(b"Delete permanently", page + script)
             with urlopen(f"{base_url}/notebook") as response:
                 self.assertIn(b"notebook-tabs", response.read())
             with urlopen(f"{base_url}/static/notebook.js") as response:

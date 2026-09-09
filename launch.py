@@ -61,7 +61,7 @@ def main() -> None:
     heartbeat = Heartbeat(store, interior, router, extract_router=extract_router, interval_seconds=120.0, metabolism_delay=metabolism_delay)
     heartbeat.start()
 
-    server = SageServer(("0.0.0.0", args.port), store, router, interior)
+    server = SageServer(("0.0.0.0", args.port), store, router, interior, rel_mirror, int_mirror)
     print(f"Sage online on http://0.0.0.0:{server.server_port}")
     try:
         server.serve_forever()

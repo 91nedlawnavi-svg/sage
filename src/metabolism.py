@@ -212,7 +212,7 @@ def reach(
             "reason": "declined",
         })
         return False
-    interior.set_waiting_message(text)
+    interior.set_waiting_message(text, source_event_id=source_event_id)
     _append_metabolism(interior, {
         "kind": "reach",
         "id": str(uuid4()),
