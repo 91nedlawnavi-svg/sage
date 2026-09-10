@@ -11,6 +11,7 @@ from database import interior_db, relational_db
 from deletion import DeletionError, build_deletion_plan, execute_deletion
 from events import EventStore
 from interior import InteriorStore
+from provenance import provenance
 
 
 class SessionDeletionTests(unittest.TestCase):
@@ -33,9 +34,10 @@ class SessionDeletionTests(unittest.TestCase):
         self.store.append_transcript_correction(voice["id"], "corrected voice")
         self.store.append_entity_observation("old", "Old", "derived", source_event_id=voice["id"])
         self.store.append_heartbeat_completion("entities", voice["id"])
-        self.store.append_search_record("old query", [], "conversation", voice["id"])
-        self.interior.append_reflection("old reflection", source_event_id=voice["id"])
-        self.interior.set_waiting_message("old waiting", source_event_id=voice["id"])
+        proof = provenance(events=[voice])
+        self.store.append_search_record("old query", [], "conversation", voice["id"], provenance=proof)
+        self.interior.append_reflection("old reflection", source_event_id=voice["id"], provenance=proof)
+        self.interior.set_waiting_message("old waiting", source_event_id=voice["id"], provenance=proof)
         self.store.append_chat_boundary()
         keep = self.store.append("user", "keep this")
 

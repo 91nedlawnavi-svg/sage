@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 from uuid import uuid4
+from persistence import guarded_store
 
 if TYPE_CHECKING:
     from database import Database
@@ -22,6 +23,7 @@ class Reflection(TypedDict):
     said_at: str
     category: NotRequired[str]
     source_event_id: NotRequired[str]
+    provenance: NotRequired[dict]
 
 
 IDENTITY_VERDICTS = ("ratified", "rejected", "retired")
@@ -34,6 +36,7 @@ class IdentityProposal(TypedDict):
     evidence: list[str]
     said_at: str
     source_event_ids: NotRequired[list[str]]
+    provenance: NotRequired[dict]
 
 
 class IdentityRuling(TypedDict):
@@ -51,6 +54,7 @@ class IdentityEntry(TypedDict):
     evidence: list[str]
     said_at: str
     status: str
+    provenance: NotRequired[dict]
 
 
 class WaitingMessage(TypedDict):
@@ -59,8 +63,10 @@ class WaitingMessage(TypedDict):
     revised_at: NotRequired[str]
     read: bool
     source_event_id: NotRequired[str]
+    provenance: NotRequired[dict]
 
 
+@guarded_store
 class InteriorStore:
     def __init__(self, data_root: Path | None = None, *, mirror: Database | None = None) -> None:
         self.data_root = data_root or Path.home() / "sage_data"
@@ -80,11 +86,12 @@ class InteriorStore:
         category: str = "general",
         *,
         source_event_id: str | None = None,
+        provenance: dict | None = None,
     ) -> Reflection:
         self._ensure_dir()
         if source_event_id is not None:
             for existing in self.list_reflections(limit=10_000):
-                if existing.get("source_event_id") == source_event_id:
+                if existing.get("source_event_id") == source_event_id and existing.get("category", "general") == category:
                     return existing
         reflection: Reflection = {
             "id": str(uuid4()),
@@ -94,6 +101,8 @@ class InteriorStore:
         }
         if source_event_id is not None:
             reflection["source_event_id"] = source_event_id
+        if provenance is not None:
+            reflection["provenance"] = provenance
         with self.reflections_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(reflection, ensure_ascii=False) + "\n")
             f.flush()
@@ -117,7 +126,8 @@ class InteriorStore:
     # -- self-authored identity: proposals Elliot rules on, folded at read time --
 
     def append_identity_proposal(
-        self, claim: str, evidence: list[str], *, source_event_ids: list[str] | None = None
+        self, claim: str, evidence: list[str], *, source_event_ids: list[str] | None = None,
+        provenance: dict | None = None,
     ) -> IdentityProposal:
         if not claim.strip():
             raise ValueError("identity proposal needs a claim")
@@ -130,6 +140,8 @@ class InteriorStore:
         }
         if source_event_ids:
             proposal["source_event_ids"] = list(dict.fromkeys(source_event_ids))
+        if provenance is not None:
+            proposal["provenance"] = provenance
         self._append_identity(proposal)
         return proposal
 
@@ -162,6 +174,7 @@ class InteriorStore:
                 "said_at": r.get("said_at", ""),
                 "status": verdicts.get(r["id"], "proposed"),
                 **({"source_event_ids": r.get("source_event_ids", [])} if r.get("source_event_ids") else {}),
+                **({"provenance": r["provenance"]} if "provenance" in r else {}),
             }
             for r in records
             if r.get("kind") == "proposal" and r.get("id")
@@ -209,7 +222,7 @@ class InteriorStore:
             return None
         return None
 
-    def set_waiting_message(self, content: str, *, source_event_id: str | None = None) -> WaitingMessage:
+    def set_waiting_message(self, content: str, *, source_event_id: str | None = None, provenance: dict | None = None) -> WaitingMessage:
         self._ensure_dir()
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         existing = self.get_waiting_message()
@@ -222,6 +235,8 @@ class InteriorStore:
             msg["revised_at"] = now
         if source_event_id is not None:
             msg["source_event_id"] = source_event_id
+        if provenance is not None:
+            msg["provenance"] = provenance
         with self.waiting_message_path.open("w", encoding="utf-8") as f:
             json.dump(msg, f, ensure_ascii=False)
             f.flush()

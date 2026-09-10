@@ -12,6 +12,7 @@ const state = {
   connectTimer: null,
   saveTimer: null,
   callId: null,
+  deletionGeneration: null,
   userTranscript: "",
   assistantTranscript: "",
   turnClosing: false,
@@ -136,9 +137,13 @@ async function saveTurn(keepalive = false) {
     const response = await fetch("/api/live-turn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user, assistant, call_id: callId }),
+      body: JSON.stringify({ user, assistant, call_id: callId, deletion_generation: state.deletionGeneration }),
       keepalive,
     });
+    if (response.status === 409) {
+      setStatus("Memory changed. End this call and start a new one; this turn was not saved.");
+      return;
+    }
     if (!response.ok) throw new Error();
   } catch {
     if (state.socket) setStatus("Call active; this turn was not saved.");
@@ -226,6 +231,7 @@ async function startCall() {
     const config = await response.json();
     if (!response.ok) throw new Error(config.error || "The call could not start.");
     state.callId = config.call_id;
+    state.deletionGeneration = config.deletion_generation;
 
     const endpoint = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained";
     state.socket = new WebSocket(`${endpoint}?access_token=${encodeURIComponent(config.token)}`);

@@ -8,17 +8,20 @@ import ipaddress
 import json
 import os
 import re
+import sqlite3
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import urlencode, unquote, urlparse
+from urllib.parse import urlencode, unquote, urlparse, parse_qs
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
 from events import EventStore
 from deletion import DeletionError, build_deletion_plan, execute_deletion
 from database import Database
+from persistence import activity_gate, data_gate, RecoveryRequired
+from provenance import provenance
 from interior import InteriorStore
 from router import EmbeddingClient, RouterClient
 from sage import ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_messages, compose_identity_block, load_directive
@@ -167,6 +170,13 @@ class SageHandler(BaseHTTPRequestHandler):
         if not self._trusted_host():
             self.send_error(HTTPStatus.FORBIDDEN)
             return
+        try:
+            with activity_gate(self.server.store.data_root):
+                self._do_GET()
+        except RecoveryRequired as exc:
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(exc)})
+
+    def _do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/":
             self._serve_static("index.html", "text/html; charset=utf-8")
@@ -241,11 +251,17 @@ class SageHandler(BaseHTTPRequestHandler):
             )
         elif path == "/api/sessions/deletion-preview":
             query = urlparse(self.path).query
-            session_id = query.split("session_id=", 1)[1] if "session_id=" in query else ""
+            session_id = parse_qs(query).get("session_id", [""])[0]
             try:
-                plan = build_deletion_plan(self.server.store, self.server.interior, unquote(session_id))
+                plan = build_deletion_plan(self.server.store, self.server.interior, session_id)
             except KeyError:
                 self._json(HTTPStatus.NOT_FOUND, {"error": "Chat not found"})
+                return
+            except DeletionError as exc:
+                self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
+                return
+            except (OSError, sqlite3.Error):
+                self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Deletion preview is unavailable; nothing was deleted."})
                 return
             self._json(HTTPStatus.OK, plan.as_dict())
         elif path == "/api/split-voice/config":
@@ -284,6 +300,18 @@ class SageHandler(BaseHTTPRequestHandler):
         if not self._trusted_host() or not self._same_origin():
             self.send_error(HTTPStatus.FORBIDDEN)
             return
+        try:
+            if urlparse(self.path).path == "/api/sessions/delete":
+                # Parse confirmation before acquiring the exclusive deletion
+                # lease; execute_deletion revalidates its preview under that lease.
+                self._delete_session()
+                return
+            with activity_gate(self.server.store.data_root):
+                self._do_POST()
+        except RecoveryRequired as exc:
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(exc)})
+
+    def _do_POST(self) -> None:
         path = urlparse(self.path).path
         if path == "/api/live-token":
             self._live_token()
@@ -318,9 +346,6 @@ class SageHandler(BaseHTTPRequestHandler):
             "/api/sessions/voice-model",
         }:
             self._session_action(path.rsplit("/", 1)[-1])
-            return
-        if path == "/api/sessions/delete":
-            self._delete_session()
             return
         if path == "/api/waiting-message/ack":
             self.server.interior.clear_waiting_message()
@@ -360,6 +385,7 @@ class SageHandler(BaseHTTPRequestHandler):
                 "token": token,
                 "model": LIVE_MODEL,
                 "call_id": str(uuid4()),
+                "deletion_generation": self.server.store.deletion_generation,
             },
         )
 
@@ -410,6 +436,9 @@ class SageHandler(BaseHTTPRequestHandler):
     def _live_turn(self) -> None:
         body = self._json_body()
         if body is None:
+            return
+        if body.get("deletion_generation") != self.server.store.deletion_generation:
+            self._json(HTTPStatus.CONFLICT, {"error": "Memory changed during this call. End it and start a new call before saving more turns."})
             return
         user = body.get("user", "")
         assistant = body.get("assistant", "")
@@ -626,6 +655,7 @@ class SageHandler(BaseHTTPRequestHandler):
                         [{"title": r.title, "snippet": r.snippet, "url": r.url} for r in results],
                         "conversation",
                         accepted["id"],
+                        provenance=self._search_provenance,
                     )
                 except OSError:
                     pass
@@ -710,11 +740,6 @@ class SageHandler(BaseHTTPRequestHandler):
         )
 
     def _delete_session(self) -> None:
-        # Safety hold while permanent deletion's cross-store guarantees are repaired.
-        self._json(HTTPStatus.SERVICE_UNAVAILABLE, {
-            "error": "Permanent deletion is temporarily unavailable while safety checks are repaired. Archive remains available."
-        })
-        return
         body = self._json_body()
         if body is None:
             return
@@ -726,9 +751,10 @@ class SageHandler(BaseHTTPRequestHandler):
         if not isinstance(confirmation, str):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "confirmation must be DELETE"})
             return
-        was_current = session_id == self.server.store.current_session_id
         try:
             plan = build_deletion_plan(self.server.store, self.server.interior, session_id)
+            if body.get("revision") != plan.revision:
+                raise DeletionError("Deletion preview changed. Review a fresh preview and confirm again.")
             result = execute_deletion(
                 self.server.store,
                 self.server.interior,
@@ -737,22 +763,32 @@ class SageHandler(BaseHTTPRequestHandler):
                 plan,
                 confirmation,
             )
-            if was_current:
-                self.server.store.append_chat_boundary()
         except KeyError:
             self._json(HTTPStatus.NOT_FOUND, {"error": "Chat not found"})
             return
         except DeletionError as exc:
             self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
             return
-        except OSError:
+        except RecoveryRequired as exc:
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(exc)})
+            return
+        except (OSError, sqlite3.Error):
             self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Sage could not delete this chat."})
             return
         self._json(HTTPStatus.OK, {"deleted": result, "active_session_id": self.server.store.current_session_id})
 
     def _decide_search(self, message: str, exclude_event_id: str) -> str | None:
         """Ask the model if web search is needed. Sets _search_decision_failed on router error."""
-        directive = load_directive(identity_block=compose_identity_block(self.server.interior))
+        with data_gate(self.server.store.data_root):
+            directive = load_directive(identity_block=compose_identity_block(self.server.interior))
+            try:
+                identity = sorted(
+                    [entry for entry in self.server.interior.list_identity() if entry["status"] == "ratified"],
+                    key=lambda entry: entry["said_at"], reverse=True,
+                )[:10]
+            except Exception:
+                identity = [{}]  # Unknown inputs must not become false completeness.
+            self._search_provenance = provenance(events=[{"id": exclude_event_id}], records=identity)
         decision_prompt = (
             "Based on the user's message and your knowledge, do you need to search the web "
             "to answer accurately? Reply with ONLY a search query if yes, or 'NO' if no.\n\n"

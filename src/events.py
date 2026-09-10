@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import hashlib
 import logging
 import math
 import os
@@ -14,6 +15,7 @@ from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from router import EmbeddingClient
+from persistence import data_gate, guarded_store
 
 if TYPE_CHECKING:
     from database import Database
@@ -91,6 +93,7 @@ class SearchRecord(TypedDict):
     origin: Literal["conversation", "metabolism"]
     source_event_id: str
     said_at: str
+    provenance: NotRequired[dict]
 
 
 class ChatBoundary(TypedDict):
@@ -134,6 +137,10 @@ def legacy_session_id(boundary_index: int) -> str:
     return str(uuid5(NAMESPACE_URL, f"sage:legacy-session:{boundary_index}"))
 
 
+def record_digest(record: object) -> str:
+    return hashlib.sha256(json.dumps(record, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
 def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     if not vec_a or not vec_b or len(vec_a) != len(vec_b):
         return 0.0
@@ -145,6 +152,7 @@ def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
+@guarded_store
 class EventStore:
     def __init__(
         self,
@@ -164,9 +172,11 @@ class EventStore:
         self.embedder = embedder
         self._mirror = mirror
         self._write_lock = threading.RLock()
-        records = self._read_records()
-        self._current_session_id = self._active_session_id(records) if records else str(uuid4())
-        self._resumed_session_id = self._resumed_session(records, self._current_session_id)
+        with data_gate(self.data_root):
+            records = self._read_records()
+            self._current_session_id = self._active_session_id(records) if records else str(uuid4())
+            self._resumed_session_id = self._resumed_session(records, self._current_session_id)
+            self._generation = self._legacy_map().get("generation")
 
     def append(
         self,
@@ -184,6 +194,8 @@ class EventStore:
             raise ValueError("Call context requires a voice event with both call and turn IDs")
         if session_id is not None and not session_id:
             raise ValueError("Session ID must not be blank")
+        if session_id is not None and session_id != self._current_session_id:
+            self._session_summary(session_id)
         if model is not None and (role != "assistant" or not model.strip()):
             raise ValueError("Only assistant events may carry a model")
         with self._write_lock:
@@ -256,6 +268,10 @@ class EventStore:
     @property
     def current_session_id(self) -> str:
         return self._current_session_id
+
+    @property
+    def deletion_generation(self) -> str | None:
+        return self._generation
 
     def session_model(self, session_id: str | None = None) -> str:
         target = session_id or self._current_session_id
@@ -574,6 +590,8 @@ class EventStore:
         sources: list[SearchSource],
         origin: Literal["conversation", "metabolism"],
         source_event_id: str,
+        *,
+        provenance: dict | None = None,
     ) -> SearchRecord:
         record: SearchRecord = {
             "kind": "search",
@@ -584,6 +602,8 @@ class EventStore:
             "source_event_id": source_event_id,
             "said_at": self._timestamp(),
         }
+        if provenance is not None:
+            record["provenance"] = provenance
         self.relational_dir.mkdir(parents=True, exist_ok=True)
         with self.searches_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -900,7 +920,46 @@ class EventStore:
             self._fsync_directory(self.data_root)
 
     def _read_records(self) -> list[object]:
-        return self._read_jsonl(self.path)
+        records = self._read_jsonl(self.path)
+        for index, entry in self._legacy_map().get("records", {}).items():
+            position = int(index)
+            if position >= len(records) or record_digest(records[position]) != entry["digest"]:
+                raise OSError("Legacy identity map does not match event history")
+            records[position] = {**records[position], **entry["identity"]}
+        return records
+
+    def _legacy_map(self) -> dict:
+        path = self.relational_dir / "legacy_ids.json"
+        if not path.exists():
+            return {}
+        try:
+            result = json.loads(path.read_text(encoding="utf-8"))
+            if result.get("version") != 1 or not isinstance(result.get("generation"), str):
+                raise ValueError("invalid version or generation")
+            for index, entry in result["records"].items():
+                if str(int(index)) != index or int(index) < 0:
+                    raise ValueError("invalid record position")
+                if not isinstance(entry["digest"], str) or len(entry["digest"]) != 64:
+                    raise ValueError("invalid record digest")
+                identity = entry["identity"]
+                if not identity or set(identity) - {"id", "session_id"}:
+                    raise ValueError("invalid identity fields")
+                if not all(isinstance(value, str) and value for value in identity.values()):
+                    raise ValueError("invalid identity values")
+            return result
+        except (ValueError, KeyError, TypeError, AttributeError) as exc:
+            raise OSError("Legacy identity map is invalid; data access is paused") from exc
+
+    def _sync_generation(self) -> None:
+        if not hasattr(self, "_generation"):
+            return
+        generation = self._legacy_map().get("generation")
+        if generation != self._generation:
+            self._generation = generation
+            if not any(s["id"] == self._current_session_id for s in self.sessions(include_archived=True)):
+                records = self._read_records()
+                self._current_session_id = self._active_session_id(records) if records else str(uuid4())
+                self._resumed_session_id = None
 
     @staticmethod
     def _read_jsonl(path: Path) -> list[object]:

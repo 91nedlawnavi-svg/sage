@@ -4,6 +4,33 @@ This file records the current settled frame. Earlier V3 decision text remains
 available in Git history, but is superseded and must not be treated as current
 product authority.
 
+## 2026-09-10 — Fail-closed session deletion
+
+- The previous deletion implementation and `SAGE-021` sign-off did not prove
+  safety. The repaired contract requires exact typed confirmation of an
+  unchanged preview; a changed source snapshot requires a new preview.
+- Deletion waits for accepted foreground turns and background passes to finish.
+  Short data operations use one root-level lock; provider work uses a shared
+  activity lease so ordinary history reads can continue during streaming.
+  Both gates coordinate threads and cooperating Sage processes.
+- Only survivor data is staged. Before a durable commit marker, failure leaves
+  original stores unchanged. After the marker, restart/read recovery must finish
+  all file replacements and both mirrors before Sage uses data again. Mirrors
+  remain derived; they are rebuilt from the staged authoritative survivors.
+- Original surviving event lines are not rewritten. Content-free legacy ID
+  mappings in `relational/legacy_ids.json` preserve their original identities
+  after removal shifts file positions. This mapping is authoritative auxiliary
+  state, not a disposable SQLite cache, and must accompany data backups.
+- Multi-input derived records retain explicit, transitive event-source lists
+  and completeness. A trigger ID alone does not prove all inputs. Missing or
+  shared provenance blocks deletion rather than silently widening its scope or
+  leaving potentially influenced derived material behind. Older lived records
+  are not rewritten or assigned invented provenance; archive stays reversible.
+- Deletion does not erase external backups, provider-held context, other
+  retained conversation events, or already-rendered browser text. Direct voice
+  transcripts from an older deletion generation are rejected until a new call
+  starts. This is removal from active local stores, not forensic disk erasure.
+
 ## 2026-08-25 — Sage Refresh
 
 - Sage is an owned, persistent personal intelligence for Elliot, with a

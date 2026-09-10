@@ -165,6 +165,15 @@ records. Archived events remain available to global recall. Background work
 follows a separate path: conversation, reflection, optional exploration, and
 at most one waiting message.
 
+Permanent deletion requires a current scope preview and exact typed `DELETE`.
+If source data changes, confirmation must be repeated against a fresh preview.
+Incomplete older provenance or derived records shared with other chats block
+deletion; archive remains available. Successful deletion removes the listed
+active local records and rebuilds both mirrors, with restart recovery for a
+committed interruption. Surviving legacy event/session identities depend on
+`relational/legacy_ids.json`; preserve that file with data backups. External
+backups, provider context and other retained chats are outside the purge.
+
 The `/call` trial keeps audio on a separate low-latency path: Sage issues a
 short-lived token, then the browser streams audio directly to Gemini Live.
 Gemini can request relevant events through Sage's local recall endpoint.

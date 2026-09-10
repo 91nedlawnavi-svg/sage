@@ -18,6 +18,7 @@ import sqlite3
 import threading
 from pathlib import Path
 from typing import Any
+from persistence import guarded_store
 
 
 RELATIONAL_SCHEMA = """
@@ -158,11 +159,13 @@ CREATE TABLE IF NOT EXISTS waiting_message (
 """
 
 
+@guarded_store
 class Database:
     """Thin wrapper around one SQLite file. Not a replacement for the JSONL stores."""
 
     def __init__(self, db_path: Path, schema: str) -> None:
         self.db_path = Path(db_path)
+        self.data_root = self.db_path.parent.parent
         self.schema = schema
         self._conn: sqlite3.Connection | None = None
         # ponytail: one lock per database file; split per table only if contention shows up
@@ -235,59 +238,6 @@ class Database:
     def count(self, table: str) -> int:
         row = self.fetchone(f"SELECT COUNT(*) AS n FROM {table}")
         return int(row["n"]) if row else 0
-
-    def delete_session(self, session_id: str, event_ids: set[str], boundary_times: set[str] | None = None) -> None:
-        """Delete relational rows proven to belong to one session."""
-        with self._lock:
-            connection = self.conn
-            connection.execute("BEGIN")
-            try:
-                ids = tuple(event_ids)
-                if ids:
-                    marks = ",".join("?" for _ in ids)
-                    for table, column in (
-                        ("transcript_corrections", "source_event_id"),
-                        ("entity_observations", "source_event_id"),
-                        ("heartbeat_completions", "source_event_id"),
-                        ("metabolism_completions", "source_event_id"),
-                        ("search_records", "source_event_id"),
-                        ("embeddings", "event_id"),
-                        ("voice_event_context", "event_id"),
-                        ("event_sources", "event_id"),
-                        ("event_sessions", "event_id"),
-                        ("events", "id"),
-                    ):
-                        connection.execute(f"DELETE FROM {table} WHERE {column} IN ({marks})", ids)
-                connection.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
-                if boundary_times:
-                    marks = ",".join("?" for _ in boundary_times)
-                    connection.execute(f"DELETE FROM chat_boundaries WHERE said_at IN ({marks})", tuple(boundary_times))
-                connection.commit()
-            except Exception:
-                connection.rollback()
-                raise
-
-    def delete_sources(self, event_ids: set[str], identity_ids: set[str], waiting: bool) -> None:
-        with self._lock:
-            connection = self.conn
-            connection.execute("BEGIN")
-            try:
-                ids = tuple(event_ids)
-                if ids:
-                    marks = ",".join("?" for _ in ids)
-                    connection.execute(f"DELETE FROM reflections WHERE source_event_id IN ({marks})", ids)
-                if identity_ids:
-                    marks = ",".join("?" for _ in identity_ids)
-                    connection.execute(
-                        f"DELETE FROM identity_entries WHERE id IN ({marks}) OR target_id IN ({marks})",
-                        tuple(identity_ids) * 2,
-                    )
-                if waiting:
-                    connection.execute("DELETE FROM waiting_message WHERE id = 1")
-                connection.commit()
-            except Exception:
-                connection.rollback()
-                raise
 
     def store_embedding_vector(self, event_id: str, vector: list[float]) -> None:
         self.execute(

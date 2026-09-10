@@ -152,6 +152,11 @@ telemetry, decorative effects, and dense administration surfaces.
 - Earned identity lives in `~/sage_data/interior/`; wiping lived memory returns
   Sage to the seed, not to nothing.
 - Relational memory and interior material remain physically separate.
+- An explicitly confirmed single-session purge must preserve unrelated original
+  records and stable identities, prove its derived scope, and recover interrupted
+  committed work before permitting further access. Unknown or shared provenance
+  must not be guessed. Active local deletion does not promise removal from
+  external backups, providers, other conversations or already-open clients.
 
 ### History and time
 

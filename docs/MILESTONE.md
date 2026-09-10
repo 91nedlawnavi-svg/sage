@@ -65,16 +65,45 @@ Already present and verified:
   median, and DeepSeek V4 Flash measured 5.08s median to the first complete TTS
   audio blob. This backend probe excludes microphone capture and STT; the live
   screen reports those stages separately.
-- 132 deterministic tests passing across the current foundation, both voice
-  paths, and temporary-data deletion checks.
-- Permanent session deletion previews exact local scope, requires typed
-  `DELETE`, removes directly and safely-proven derived records, cleans SQLite
-  mirrors, and discloses the external-backup boundary. Tests cover interruption,
-  restart, recall removal, voice corrections/call grouping, and derived records.
-- `SAGE-021` integration review passed: production service is active at commit
-  `8033584`, `/health` returns `{"ok": true}`, live browser controls render,
-  deletion preview returns exact counts and backup disclosure, browser console
-  has no errors, and the full suite remains green.
+- The earlier `SAGE-021` integration-pass claim is withdrawn. Its 132 green
+  tests included only two shallow deletion tests and did not establish safe
+  deletion. Audit reproduced legacy ID drift, concurrent event loss, mirrors
+  committing before authoritative files, and incomplete derived provenance.
+- The deletion repair binds typed `DELETE` to an unchanged preview. It keeps
+  survivor bytes and legacy identities, waits for in-flight provider work,
+  stages survivor-only files and mirrors, and rolls a committed interruption
+  forward before permitting further data access. Ambiguous, incomplete or
+  shared derived provenance blocks deletion; archive remains available.
+
+## Session deletion safety repair — 2026-09-10
+
+Acceptance checks use temporary data only:
+
+- Two successive legacy deletions retain surviving event/session IDs, exact
+  original lines, transcript corrections and rebuilt mirror links.
+- Stale previews and reentrant/concurrent writes cannot erase newly accepted
+  history. Other processes cooperate through file locks; history reads remain
+  available during streamed model replies.
+- Process exits after preparation, the durable commit marker, each of ten
+  authoritative survivor files and each of two mirrors recover on restart.
+  Disk-sync, replacement and SQLite failures distinguish unchanged preparation
+  from committed recovery; pending recovery returns HTTP 503 and pauses access.
+- Read waiting messages, identity proposals/rulings, embeddings and voice-call
+  groups are included. Surviving conversation events stay intact.
+- Reflection provenance includes all six inputs; identity and metabolism carry
+  their transitive event sources. Missing older provenance remains unknown,
+  never guessed. Shared-source records block single-session deletion.
+- Live calls started before a successful purge cannot save stale transcripts.
+  Existing browser/provider context, other chats and external backups are not
+  erased; no forensic storage-erasure guarantee is made.
+
+Verification: `python3 -m unittest discover -s tests` passed **153 tests** in
+64.165 seconds, including 23 deletion tests and the 14 crash-point subcases.
+Python compilation, JavaScript syntax, the browser preview/confirmation
+contract probe, and `git diff --check` passed. The AST project graph was updated.
+The suite still emits a non-failing unclosed-SQLite-connection ResourceWarning.
+Production deployment is recorded separately after its live checks; none of
+the destructive tests used lived data.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.

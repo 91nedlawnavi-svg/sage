@@ -12,6 +12,8 @@ from events import EventStore
 from interior import InteriorStore
 from router import RouterClient
 from search import search
+from persistence import guarded
+from provenance import provenance
 
 _log = logging.getLogger("sage.metabolism")
 
@@ -25,6 +27,7 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+@guarded(lambda interior, record: interior.data_root)
 def _append_metabolism(interior: InteriorStore, record: dict) -> None:
     interior._ensure_dir()
     with interior.metabolism_path.open("a", encoding="utf-8") as f:
@@ -33,11 +36,13 @@ def _append_metabolism(interior: InteriorStore, record: dict) -> None:
         os.fsync(f.fileno())
 
 
+@guarded(lambda events, router, interior, source_event_id, **kw: interior.data_root, activity=True)
 def gap_scan(
     events: list[dict],
     router: RouterClient,
     interior: InteriorStore,
     source_event_id: str,
+    *, proof: dict | None = None,
 ) -> list[dict]:
     """Scan recent conversation for knowledge gaps. Returns list of gaps or []."""
     if not events:
@@ -74,15 +79,18 @@ def gap_scan(
         "source_event_id": source_event_id,
         "said_at": _timestamp(),
         "gaps": valid,
+        "provenance": proof if proof is not None else provenance(events=events[-10:]),
     })
     return valid
 
 
+@guarded(lambda gaps, store, interior, source_event_id, **kw: store.data_root, activity=True)
 def explore(
     gaps: list[dict],
     store: EventStore,
     interior: InteriorStore,
     source_event_id: str,
+    *, proof: dict | None = None,
 ) -> list[dict]:
     """Search the web for each gap. Store results as episodic events. Returns gaps with results."""
     if not gaps:
@@ -101,6 +109,7 @@ def explore(
             [{"title": r.title, "snippet": r.snippet, "url": r.url} for r in results],
             "metabolism",
             source_event_id,
+            provenance=proof,
         )
         explored.append({**gap, "results": [{"title": r.title, "snippet": r.snippet, "url": r.url} for r in results]})
     if not explored:
@@ -112,6 +121,7 @@ def explore(
         "said_at": _timestamp(),
         "gaps_explored": len(explored),
         "queries": [g["query"] for g in explored],
+        "provenance": proof,
     })
     return explored
 
@@ -125,11 +135,13 @@ Recent reflections for context:
 {reflections}"""
 
 
+@guarded(lambda explored, router, interior, source_event_id, **kw: interior.data_root, activity=True)
 def digest(
     explored: list[dict],
     router: RouterClient,
     interior: InteriorStore,
     source_event_id: str,
+    *, proof: dict | None = None,
 ) -> str | None:
     """Synthesize exploration results into a metabolism reflection. Returns text or None."""
     if not explored:
@@ -141,6 +153,9 @@ def digest(
             lines.append(f"  - {r['title']}: {r['snippet']}")
         findings.append("\n".join(lines))
     recent = interior.list_reflections(limit=5)
+    combined = provenance(records=[{"provenance": proof}, *recent])
+    if proof is not None:
+        proof.update(combined)
     reflection_text = "\n".join(f"- {r['content']}" for r in recent) if recent else "(none yet)"
     prompt = DIGEST_PROMPT.format(
         findings="\n\n".join(findings),
@@ -155,7 +170,7 @@ def digest(
     text = result.reply.strip()
     if not text:
         return None
-    interior.append_reflection(text, "metabolism", source_event_id=source_event_id)
+    interior.append_reflection(text, "metabolism", source_event_id=source_event_id, provenance=combined)
     return text
 
 
@@ -168,11 +183,13 @@ Should you leave Elliot a brief note about what you found? Only if you discovere
 If yes, write the note as you'd say it to him (1-3 sentences, warm and plain, starting with substance). If no, reply with exactly: NO_MESSAGE"""
 
 
+@guarded(lambda digest_text, router, interior, source_event_id, **kw: interior.data_root, activity=True)
 def reach(
     digest_text: str,
     router: RouterClient,
     interior: InteriorStore,
     source_event_id: str,
+    *, proof: dict | None = None,
 ) -> bool:
     """Decide whether to leave a waiting message. Returns True if message was set."""
     if not digest_text:
@@ -189,6 +206,7 @@ def reach(
             "said_at": _timestamp(),
             "message_sent": False,
             "reason": "router_failure",
+            "provenance": proof,
         })
         return False
     if not result.succeeded or not result.reply:
@@ -199,6 +217,7 @@ def reach(
             "said_at": _timestamp(),
             "message_sent": False,
             "reason": "router_failure",
+            "provenance": proof,
         })
         return False
     text = result.reply.strip()
@@ -210,9 +229,10 @@ def reach(
             "said_at": _timestamp(),
             "message_sent": False,
             "reason": "declined",
+            "provenance": proof,
         })
         return False
-    interior.set_waiting_message(text, source_event_id=source_event_id)
+    interior.set_waiting_message(text, source_event_id=source_event_id, provenance=proof)
     _append_metabolism(interior, {
         "kind": "reach",
         "id": str(uuid4()),
@@ -220,10 +240,12 @@ def reach(
         "said_at": _timestamp(),
         "message_sent": True,
         "content": text,
+        "provenance": proof,
     })
     return True
 
 
+@guarded(lambda store, interior, router, source_event_id: store.data_root, activity=True)
 def run_metabolism_cycle(
     store: EventStore,
     interior: InteriorStore,
@@ -235,16 +257,17 @@ def run_metabolism_cycle(
     if not events:
         return
     # Stage 1: gap scan
-    gaps = gap_scan(events, router, interior, source_event_id)
+    proof = provenance(events=events[-10:])
+    gaps = gap_scan(events, router, interior, source_event_id, proof=proof)
     if not gaps:
         return
     # Stage 2: explore
-    explored = explore(gaps, store, interior, source_event_id)
+    explored = explore(gaps, store, interior, source_event_id, proof=proof)
     if not explored:
         return
     # Stage 3: digest
-    digest_text = digest(explored, router, interior, source_event_id)
+    digest_text = digest(explored, router, interior, source_event_id, proof=proof)
     if not digest_text:
         return
     # Stage 4: reach
-    reach(digest_text, router, interior, source_event_id)
+    reach(digest_text, router, interior, source_event_id, proof=proof)

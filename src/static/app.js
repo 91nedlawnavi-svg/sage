@@ -312,6 +312,9 @@ async function deleteSession(sessionId) {
   const previewResponse = await fetch(`/api/sessions/deletion-preview?session_id=${encodeURIComponent(sessionId)}`);
   const preview = await previewResponse.json();
   if (!previewResponse.ok) throw new Error(preview.error || "Deletion preview unavailable.");
+  if (preview.unresolved?.length) {
+    throw new Error(`Deletion blocked: ${preview.unresolved.slice(0, 4).join("; ")}. Archive remains available.`);
+  }
   const counts = Object.entries(preview.counts || {}).map(([name, count]) => `${name}: ${count}`).join(", ");
   const typed = window.prompt(
     `Permanently delete “${preview.title}”? This cannot be undone.\n\nAffected local records: ${counts || "none"}\n\n${preview.backup_disclosure}\n\nType DELETE exactly:`,
@@ -321,7 +324,7 @@ async function deleteSession(sessionId) {
   const response = await fetch("/api/sessions/delete", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({session_id: sessionId, confirmation: typed}),
+    body: JSON.stringify({session_id: sessionId, confirmation: typed, revision: preview.revision}),
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "Chat could not be deleted.");

@@ -12,6 +12,8 @@ from events import EventStore
 from interior import InteriorStore
 from metabolism import run_metabolism_cycle
 from router import RouterClient
+from persistence import guarded
+from provenance import provenance
 
 logger = logging.getLogger("sage.heartbeat")
 
@@ -125,6 +127,7 @@ class Heartbeat:
         self._identity_proposal_pass()
         self._metabolism_pass()
 
+    @guarded(lambda self: self.event_store.data_root, activity=True)
     def _extract_entities_pass(self) -> None:
         history = self.event_store.history()
         if not history:
@@ -164,6 +167,7 @@ class Heartbeat:
                     continue
                 self.event_store.append_heartbeat_completion("entities", event["id"])
 
+    @guarded(lambda self: self.event_store.data_root, activity=True)
     def _reflection_pass(self) -> None:
         # Generate a private internal reflection if there is new history
         history = self.event_store.history()
@@ -187,10 +191,14 @@ class Heartbeat:
                 # A bare "SELF:" is truthy, so a truncated generation reaches here. Leave the
                 # completion unrecorded so the next beat retries this event.
                 return
-            self.interior_store.append_reflection(content, category, source_event_id=source_event_id)
+            self.interior_store.append_reflection(
+                content, category, source_event_id=source_event_id,
+                provenance=provenance(events=history[-6:]),
+            )
             self.event_store.append_heartbeat_completion("reflection", source_event_id)
             self.last_reflection_ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
+    @guarded(lambda self: self.event_store.data_root, activity=True)
     def _identity_proposal_pass(self) -> None:
         """Turn unproposed self-observations into one claim for Elliot to rule on.
 
@@ -225,13 +233,10 @@ class Heartbeat:
         self.interior_store.append_identity_proposal(
             claim,
             [r["id"] for r in candidates],
-            source_event_ids=[
-                reflection["source_event_id"]
-                for reflection in candidates
-                if reflection.get("source_event_id")
-            ],
+            provenance=provenance(records=candidates),
         )
 
+    @guarded(lambda self: self.event_store.data_root, activity=True)
     def _metabolism_pass(self) -> None:
         """Trigger metabolism if conversation has been silent long enough."""
         history = [e for e in self.event_store.history() if e["role"] == "user"]

@@ -8,6 +8,7 @@ from typing import Literal
 
 from events import Event, EventStore
 from router import RouterClient
+from persistence import guarded
 
 ROUTER_FAILURE = "Sage could not reach the local router. Your message was saved; no assistant reply was recorded."
 SAVE_FAILURE = "Sage could not save your message. Nothing was sent."
@@ -113,6 +114,7 @@ def load_directive(path: Path = DIRECTIVE_PATH, *, identity_block: str = "") -> 
     return directive + identity_block
 
 
+@guarded(lambda message, store, router: store.data_root, activity=True)
 def handle_message(message: str, store: EventStore, router: RouterClient) -> str:
     accepted = accept_message(message, store)
     if accepted is None:

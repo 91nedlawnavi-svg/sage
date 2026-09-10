@@ -50,6 +50,12 @@ flowchart LR
 
 ## Current position
 
+The `SAGE-021` deletion sign-off was reopened on September 10 after backend
+failure probes disproved its safety claims. The repair adds preview-bound
+confirmation, stable survivor IDs, cross-process coordination and restart
+recovery. Older records with incomplete sources and records shared across chats
+block deletion; archive remains available. See `MILESTONE.md` for actual checks.
+
 Sage has a working local foundation, episodic memory, routed intelligence,
 search, an interior, and bounded background activity. The system map is now
 legible. The current task is proving that memory produces felt continuity in
@@ -67,5 +73,5 @@ lists and reopens those sessions; rename and reversible archive changes append
 new records, and archived events remain globally recallable.
 Text chats now keep `Auto` or an explicit configured model per session, record
 which model actually answered, and offer safe retry without writing the user
-turn twice. Voice inheritance remains deliberately unsettled for the next
-session of work.
+turn twice. Split voice follows the active chat's model unless its saved voice
+override selects another configured model.
