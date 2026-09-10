@@ -710,6 +710,11 @@ class SageHandler(BaseHTTPRequestHandler):
         )
 
     def _delete_session(self) -> None:
+        # Safety hold while permanent deletion's cross-store guarantees are repaired.
+        self._json(HTTPStatus.SERVICE_UNAVAILABLE, {
+            "error": "Permanent deletion is temporarily unavailable while safety checks are repaired. Archive remains available."
+        })
+        return
         body = self._json_body()
         if body is None:
             return
