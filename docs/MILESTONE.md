@@ -102,8 +102,15 @@ Verification: `python3 -m unittest discover -s tests` passed **153 tests** in
 Python compilation, JavaScript syntax, the browser preview/confirmation
 contract probe, and `git diff --check` passed. The AST project graph was updated.
 The suite still emits a non-failing unclosed-SQLite-connection ResourceWarning.
-Production deployment is recorded separately after its live checks; none of
-the destructive tests used lived data.
+Production repair commit `44952f9` was fast-forwarded to `/home/elliot/sage`
+and pushed to `main`. After restart, `sage.service` was active, `/health`
+returned `{"ok": true}`, all 17 sessions were available, and the updated
+confirmation code was served. A read-only live deletion preview returned a
+revision and 51 provenance blockers, correctly refusing unsupported scope.
+Hashes of all eight existing authoritative JSONL files matched before and
+after deployment. No live deletion request was sent; all destructive probes
+used temporary data. This is evidence for the repaired deletion boundary,
+not a claim that every backend behavior has been exhaustively proved.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
