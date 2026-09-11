@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 from uuid import uuid4
-from persistence import guarded_store
+from persistence import append_jsonl, guarded_store, read_jsonl
 
 if TYPE_CHECKING:
     from database import Database
@@ -103,10 +103,7 @@ class InteriorStore:
             reflection["source_event_id"] = source_event_id
         if provenance is not None:
             reflection["provenance"] = provenance
-        with self.reflections_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(reflection, ensure_ascii=False) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
+        append_jsonl(self.reflections_path, [reflection])
         self._mirror_reflection(reflection)
         return reflection
 
@@ -182,10 +179,7 @@ class InteriorStore:
 
     def _append_identity(self, record: IdentityProposal | IdentityRuling) -> None:
         self._ensure_dir()
-        with self.identity_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
+        append_jsonl(self.identity_path, [record])
         self._mirror_identity(record)
 
     @staticmethod
@@ -194,21 +188,7 @@ class InteriorStore:
 
     @staticmethod
     def _read_jsonl(path: Path) -> list[object]:
-        if not path.exists():
-            return []
-        with path.open(encoding="utf-8") as data_file:
-            lines = data_file.readlines()
-        records: list[object] = []
-        for index, line in enumerate(lines):
-            if not line.strip():
-                continue
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                if index == len(lines) - 1 and not line.endswith("\n"):
-                    break
-                raise
-        return records
+        return read_jsonl(path)
 
     def get_waiting_message(self) -> WaitingMessage | None:
         if not self.waiting_message_path.exists():

@@ -12,34 +12,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from database import Database, relational_db, interior_db  # noqa: E402
 from events import EventStore, legacy_session_id  # noqa: E402
-from persistence import guarded
+from persistence import guarded, read_jsonl
 
 
 def _read_jsonl(path: Path) -> list[dict]:
-    if not path.exists():
-        return []
-    records: list[dict] = []
-    for i, line in enumerate(path.read_text(encoding="utf-8").splitlines()):
-        if not line.strip():
-            continue
-        try:
-            obj = json.loads(line)
-            if isinstance(obj, dict):
-                records.append(obj)
-        except json.JSONDecodeError:
-            # tolerate truncated last line (crash mid-write)
-            if i == len(path.read_text(encoding="utf-8").splitlines()) - 1:
-                break
-            raise
-    return records
+    return [record for record in read_jsonl(path) if isinstance(record, dict)]
 
 
 @guarded(lambda db, data_root: data_root)
@@ -266,102 +253,84 @@ def backfill_interior(db: Database, data_root: Path) -> dict[str, int]:
     return counts
 
 
+_SURROGATE_IDS = {"entity_observations", "heartbeat_completions", "chat_boundaries"}
+_JSON_COLUMNS = {
+    ("search_records", "sources"),
+    ("embeddings", "vector"),
+    ("identity_entries", "evidence"),
+    ("identity_entries", "source_event_ids"),
+}
+
+
+def _database_snapshot(path: Path) -> dict[str, list[tuple]]:
+    connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        tables = [
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            if not row[0].startswith("sqlite_")
+        ]
+        snapshot: dict[str, list[tuple]] = {}
+        for table in tables:
+            quoted_table = '"' + table.replace('"', '""') + '"'
+            columns = [row[1] for row in connection.execute(f"PRAGMA table_info({quoted_table})")]
+            if table in _SURROGATE_IDS:
+                columns.remove("id")
+            quoted_columns = ", ".join('"' + column.replace('"', '""') + '"' for column in columns)
+            rows = []
+            for row in connection.execute(f"SELECT {quoted_columns} FROM {quoted_table}"):
+                normalized = []
+                for column, value in zip(columns, row):
+                    if (table, column) in _JSON_COLUMNS and isinstance(value, str):
+                        try:
+                            value = json.dumps(json.loads(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                        except json.JSONDecodeError:
+                            pass
+                    normalized.append(value)
+                rows.append(tuple(normalized))
+            snapshot[table] = sorted(rows, key=repr)
+        return snapshot
+    finally:
+        connection.close()
+
+
+def _compare_mirror(kind: str, data_root: Path) -> list[str]:
+    actual_path = data_root / kind / f"{kind}.db"
+    if not actual_path.exists():
+        return [f"{kind}: database missing"]
+    with TemporaryDirectory() as temporary_directory:
+        expected_root = Path(temporary_directory)
+        expected_db = relational_db(expected_root) if kind == "relational" else interior_db(expected_root)
+        if kind == "relational":
+            backfill_relational(expected_db, data_root)
+        else:
+            backfill_interior(expected_db, data_root)
+        expected_path = expected_db.db_path
+        expected_db.close()
+        expected = _database_snapshot(expected_path)
+    actual = _database_snapshot(actual_path)
+    return [
+        f"{kind}.{table}: content differs"
+        for table, rows in expected.items()
+        if actual.get(table) != rows
+    ]
+
+
 @guarded(lambda rel_counts, int_counts, data_root: data_root)
 def verify(rel_counts: dict[str, int], int_counts: dict[str, int], data_root: Path) -> list[str]:
-    """Compare SQLite row counts against JSONL line counts. Returns list of mismatches."""
+    """Compare complete SQLite mirror contents with fresh JSONL-derived mirrors."""
     mismatches: list[str] = []
-    events_path = data_root / "events.jsonl"
-
-    if events_path.exists():
-        records = EventStore(data_root)._read_records()
-        expected_events = sum(1 for r in records if r.get("role") in ("user", "assistant"))
-        expected_boundaries = sum(1 for r in records if r.get("kind") == "chat_boundary")
-        expected_sources = sum(
-            1 for r in records
-            if r.get("role") in ("user", "assistant") and r.get("source") in {"text", "voice"}
-        )
-        expected_corrections = sum(1 for r in records if r.get("kind") == "transcript_correction")
-        expected_voice_context = sum(
-            1 for r in records
-            if r.get("role") in ("user", "assistant")
-            and isinstance(r.get("call_id"), str)
-            and isinstance(r.get("turn_id"), str)
-        )
-        expected_sessions: set[str] = set()
-        expected_event_sessions = 0
-        session_id = legacy_session_id(-1)
-        for index, record in enumerate(records):
-            if record.get("kind") == "chat_boundary":
-                session_id = record.get("session_id") if isinstance(record.get("session_id"), str) else legacy_session_id(index)
-                expected_sessions.add(session_id)
-            elif record.get("role") in ("user", "assistant"):
-                expected_sessions.add(record.get("session_id") if isinstance(record.get("session_id"), str) else session_id)
-                expected_event_sessions += 1
-
-        if rel_counts.get("events", 0) != expected_events:
-            mismatches.append(f"events: expected {expected_events}, got {rel_counts.get('events', 0)}")
-        if rel_counts.get("sessions", 0) != len(expected_sessions):
-            mismatches.append(f"sessions: expected {len(expected_sessions)}, got {rel_counts.get('sessions', 0)}")
-        if rel_counts.get("event_sessions", 0) != expected_event_sessions:
-            mismatches.append(
-                f"event_sessions: expected {expected_event_sessions}, got {rel_counts.get('event_sessions', 0)}"
-            )
-        if rel_counts.get("chat_boundaries", 0) != expected_boundaries:
-            mismatches.append(f"chat_boundaries: expected {expected_boundaries}, got {rel_counts.get('chat_boundaries', 0)}")
-        if rel_counts.get("event_sources", 0) != expected_sources:
-            mismatches.append(f"event_sources: expected {expected_sources}, got {rel_counts.get('event_sources', 0)}")
-        if rel_counts.get("transcript_corrections", 0) != expected_corrections:
-            mismatches.append(
-                f"transcript_corrections: expected {expected_corrections}, got {rel_counts.get('transcript_corrections', 0)}"
-            )
-        if rel_counts.get("voice_event_context", 0) != expected_voice_context:
-            mismatches.append(
-                f"voice_event_context: expected {expected_voice_context}, got {rel_counts.get('voice_event_context', 0)}"
-            )
-
-    entities_path = data_root / "relational" / "entities.jsonl"
-    if entities_path.exists():
-        expected = sum(1 for r in _read_jsonl(entities_path) if r.get("kind") == "entity_obs")
-        if rel_counts.get("entity_observations", 0) != expected:
-            mismatches.append(f"entity_observations: expected {expected}, got {rel_counts.get('entity_observations', 0)}")
-
-    heartbeat_path = data_root / "relational" / "heartbeat.jsonl"
-    if heartbeat_path.exists():
-        expected = sum(1 for r in _read_jsonl(heartbeat_path) if r.get("kind") == "heartbeat")
-        if rel_counts.get("heartbeat_completions", 0) != expected:
-            mismatches.append(f"heartbeat_completions: expected {expected}, got {rel_counts.get('heartbeat_completions', 0)}")
-
-    embeddings_path = data_root / "relational" / "embeddings.jsonl"
-    if embeddings_path.exists():
-        expected = sum(1 for r in _read_jsonl(embeddings_path) if "event_id" in r and "vector" in r)
-        if rel_counts.get("embeddings", 0) != expected:
-            mismatches.append(f"embeddings: expected {expected}, got {rel_counts.get('embeddings', 0)}")
-
-    searches_path = data_root / "relational" / "searches.jsonl"
-    if searches_path.exists():
-        expected = sum(1 for r in _read_jsonl(searches_path) if r.get("kind") == "search")
-        if rel_counts.get("search_records", 0) != expected:
-            mismatches.append(f"search_records: expected {expected}, got {rel_counts.get('search_records', 0)}")
-
-    reflections_path = data_root / "interior" / "reflections.jsonl"
-    if reflections_path.exists():
-        expected = len(_read_jsonl(reflections_path))
-        if int_counts.get("reflections", 0) != expected:
-            mismatches.append(f"reflections: expected {expected}, got {int_counts.get('reflections', 0)}")
-
-    identity_path = data_root / "interior" / "identity.jsonl"
-    if identity_path.exists():
-        expected = sum(1 for r in _read_jsonl(identity_path) if r.get("id"))
-        if int_counts.get("identity_entries", 0) != expected:
-            mismatches.append(f"identity_entries: expected {expected}, got {int_counts.get('identity_entries', 0)}")
-
+    if rel_counts:
+        mismatches.extend(_compare_mirror("relational", data_root))
+    if int_counts:
+        mismatches.extend(_compare_mirror("interior", data_root))
     return mismatches
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Backfill SQLite mirrors from JSONL.")
     parser.add_argument("--data-root", type=Path, default=Path.home() / "sage_data")
-    parser.add_argument("--verify", action="store_true", help="Verify row counts match JSONL")
+    parser.add_argument("--verify", action="store_true", help="Verify mirror contents match JSONL")
     args = parser.parse_args()
 
     data_root = args.data_root
@@ -391,7 +360,7 @@ def main() -> None:
                 print(f"  {m}")
             sys.exit(1)
         else:
-            print("All counts match.")
+            print("All mirror contents match.")
 
     rel.close()
     intr.close()

@@ -7,7 +7,6 @@ import json
 import hashlib
 import logging
 import math
-import os
 import re
 import threading
 from pathlib import Path
@@ -15,7 +14,7 @@ from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from router import EmbeddingClient
-from persistence import data_gate, guarded_store
+from persistence import append_jsonl, data_gate, guarded_store, read_jsonl
 
 if TYPE_CHECKING:
     from database import Database
@@ -540,10 +539,7 @@ class EventStore:
         }
         if source_event_id is not None:
             record["source_event_id"] = source_event_id
-        with self.entities_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
+        append_jsonl(self.entities_path, [record])
         self._mirror_entity_observation(record)
         return record
 
@@ -565,10 +561,7 @@ class EventStore:
             "said_at": self._timestamp(),
         }
         self.relational_dir.mkdir(parents=True, exist_ok=True)
-        with self.heartbeat_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
+        append_jsonl(self.heartbeat_path, [record])
         self._mirror_heartbeat_completion(record)
         return record
 
@@ -605,10 +598,7 @@ class EventStore:
         if provenance is not None:
             record["provenance"] = provenance
         self.relational_dir.mkdir(parents=True, exist_ok=True)
-        with self.searches_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
+        append_jsonl(self.searches_path, [record])
         self._mirror_search_record(record)
         return record
 
@@ -743,10 +733,7 @@ class EventStore:
         if vector is None:
             return
         self.relational_dir.mkdir(parents=True, exist_ok=True)
-        with self.embeddings_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"event_id": event_id, "vector": vector}) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
+        append_jsonl(self.embeddings_path, [{"event_id": event_id, "vector": vector}])
         self._mirror_embedding(event_id, vector)
 
     def _load_embeddings(self) -> dict[str, list[float]]:
@@ -908,16 +895,10 @@ class EventStore:
         self._append_records([record])
 
     def _append_records(self, records: list[object]) -> None:
-        created = not self.path.exists()
         self.data_root.mkdir(parents=True, exist_ok=True)
         self.relational_dir.mkdir(parents=True, exist_ok=True)
         self.interior_dir.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as events_file:
-            events_file.write("".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records))
-            events_file.flush()
-            os.fsync(events_file.fileno())
-        if created:
-            self._fsync_directory(self.data_root)
+        append_jsonl(self.path, records)
 
     def _read_records(self) -> list[object]:
         records = self._read_jsonl(self.path)
@@ -963,21 +944,7 @@ class EventStore:
 
     @staticmethod
     def _read_jsonl(path: Path) -> list[object]:
-        if not path.exists():
-            return []
-        with path.open(encoding="utf-8") as events_file:
-            lines = events_file.readlines()
-        records: list[object] = []
-        for index, line in enumerate(lines):
-            if not line.strip():
-                continue
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                if index == len(lines) - 1 and not line.endswith("\n"):
-                    break
-                raise
-        return records
+        return read_jsonl(path)
 
     @staticmethod
     def _timestamp() -> str:
@@ -989,14 +956,6 @@ class EventStore:
         if keep_stop_words:
             return tokens
         return tokens - _STOP_WORDS
-
-    @staticmethod
-    def _fsync_directory(path: Path) -> None:
-        descriptor = os.open(path, os.O_RDONLY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
 
     @staticmethod
     def _parse_event(record: object, index: int, session_id: str) -> Event:

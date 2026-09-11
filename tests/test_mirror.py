@@ -95,6 +95,20 @@ class BackfillTests(unittest.TestCase):
         self.assertEqual(mismatches, [])
         rel.close()
 
+    def test_verify_detects_mirror_content_mismatch(self) -> None:
+        self._write_events_jsonl([
+            {"id": "e1", "role": "user", "content": "truth", "said_at": "2026-01-01T00:00:00Z"},
+        ])
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+        from backfill_sqlite import backfill_relational, verify
+
+        rel = relational_db(self.root)
+        counts = backfill_relational(rel, self.root)
+        rel.execute("UPDATE events SET content = 'WRONG' WHERE id = 'e1'")
+
+        self.assertIn("relational.events: content differs", verify(counts, {}, self.root))
+        rel.close()
+
     def test_existing_sessions_table_gains_navigation_columns(self) -> None:
         path = self.root / "relational" / "relational.db"
         connection = sqlite3.connect(path)

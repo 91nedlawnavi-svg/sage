@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -12,7 +11,7 @@ from events import EventStore
 from interior import InteriorStore
 from router import RouterClient
 from search import search
-from persistence import guarded
+from persistence import append_jsonl, guarded
 from provenance import provenance
 
 _log = logging.getLogger("sage.metabolism")
@@ -30,10 +29,7 @@ def _timestamp() -> str:
 @guarded(lambda interior, record: interior.data_root)
 def _append_metabolism(interior: InteriorStore, record: dict) -> None:
     interior._ensure_dir()
-    with interior.metabolism_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
+    append_jsonl(interior.metabolism_path, [record])
 
 
 @guarded(lambda events, router, interior, source_event_id, **kw: interior.data_root, activity=True)

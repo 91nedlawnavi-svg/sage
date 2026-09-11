@@ -421,6 +421,16 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(list(router.stream("Hello Sage")), ["Hel", "lo.", ""])
         self.assertEqual(FakeRouter.seen_models, ["first-model", "second-model"])
 
+    def test_router_stream_keeps_answer_around_reasoning_tags(self) -> None:
+        cases = [
+            (["visible<th", "ink>secret</think>answer"], ["visible", "answer", ""]),
+            (["</thi", "nk>answer"], ["answer", ""]),
+        ]
+        for chunks, expected in cases:
+            with self.subTest(chunks=chunks):
+                FakeRouter.stream_chunks = chunks
+                self.assertEqual(list(self.router.stream("Hello Sage")), expected)
+
     def test_router_explicit_stream_model_never_falls_back(self) -> None:
         FakeRouter.fail_models = {"first-model"}
         router = RouterClient(["first-model", "second-model"], self.base_url)
@@ -1186,10 +1196,17 @@ class FoundationTests(unittest.TestCase):
             web_thread.join()
             web_server.server_close()
 
-    def test_read_ignores_incomplete_final_record(self) -> None:
+    def test_append_recovers_incomplete_final_record(self) -> None:
         self.store.path.write_text('{"role":"user","content":"saved","said_at":"2026-08-15T00:00:00Z"}\n{"role"')
 
-        self.assertEqual([(event["role"], event["content"]) for event in self.store.read_all()], [("user", "saved")])
+        self.store.append("assistant", "later")
+
+        self.assertEqual(
+            [(event["role"], event["content"]) for event in self.store.read_all()],
+            [("user", "saved"), ("assistant", "later")],
+        )
+        for line in self.store.path.read_text().splitlines():
+            json.loads(line)
 
     def test_legacy_privacy_records_are_ignored_without_rewriting_history(self) -> None:
         self.store.path.write_text(

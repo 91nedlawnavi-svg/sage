@@ -60,13 +60,14 @@ metabolism records, and one bounded waiting message are interior material.
 
 **SQLite mirrors** — relational and interior databases are dual-written
 alongside JSONL. JSONL remains the source of truth; mirrors are derived and
-rebuildable.
+rebuildable. Verification compares complete mirror contents against a fresh
+temporary rebuild, not only row counts.
 
 **Background heartbeat** — runs every 120 seconds: entity extraction,
 reflection, identity proposal, and metabolism trigger check. Successful passes
 use completion records to prevent duplicate work.
 
-**126 deterministic tests** covering the current foundation.
+**155 deterministic tests** covering the current foundation.
 
 ## Running
 

@@ -193,6 +193,7 @@ class RouterClient:
         completed = False
         emitted = False
         in_think_block = False
+        pending = ""
         try:
             for raw_line in response:
                 line = raw_line.decode("utf-8").strip()
@@ -208,20 +209,40 @@ class RouterClient:
                 except (KeyError, IndexError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
                     return
                 if isinstance(content, str) and content:
-                    if "<think>" in content:
-                        in_think_block = True
-                        content = content.split("<think>", 1)[0]
-                    if in_think_block:
-                        if "</think>" in content:
-                            in_think_block = False
-                            content = content.split("</think>", 1)[-1]
-                        else:
-                            content = ""
-                    if content:
-                        emitted = True
-                        yield content
+                    pending += content
+                    while pending:
+                        markers = ("</think>",) if in_think_block else ("<think>", "</think>")
+                        found = [(pending.find(marker), marker) for marker in markers if marker in pending]
+                        if found:
+                            marker_at, marker = min(found)
+                            visible = pending[:marker_at] if marker == "<think>" else ""
+                            pending = pending[marker_at + len(marker):]
+                            if visible:
+                                emitted = True
+                                yield visible
+                            in_think_block = marker == "<think>"
+                            continue
+                        keep = max(
+                            (
+                                size
+                                for marker in markers
+                                for size in range(1, len(marker))
+                                if pending.endswith(marker[:size])
+                            ),
+                            default=0,
+                        )
+                        if not in_think_block:
+                            visible = pending[:-keep] if keep else pending
+                            if visible:
+                                emitted = True
+                                yield visible
+                        pending = pending[-keep:] if keep else ""
+                        break
         except (OSError, IncompleteRead, UnicodeDecodeError):
             return
+        if completed and pending and not in_think_block:
+            emitted = True
+            yield pending
         if completed and emitted:
             yield ""
 

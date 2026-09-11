@@ -112,6 +112,24 @@ after deployment. No live deletion request was sent; all destructive probes
 used temporary data. This is evidence for the repaired deletion boundary,
 not a claim that every backend behavior has been exhaustively proved.
 
+## Backend integrity repair — 2026-09-12
+
+A backend-wide audit found three failures outside the existing green suite.
+The repair now recovers an interrupted final JSONL append before accepting the
+next record across every append-only store. Complete no-newline records remain
+intact. SQLite verification now compares complete mirror contents with fresh
+temporary mirrors rebuilt from authoritative files, rather than trusting row
+counts. Streamed model replies retain visible text when reasoning tags and
+answer text share a provider chunk or split across chunk boundaries.
+
+Three focused regressions failed before repair and pass afterward. Adversarial
+probes covered every split point in a tagged stream and both valid and invalid
+unterminated JSONL tails. The full suite passed **155 tests** in 65.510 seconds;
+branch-aware source coverage measured 81%. Python compilation and
+`git diff --check` passed. All probes used temporary data; `~/sage_data` was not
+changed. Deployment verification remains pending. The existing non-failing
+unclosed-SQLite-connection ResourceWarning remains.
+
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
 
