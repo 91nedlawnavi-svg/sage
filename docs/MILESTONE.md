@@ -126,9 +126,19 @@ Three focused regressions failed before repair and pass afterward. Adversarial
 probes covered every split point in a tagged stream and both valid and invalid
 unterminated JSONL tails. The full suite passed **155 tests** in 65.510 seconds;
 branch-aware source coverage measured 81%. Python compilation and
-`git diff --check` passed. All probes used temporary data; `~/sage_data` was not
-changed. Deployment verification remains pending. The existing non-failing
-unclosed-SQLite-connection ResourceWarning remains.
+`git diff --check` passed. All destructive probes used temporary data.
+
+Repair commit `2a67b95` was pushed and fast-forwarded into production. Live
+verification exposed stale derived SQLite content despite equal row counts:
+4 event model fields, 97 event/session links, and 6 session IDs. With Sage
+stopped, both mirrors were rebuilt from authoritative JSONL; complete-content
+verification then passed. After restart, `sage.service` was active and `/health`
+returned `{"ok": true}`. Seven authoritative JSONL files stayed byte-identical.
+Normal UI activity appended three session-control records to `events.jsonl`;
+its original 190-line prefix still matched the pre-deploy hash exactly. Mirror
+verification remained clean after those writes. No old event bytes were
+changed. The existing non-failing unclosed-SQLite-connection ResourceWarning
+remains.
 
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.

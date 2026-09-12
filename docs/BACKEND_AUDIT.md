@@ -5,7 +5,7 @@ Updated: 2026-09-12 (WIB)
 ## Baseline
 
 - Audit branch: `codex/session-6-purge`
-- Audited and deployed revision: `b6f3938817a961001801ac75174df4b53cc9e980`
+- Baseline revision: `b6f3938817a961001801ac75174df4b53cc9e980`
 - Worktree and production were clean and at the same revision.
 - Full suite: 153 tests passed in 64.729 seconds.
 - Branch-aware source coverage: 79% overall.
@@ -20,7 +20,7 @@ Updated: 2026-09-12 (WIB)
 
 ## Repair outcome
 
-Implemented and verified in the worktree. Deployment remains pending.
+Implemented, verified, and deployed in repair commit `2a67b95`.
 
 - One shared durable JSONL writer now removes only an invalid, unterminated
   crash fragment before appending. A complete final record without a newline
@@ -50,10 +50,17 @@ Verification completed:
 Live read-only verification found equal row counts but stale relational mirror
 content: 4 event model fields, 97 event-to-session links, and 6 session IDs
 differ from authoritative JSONL. No conversation text was printed. Production
-repair will rebuild both derived mirrors from JSONL while Sage is stopped.
+deployment stopped Sage, rebuilt only `relational.db` and `interior.db` from
+JSONL, and passed exact content verification afterward.
 
-Remaining completion checks:
+Deployment verification completed:
 
-- Commit and push only milestone files.
-- Fast-forward production, restart `sage.service`, and verify `/health`.
-- Verify lived JSONL hash and line count remain unchanged by deployment.
+- Production fast-forwarded to `2a67b95`; `sage.service` is active and `/health`
+  returns `{"ok": true}`.
+- Seven authoritative JSONL files remained byte-identical.
+- Normal UI activity appended three valid session-control records after restart.
+  The original 190-line `events.jsonl` prefix remains byte-identical to its
+  pre-deploy hash; no old event bytes changed.
+- Exact mirror verification remains clean after those three append-only writes.
+- Elliot's uncommitted `AGENTS.md`, untracked `CLAUDE.md`, and shared
+  `.agent/HANDOFF.md` were preserved and excluded from milestone commits.
