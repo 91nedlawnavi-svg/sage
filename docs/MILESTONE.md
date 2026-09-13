@@ -143,6 +143,25 @@ remains.
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
 
+## SAGE-021 functional audit — 2026-09-13
+
+The follow-up audit found **16 reproducible functional defects** beyond the
+earlier three backend repairs. They affect session context, concurrent retries,
+history visibility, waiting-message durability, transcript derivatives,
+background completion, provider/search parsing, mirror idempotency, overlapping
+identity workers and request error reporting. They are documented with precise
+conditions and runnable probes in [SAGE_021_AUDIT.md](SAGE_021_AUDIT.md).
+
+Application code remains at `9587f37`; this is an audit handoff, not a repair.
+The existing suite passed **155 tests** in 65.601 seconds. A separate audit
+suite ran **31 methods**: 11 passed and 20 reproduced defects; subcases yielded
+22 assertion failures and 4 uncaught application exceptions. Coverage was
+81.43% combined with branch measurement enabled; actual branch coverage was
+77.24%. The existing SQLite ResourceWarning remains unclassified.
+
+The immediate engineering work is choosing and repairing one documented defect
+group. Felt continuity remains the product outcome below.
+
 ## Active outcome — felt continuity
 
 Sage's remembered history influences replies naturally in ordinary, non-crisis
