@@ -140,6 +140,30 @@ verification remained clean after those writes. No old event bytes were
 changed. The existing non-failing unclosed-SQLite-connection ResourceWarning
 remains.
 
+## Transcript correction consistency repair — 2026-09-14
+
+Corrected voice wording now has a deterministic content revision across
+embeddings and background understanding. Recall accepts only a vector matching
+the effective wording; a failed correction embedding therefore cannot keep the
+old meaning active. Repeating the correction can retry embedding without
+rewriting the original transcript. Entity extraction and reflection completion
+bind to the effective event or dialogue-window revision, so a later correction
+appends revised source-linked observations and reflections while keeping older
+derived records available. Revised self-reflections remain eligible for a new
+identity proposal; existing proposals and Elliot's rulings are not silently
+retired.
+
+SQLite mirrors store the same revision metadata, add the columns to existing
+databases on open, and reproduce the latest completion/vector state during a
+fresh rebuild. Nine temporary-data regressions cover correction before and
+after extraction, repeated and successive corrections, failed then successful
+re-embedding, out-of-order stale vectors, restart idempotence, reflection and
+identity consumption, mirror migration, and exact rebuild. The full normal
+suite passed **164 tests** in 65.074 seconds. Python compilation and
+`git diff --check` passed. The existing non-failing unclosed-SQLite-connection
+ResourceWarning remains. This isolated repair has not been integrated, deployed,
+or tested with the other five SAGE-021 repair branches.
+
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
 

@@ -8,7 +8,7 @@ import re
 import threading
 from datetime import datetime, timezone
 
-from events import EventStore
+from events import EventStore, content_revision
 from interior import InteriorStore
 from metabolism import run_metabolism_cycle
 from router import RouterClient
@@ -133,10 +133,17 @@ class Heartbeat:
         if not history:
             return
 
-        processed_event_ids = self.event_store.heartbeat_completed("entities")
+        completed = self.event_store.heartbeat_completed_revisions("entities")
 
-        unprocessed = [e for e in history if e["id"] not in processed_event_ids][-5:]
+        unprocessed = [
+            event for event in history
+            if (
+                (event["id"], content_revision(event["content"])) not in completed
+                and not ("original_content" not in event and (event["id"], None) in completed)
+            )
+        ][-5:]
         for event in unprocessed:
+            revision = content_revision(event["content"])
             prompt = (
                 "Extract key durable entities (people, projects, recurring topics) mentioned in this message.\n"
                 "Return valid JSON list only: [{\"entity_id\": \"slug\", \"name\": \"Full Name\", \"observation\": \"fact\"}].\n"
@@ -161,11 +168,14 @@ class Heartbeat:
                                     name=str(item["name"]),
                                     observation=str(item.get("observation", "")),
                                     source_event_id=event["id"],
+                                    content_revision=revision,
                                 )
                 except (json.JSONDecodeError, ValueError):
                     logger.warning(f"entity extraction returned unparseable JSON for event {event['id']}")
                     continue
-                self.event_store.append_heartbeat_completion("entities", event["id"])
+                self.event_store.append_heartbeat_completion(
+                    "entities", event["id"], content_revision=revision,
+                )
 
     @guarded(lambda self: self.event_store.data_root, activity=True)
     def _reflection_pass(self) -> None:
@@ -175,13 +185,27 @@ class Heartbeat:
             return
 
         source_event_id = history[-1]["id"]
-        if source_event_id in self.event_store.heartbeat_completed("reflection"):
+        recent = history[-6:]
+        recent_dialogue = "\n".join(f"{e['role']}: {e['content']}" for e in recent)
+        revision = content_revision(recent_dialogue)
+        completed = self.event_store.heartbeat_completed_revisions("reflection")
+        legacy_input = not any("original_content" in event for event in recent)
+        if (
+            (source_event_id, revision) in completed
+            or (legacy_input and (source_event_id, None) in completed)
+        ):
             return
-        if self.interior_store.has_reflection_for_source(source_event_id):
-            self.event_store.append_heartbeat_completion("reflection", source_event_id)
+        if (
+            self.interior_store.has_reflection_for_source(
+                source_event_id, content_revision=revision,
+            )
+            or (legacy_input and self.interior_store.has_reflection_for_source(source_event_id))
+        ):
+            self.event_store.append_heartbeat_completion(
+                "reflection", source_event_id, content_revision=revision,
+            )
             return
 
-        recent_dialogue = "\n".join(f"{e['role']}: {e['content']}" for e in history[-6:])
         prompt = REFLECTION_PROMPT.format(dialogue=recent_dialogue)
         result = self.reflection_router.chat_with_messages([{"role": "user", "content": prompt}])
         self._record_outcome("reflection", self.reflection_router, result.succeeded)
@@ -193,9 +217,11 @@ class Heartbeat:
                 return
             self.interior_store.append_reflection(
                 content, category, source_event_id=source_event_id,
-                provenance=provenance(events=history[-6:]),
+                content_revision=revision, provenance=provenance(events=recent),
             )
-            self.event_store.append_heartbeat_completion("reflection", source_event_id)
+            self.event_store.append_heartbeat_completion(
+                "reflection", source_event_id, content_revision=revision,
+            )
             self.last_reflection_ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     @guarded(lambda self: self.event_store.data_root, activity=True)

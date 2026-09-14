@@ -69,6 +69,7 @@ class EntityObservation(TypedDict):
     observation: str
     said_at: str
     source_event_id: NotRequired[str]
+    content_revision: NotRequired[str]
 
 
 class HeartbeatCompletion(TypedDict):
@@ -76,6 +77,7 @@ class HeartbeatCompletion(TypedDict):
     stage: Literal["entities", "reflection", "metabolism"]
     source_event_id: str
     said_at: str
+    content_revision: NotRequired[str]
 
 
 class SearchSource(TypedDict):
@@ -138,6 +140,11 @@ def legacy_session_id(boundary_index: int) -> str:
 
 def record_digest(record: object) -> str:
     return hashlib.sha256(json.dumps(record, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def content_revision(content: str) -> str:
+    """Stable identity for effective event wording, across retries and reloads."""
+    return hashlib.sha256(content.encode()).hexdigest()
 
 
 def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
@@ -524,11 +531,16 @@ class EventStore:
         observation: str,
         *,
         source_event_id: str | None = None,
+        content_revision: str | None = None,
     ) -> EntityObservation:
         self.relational_dir.mkdir(parents=True, exist_ok=True)
         if source_event_id is not None:
             for existing in self.entity_observations():
-                if existing.get("source_event_id") == source_event_id and existing["entity_id"] == entity_id:
+                if (
+                    existing.get("source_event_id") == source_event_id
+                    and existing["entity_id"] == entity_id
+                    and existing.get("content_revision") == content_revision
+                ):
                     return existing
         record: EntityObservation = {
             "kind": "entity_obs",
@@ -539,6 +551,8 @@ class EventStore:
         }
         if source_event_id is not None:
             record["source_event_id"] = source_event_id
+        if content_revision is not None:
+            record["content_revision"] = content_revision
         append_jsonl(self.entities_path, [record])
         self._mirror_entity_observation(record)
         return record
@@ -553,6 +567,8 @@ class EventStore:
         self,
         stage: Literal["entities", "reflection", "metabolism"],
         source_event_id: str,
+        *,
+        content_revision: str | None = None,
     ) -> HeartbeatCompletion:
         record: HeartbeatCompletion = {
             "kind": "heartbeat",
@@ -560,6 +576,8 @@ class EventStore:
             "source_event_id": source_event_id,
             "said_at": self._timestamp(),
         }
+        if content_revision is not None:
+            record["content_revision"] = content_revision
         self.relational_dir.mkdir(parents=True, exist_ok=True)
         append_jsonl(self.heartbeat_path, [record])
         self._mirror_heartbeat_completion(record)
@@ -576,6 +594,25 @@ class EventStore:
             ):
                 completed.add(record["source_event_id"])
         return completed
+
+    def heartbeat_completed_revisions(
+        self, stage: Literal["entities", "reflection", "metabolism"],
+    ) -> set[tuple[str, str | None]]:
+        return {
+            (
+                record["source_event_id"],
+                record.get("content_revision")
+                if isinstance(record.get("content_revision"), str)
+                else None,
+            )
+            for record in self._read_jsonl(self.heartbeat_path)
+            if (
+                isinstance(record, dict)
+                and record.get("kind") == "heartbeat"
+                and record.get("stage") == stage
+                and isinstance(record.get("source_event_id"), str)
+            )
+        }
 
     def append_search_record(
         self,
@@ -732,24 +769,50 @@ class EventStore:
             return
         if vector is None:
             return
+        revision = content_revision(content)
         self.relational_dir.mkdir(parents=True, exist_ok=True)
-        append_jsonl(self.embeddings_path, [{"event_id": event_id, "vector": vector}])
-        self._mirror_embedding(event_id, vector)
+        append_jsonl(self.embeddings_path, [{
+            "event_id": event_id,
+            "vector": vector,
+            "content_revision": revision,
+        }])
+        self._mirror_embedding(event_id, vector, revision)
 
     def _load_embeddings(self) -> dict[str, list[float]]:
         # The mirror may lag after a failure. Merge it with JSONL, then let the
         # append-only source of truth win if a record exists in both.
+        current = {event["id"]: event for event in self.history()}
+
+        def matches_current(event_id: str, revision: str | None) -> bool:
+            event = current.get(event_id)
+            if event is None:
+                return True
+            return revision == content_revision(event["content"]) or (
+                revision is None and "original_content" not in event
+            )
+
         mapping: dict[str, list[float]] = {}
         if self._mirror is not None:
             try:
-                mapping.update(self._mirror.load_embedding_vectors())
+                for event_id, (vector, revision) in self._mirror.load_embedding_records().items():
+                    if matches_current(event_id, revision):
+                        mapping[event_id] = vector
             except Exception:
                 _log.warning("mirror: failed to load embeddings", exc_info=True)
-        if not self.embeddings_path.exists():
-            return mapping
-        for record in self._read_jsonl(self.embeddings_path):
-            if isinstance(record, dict) and "event_id" in record and "vector" in record:
-                mapping[record["event_id"]] = record["vector"]
+        if self.embeddings_path.exists():
+            seen: set[str] = set()
+            from_jsonl: dict[str, list[float]] = {}
+            for record in self._read_jsonl(self.embeddings_path):
+                if isinstance(record, dict) and "event_id" in record and "vector" in record:
+                    event_id = record["event_id"]
+                    seen.add(event_id)
+                    revision = record.get("content_revision")
+                    revision = revision if isinstance(revision, str) else None
+                    if matches_current(event_id, revision):
+                        from_jsonl[event_id] = record["vector"]
+            for event_id in seen:
+                mapping.pop(event_id, None)
+            mapping.update(from_jsonl)
         return mapping
 
     # -- fail-soft SQLite mirror writes --
@@ -841,9 +904,11 @@ class EventStore:
             return
         try:
             self._mirror.execute(
-                "INSERT OR IGNORE INTO entity_observations (entity_id, name, observation, said_at, source_event_id) VALUES (?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO entity_observations "
+                "(entity_id, name, observation, said_at, source_event_id, content_revision) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 (record["entity_id"], record["name"], record["observation"],
-                 record["said_at"], record.get("source_event_id")),
+                 record["said_at"], record.get("source_event_id"), record.get("content_revision")),
             )
         except Exception:
             _log.warning("mirror: failed to write entity observation", exc_info=True)
@@ -859,8 +924,9 @@ class EventStore:
                 )
             else:
                 self._mirror.execute(
-                    "INSERT OR IGNORE INTO heartbeat_completions (stage, source_event_id, said_at) VALUES (?, ?, ?)",
-                    (record["stage"], record["source_event_id"], record["said_at"]),
+                    "INSERT OR REPLACE INTO heartbeat_completions "
+                    "(stage, source_event_id, said_at, content_revision) VALUES (?, ?, ?, ?)",
+                    (record["stage"], record["source_event_id"], record["said_at"], record.get("content_revision")),
                 )
         except Exception:
             _log.warning("mirror: failed to write heartbeat completion", exc_info=True)
@@ -883,11 +949,11 @@ class EventStore:
         except Exception:
             _log.warning("mirror: failed to write search record %s", record["id"], exc_info=True)
 
-    def _mirror_embedding(self, event_id: str, vector: list[float]) -> None:
+    def _mirror_embedding(self, event_id: str, vector: list[float], revision: str) -> None:
         if self._mirror is None:
             return
         try:
-            self._mirror.store_embedding_vector(event_id, vector)
+            self._mirror.store_embedding_vector(event_id, vector, revision)
         except Exception:
             _log.warning("mirror: failed to write embedding %s", event_id, exc_info=True)
 
