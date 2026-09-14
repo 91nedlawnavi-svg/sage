@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
 import json
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
-from threading import Event as ThreadEvent, Thread
+from threading import Barrier, Event as ThreadEvent, Thread
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -835,6 +837,64 @@ class FoundationTests(unittest.TestCase):
             with urlopen(f"{base_url}/api/history") as response:
                 self.assertIsNone(json.load(response)["actual_model"])
         finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_missing_content_length_returns_client_error(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        connection = http.client.HTTPConnection("127.0.0.1", web_server.server_port, timeout=2)
+        try:
+            connection.putrequest("POST", "/api/chat")
+            connection.putheader("Content-Type", "application/json")
+            connection.endheaders()
+            response = connection.getresponse()
+            self.assertEqual(response.status, 411)
+            self.assertEqual(json.load(response), {"error": "content length is required"})
+        finally:
+            connection.close()
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_missing_audio_content_length_returns_client_error(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        connection = http.client.HTTPConnection("127.0.0.1", web_server.server_port, timeout=2)
+        try:
+            with patch.dict("os.environ", {"DEEPGRAM_API_KEY": "test-key"}):
+                connection.putrequest("POST", "/api/split-voice/stt")
+                connection.putheader("Content-Type", "audio/webm")
+                connection.endheaders()
+                response = connection.getresponse()
+            self.assertEqual(response.status, 411)
+            self.assertEqual(json.load(response), {"error": "content length is required"})
+        finally:
+            connection.close()
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_invalid_utf8_returns_client_error(self) -> None:
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        connection = http.client.HTTPConnection("127.0.0.1", web_server.server_port, timeout=2)
+        try:
+            connection.request(
+                "POST",
+                "/api/chat",
+                body=b'{"message":"\xff"}',
+                headers={"Content-Type": "application/json"},
+            )
+            response = connection.getresponse()
+            self.assertEqual(response.status, 400)
+            self.assertEqual(json.load(response), {"error": "body must be JSON"})
+        finally:
+            connection.close()
             web_server.shutdown()
             web_thread.join()
             web_server.server_close()
@@ -1877,6 +1937,30 @@ class FoundationTests(unittest.TestCase):
 
         heartbeat.beat()
         heartbeat.beat()
+
+        self.assertEqual(len(self.interior.list_identity()), 1)
+
+    def test_overlapping_identity_workers_consume_evidence_once(self) -> None:
+        event = self.store.append("user", "You promised to stop repeating that opener.")
+        self.interior.append_reflection(
+            "I repeated the opener after promising to stop.",
+            "self",
+            source_event_id=event["id"],
+        )
+        rendezvous = Barrier(2)
+
+        class BlockingScribe:
+            aliases = ("test",)
+
+            def chat_with_messages(self, messages: list[dict[str, str]]) -> RouterResult:
+                rendezvous.wait(timeout=5)
+                return RouterResult("I repeat openers despite agreeing to stop.")
+
+        workers = [Heartbeat(self.store, self.interior, BlockingScribe()) for _ in range(2)]
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            pending = [pool.submit(worker._identity_proposal_pass) for worker in workers]
+            for task in pending:
+                task.result(timeout=8)
 
         self.assertEqual(len(self.interior.list_identity()), 1)
 

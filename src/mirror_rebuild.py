@@ -151,15 +151,26 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
     counts["chat_boundaries"] = db.count("chat_boundaries")
 
     # --- entity_observations ---
+    source_less_seen: dict[tuple[str, str, str, str], int] = {}
     for r in _read_jsonl(entities_path):
         if r.get("kind") != "entity_obs":
             continue
+        values = (r["entity_id"], r["name"], r["observation"], r["said_at"])
+        if r.get("source_event_id") is None:
+            source_less_seen[values] = source_less_seen.get(values, 0) + 1
+            existing = db.fetchone(
+                "SELECT COUNT(*) AS n FROM entity_observations "
+                "WHERE entity_id = ? AND name = ? AND observation = ? AND said_at = ? "
+                "AND source_event_id IS NULL",
+                values,
+            )
+            if existing and int(existing["n"]) >= source_less_seen[values]:
+                continue
         db.execute(
             "INSERT OR IGNORE INTO entity_observations "
             "(entity_id, name, observation, said_at, source_event_id, content_revision) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (r["entity_id"], r["name"], r["observation"], r["said_at"],
-             r.get("source_event_id"), r.get("content_revision")),
+            (*values, r.get("source_event_id"), r.get("content_revision")),
         )
     counts["entity_observations"] = db.count("entity_observations")
 

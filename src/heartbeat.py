@@ -12,7 +12,7 @@ from events import EventStore, content_revision
 from interior import InteriorStore
 from metabolism import run_metabolism_cycle
 from router import RouterClient
-from persistence import guarded
+from persistence import data_gate, guarded
 from provenance import provenance
 
 logger = logging.getLogger("sage.heartbeat")
@@ -269,11 +269,20 @@ class Heartbeat:
         _, claim = parse_reflection(result.reply)
         if not claim:
             return
-        self.interior_store.append_identity_proposal(
-            claim,
-            [r["id"] for r in candidates],
-            provenance=provenance(records=candidates),
-        )
+        candidate_ids = [reflection["id"] for reflection in candidates]
+        with data_gate(self.event_store.data_root):
+            proposed = {
+                reflection_id
+                for entry in self.interior_store.list_identity()
+                for reflection_id in entry["evidence"]
+            }
+            if proposed.intersection(candidate_ids):
+                return
+            self.interior_store.append_identity_proposal(
+                claim,
+                candidate_ids,
+                provenance=provenance(records=candidates),
+            )
 
     @guarded(lambda self: self.event_store.data_root, activity=True)
     def _metabolism_pass(self) -> None:

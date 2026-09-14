@@ -833,7 +833,7 @@ class SageHandler(BaseHTTPRequestHandler):
             return None
         try:
             length = int(self.headers["Content-Length"])
-        except (KeyError, ValueError):
+        except (KeyError, TypeError, ValueError):
             self._json(HTTPStatus.LENGTH_REQUIRED, {"error": "content length is required"})
             return None
         if not 0 < length <= MAX_REQUEST_BYTES:
@@ -841,7 +841,7 @@ class SageHandler(BaseHTTPRequestHandler):
             return None
         try:
             body = json.loads(self.rfile.read(length))
-        except json.JSONDecodeError:
+        except (UnicodeDecodeError, json.JSONDecodeError):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "body must be JSON"})
             return None
         if not isinstance(body, dict):
@@ -852,7 +852,7 @@ class SageHandler(BaseHTTPRequestHandler):
     def _raw_body(self, max_bytes: int) -> bytes | None:
         try:
             length = int(self.headers["Content-Length"])
-        except (KeyError, ValueError):
+        except (KeyError, TypeError, ValueError):
             self._json(HTTPStatus.LENGTH_REQUIRED, {"error": "content length is required"})
             return None
         if not 0 < length <= max_bytes:
