@@ -6,6 +6,7 @@ import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
 import json
+import os
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -16,6 +17,8 @@ from urllib.request import Request, urlopen
 import unittest
 from uuid import UUID
 
+import launch
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from events import EventStore
@@ -24,6 +27,26 @@ from router import ROUTER_BASE_URL, RouterClient, RouterResult
 from sage import ROUTER_FAILURE, build_router_messages, handle_message, load_directive
 from heartbeat import Heartbeat, parse_reflection
 from web import LIVE_MODEL, SageServer, create_live_token
+
+
+class LaunchConfigurationTests(unittest.TestCase):
+    def test_dotenv_chat_models_override_stale_process_value_in_order(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / ".env").write_text("SAGE_CHAT_MODELS=x/model4, x/model2,y/model09\n")
+            with patch.object(launch, "REPO_ROOT", root), patch.dict(
+                os.environ, {"SAGE_CHAT_MODELS": "old/model"}, clear=False,
+            ):
+                dotenv = launch.load_dotenv()
+                self.assertEqual(
+                    launch.chat_models(dotenv),
+                    ("x/model4", "x/model2", "y/model09"),
+                )
+
+    def test_missing_chat_models_has_no_hardcoded_fallback(self) -> None:
+        with patch.dict(os.environ, {"SAGE_CHAT_MODELS": "stale/model"}, clear=True):
+            with self.assertRaisesRegex(ValueError, "SAGE_CHAT_MODELS"):
+                launch.chat_models({})
 
 
 class FakeRouter(BaseHTTPRequestHandler):
@@ -1754,22 +1777,38 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(observations[0]["entity_id"], "qwen")
         self.assertEqual(observations[0]["name"], "Qwen 3.8 Max")
 
-    def test_heartbeat_splits_reflection_and_extraction_routers(self) -> None:
+    def test_heartbeat_uses_chat_chain_for_all_routed_inference(self) -> None:
         self.store.append("user", "Working on the pressure model")
         self.store.append("assistant", "Noted")
         chat = FakeScribe()
-        extract = FakeScribe()
-        heartbeat = Heartbeat(self.store, self.interior, chat, extract_router=extract)
+        heartbeat = Heartbeat(self.store, self.interior, chat)
 
         heartbeat.beat()
 
-        extraction_prompts = [m[0]["content"] for m in extract.messages]
+        extraction_prompts = [
+            messages[0]["content"]
+            for messages in chat.messages
+            if messages[0]["content"].startswith("Extract key durable entities")
+        ]
         reflection_prompts = [m[0]["content"] for m in chat.messages]
         self.assertTrue(extraction_prompts)
         self.assertTrue(all(p.startswith("Extract key durable entities") for p in extraction_prompts))
         self.assertTrue(any("reflecting privately" in p for p in reflection_prompts))
-        self.assertFalse(any(p.startswith("Extract key durable entities") for p in reflection_prompts))
         self.assertEqual(heartbeat.failure_counts.get("reflection"), 0)
+
+    def test_background_inference_follows_chat_chain_order(self) -> None:
+        self.store.append("user", "Remember Mara")
+        FakeRouter.fail_models = {"first-model"}
+        FakeRouter.response = {"choices": [{"message": {"content": "[]"}}]}
+        heartbeat = Heartbeat(
+            self.store,
+            self.interior,
+            RouterClient(["first-model", "second-model"], self.base_url),
+        )
+
+        heartbeat._extract_entities_pass()
+
+        self.assertEqual(FakeRouter.seen_models, ["first-model", "second-model"])
 
     def test_heartbeat_counts_background_failures_instead_of_swallowing_them(self) -> None:
         self.store.append("user", "Something worth reflecting on")

@@ -179,7 +179,8 @@ telemetry, decorative effects, and dense administration surfaces.
   reuses the already-saved user event rather than creating duplicate history.
 - Split voice follows the active session and inherits its chat model by default.
   A session-scoped `Auto` or explicit voice override changes split voice only;
-  direct Gemini Live and background routes remain separate.
+  direct Gemini Live remains separate. Background routed inference uses the
+  configured `Auto` chain independently of session overrides.
 - Lived memory remains locally stored.
 - Current messages and relevant context may pass through the configured local
   router, or through an explicitly approved direct real-time provider

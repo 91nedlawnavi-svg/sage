@@ -24,7 +24,7 @@ Already present and verified:
 - Restored daily-life frontend with Notebook drawer and streaming chat.
 - Background extraction/reflection with successful-pass completion records.
 - Refreshed directive injected into foreground browser and terminal chat.
-- Ordered talk-model failover: Qwen 3.8 Max, DeepSeek V4 Pro, then DeepSeek V4 Flash.
+- Ordered talk-model failover follows `SAGE_CHAT_MODELS` in `.env`, left to right.
 - Recall cues built from the recent eligible exchange plus the newest message.
 - Resumed-session context has a tested bounded contract: selected-session tail,
   a two-event recent-life bridge on first resume, then global recall inside the
@@ -323,3 +323,20 @@ their sources.
 - A belief model or belief-edit workflow.
 - A graph or current-state replacement for event memory.
 - More background activity merely to appear alive.
+
+## Configuration-owned model chain — 2026-09-14
+
+`SAGE_CHAT_MODELS` in `.env` now solely defines local routed inference order.
+`Auto`, search decisions, entity extraction, reflection, identity proposals,
+and metabolism share one `RouterClient` and try those aliases left to right.
+Explicit session models remain single-model requests. Direct Gemini Live,
+Deepgram speech, and local embeddings remain separate.
+
+The retired Qwen/DeepSeek default and extraction-only router were removed. The
+stale systemd model drop-in was removed; `.env` wins over any stale inherited
+`SAGE_CHAT_MODELS`, and missing configuration fails startup instead of silently
+restoring old models. Nine focused checks passed. Full suite: **200 passed, 45
+subtests** in 78.78 seconds. Compilation, `git diff --check`, and graph update
+passed. After restart, `/health` returned `{"ok": true}` and `/api/history`
+reported `vc/claude-sonnet-4-6`, then `vc/deepseek-v4-flash` in that exact order.
+No lived data was changed.

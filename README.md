@@ -91,17 +91,11 @@ production operation.
 
 ## Models
 
-Free-tier only. The talk-model priority chain:
-
-1. Qwen 3.8 Max (free)
-2. DeepSeek V4 Pro
-3. DeepSeek V4 Flash
-
-A failed or unusable response falls through to the next model before an
-assistant reply is recorded when a chat uses `Auto`. Each text session can
-instead select one configured model; that explicit choice never silently falls
-back. Set `SAGE_CHAT_MODELS` as a comma-separated list in `.env`. The local
-embedder and background routes remain separate components.
+`SAGE_CHAT_MODELS` in `.env` is the model chain. Sage tries its comma-separated
+aliases left to right for `Auto` and background inference. A failed or unusable
+response falls through before output is saved. An explicit session model uses
+only that model and reports failure instead of switching. Direct Gemini Live,
+Deepgram speech, and the local embedder remain separate.
 
 ## Model audition
 

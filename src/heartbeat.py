@@ -69,16 +69,12 @@ class Heartbeat:
         interior_store: InteriorStore,
         reflection_router: RouterClient,
         *,
-        extract_router: RouterClient | None = None,
         interval_seconds: float = 60.0,
         metabolism_delay: float = 300.0,
     ) -> None:
         self.event_store = event_store
         self.interior_store = interior_store
-        # Reflection is Sage's interior voice, so it runs on the chat chain and gets its
-        # failover. Entity extraction is mechanical JSON and runs on a cheaper alias.
         self.reflection_router = reflection_router
-        self.extract_router = extract_router or reflection_router
         self.interval_seconds = interval_seconds
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -151,13 +147,13 @@ class Heartbeat:
                 f"Message: {event['content']}"
             )
             try:
-                result = self.extract_router.chat_with_messages([{"role": "user", "content": prompt}])
+                result = self.reflection_router.chat_with_messages([{"role": "user", "content": prompt}])
             except Exception as exc:
                 logger.warning(f"entity extraction failed for event {event['id']}: {exc}")
-                self._record_outcome("entity extraction", self.extract_router, False)
+                self._record_outcome("entity extraction", self.reflection_router, False)
                 continue
             if not (result.succeeded and isinstance(result.reply, str) and result.reply):
-                self._record_outcome("entity extraction", self.extract_router, False)
+                self._record_outcome("entity extraction", self.reflection_router, False)
                 continue
             try:
                 cleaned = result.reply.strip()
@@ -175,7 +171,7 @@ class Heartbeat:
                     raise ValueError("invalid entity response schema")
             except (json.JSONDecodeError, ValueError):
                 logger.warning(f"entity extraction returned invalid JSON for event {event['id']}")
-                self._record_outcome("entity extraction", self.extract_router, False)
+                self._record_outcome("entity extraction", self.reflection_router, False)
                 continue
             for item in items:
                 self.event_store.append_entity_observation(
@@ -188,7 +184,7 @@ class Heartbeat:
             self.event_store.append_heartbeat_completion(
                 "entities", event["id"], content_revision=revision,
             )
-            self._record_outcome("entity extraction", self.extract_router, True)
+            self._record_outcome("entity extraction", self.reflection_router, True)
 
     @guarded(lambda self: self.event_store.data_root, activity=True)
     def _reflection_pass(self) -> None:

@@ -12,11 +12,6 @@ from urllib.request import Request, urlopen
 
 ROUTER_BASE_URL: Final = "http://localhost:20128"
 EMBEDDER_BASE_URL: Final = "http://127.0.0.1:8081"
-DEFAULT_CHAT_MODELS: Final = (
-    "xk/qwen/qwen3.8-max:free",
-    "xk/deepseek/deepseek-v4-pro",
-    "xk/deepseek/deepseek-v4-flash",
-)
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
@@ -52,13 +47,13 @@ class RouterStream:
 
 
 class RouterClient:
-    """Inference client for free-tier router aliases, with ordered failover."""
+    """Inference client for configured model aliases, with ordered failover."""
 
     def __init__(self, alias: str | list[str] | tuple[str, ...], base_url: str = ROUTER_BASE_URL) -> None:
         aliases = (alias,) if isinstance(alias, str) else tuple(alias)
         self.aliases = tuple(item.strip() for item in aliases if item.strip())
         if not self.aliases:
-            raise ValueError("At least one free-tier alias is required")
+            raise ValueError("At least one model alias is required")
         self.alias = self.aliases[0]
         self.last_alias = self.alias
         self.endpoint = f"{base_url}/v1/chat/completions"

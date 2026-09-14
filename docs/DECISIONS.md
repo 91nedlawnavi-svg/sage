@@ -65,12 +65,15 @@ product authority.
 ## 2026-08-26 — Talk-model priority
 
 - Sage does not depend on one permanent talk model.
-- The current priority is Qwen 3.8 Max, DeepSeek V4 Pro, then DeepSeek V4
-  Flash.
+- `SAGE_CHAT_MODELS` in `.env` is the only configured priority. Its
+  comma-separated aliases are tried left to right.
 - A failed, empty, malformed, reasoning-only, or incomplete response falls
   through to the next priority before an assistant event is saved.
+- Background routed inference uses the same ordered chain. Explicit foreground
+  session choices still use only their selected model.
 - The local embedder remains a separate fixed memory component; it is not part
-  of talk-model selection.
+  of talk-model selection. Direct Gemini Live and Deepgram speech also remain
+  separate.
 
 ## 2026-09-06 — Sensitive mode retired
 
@@ -225,8 +228,8 @@ product authority.
 - A failed answer leaves the accepted user event intact and saves no partial
   assistant event. `Retry` and `Retry with Auto` reuse that same user event.
 - Foreground selection does not change extraction, heartbeat, metabolism, or
-  direct Gemini Live routing. Split-voice inheritance is settled by the Session
-  5 decision below.
+  direct Gemini Live routing. Background routed calls use the configured Auto
+  chain. Split-voice inheritance is settled by the Session 5 decision below.
 
 ## 2026-09-09 — Split voice follows chat by default
 
