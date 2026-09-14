@@ -7,6 +7,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import tempfile
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 from uuid import uuid4
 from persistence import append_jsonl, guarded_store, read_jsonl
@@ -15,6 +16,32 @@ if TYPE_CHECKING:
     from database import Database
 
 _log = logging.getLogger(__name__)
+
+
+def _replace_json(path: Path, value: object) -> None:
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent,
+            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            json.dump(value, temporary, ensure_ascii=False)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.replace(temporary_path, path)
+        temporary_path = None
+        descriptor = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    finally:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 class Reflection(TypedDict):
@@ -217,29 +244,24 @@ class InteriorStore:
             msg["source_event_id"] = source_event_id
         if provenance is not None:
             msg["provenance"] = provenance
-        with self.waiting_message_path.open("w", encoding="utf-8") as f:
-            json.dump(msg, f, ensure_ascii=False)
-            f.flush()
-            os.fsync(f.fileno())
+        _replace_json(self.waiting_message_path, msg)
         self._mirror_waiting_message(msg)
         return msg
 
     def clear_waiting_message(self) -> None:
         if self.waiting_message_path.exists():
             try:
-                with self.waiting_message_path.open("r+", encoding="utf-8") as f:
+                with self.waiting_message_path.open(encoding="utf-8") as f:
                     data = json.load(f)
-                    data["read"] = True
-                    f.seek(0)
-                    f.truncate()
-                    json.dump(data, f, ensure_ascii=False)
-                    f.flush()
-                    os.fsync(f.fileno())
-            except (json.JSONDecodeError, OSError):
+                data["read"] = True
+                _replace_json(self.waiting_message_path, data)
+            except json.JSONDecodeError:
                 try:
                     self.waiting_message_path.unlink(missing_ok=True)
                 except OSError:
-                    pass
+                    return
+            except OSError:
+                return
         self._mirror_clear_waiting_message()
 
     # -- fail-soft SQLite mirror writes --
