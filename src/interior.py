@@ -23,6 +23,7 @@ class Reflection(TypedDict):
     said_at: str
     category: NotRequired[str]
     source_event_id: NotRequired[str]
+    content_revision: NotRequired[str]
     provenance: NotRequired[dict]
 
 
@@ -86,12 +87,17 @@ class InteriorStore:
         category: str = "general",
         *,
         source_event_id: str | None = None,
+        content_revision: str | None = None,
         provenance: dict | None = None,
     ) -> Reflection:
         self._ensure_dir()
         if source_event_id is not None:
             for existing in self.list_reflections(limit=10_000):
-                if existing.get("source_event_id") == source_event_id and existing.get("category", "general") == category:
+                if (
+                    existing.get("source_event_id") == source_event_id
+                    and existing.get("category", "general") == category
+                    and existing.get("content_revision") == content_revision
+                ):
                     return existing
         reflection: Reflection = {
             "id": str(uuid4()),
@@ -101,6 +107,8 @@ class InteriorStore:
         }
         if source_event_id is not None:
             reflection["source_event_id"] = source_event_id
+        if content_revision is not None:
+            reflection["content_revision"] = content_revision
         if provenance is not None:
             reflection["provenance"] = provenance
         append_jsonl(self.reflections_path, [reflection])
@@ -114,9 +122,13 @@ class InteriorStore:
         reflections = [record for record in self._read_jsonl(self.reflections_path) if isinstance(record, dict)]
         return reflections[-limit:]
 
-    def has_reflection_for_source(self, source_event_id: str) -> bool:
+    def has_reflection_for_source(
+        self, source_event_id: str, *, content_revision: str | None = None,
+    ) -> bool:
         return any(
-            isinstance(record, dict) and record.get("source_event_id") == source_event_id
+            isinstance(record, dict)
+            and record.get("source_event_id") == source_event_id
+            and (content_revision is None or record.get("content_revision") == content_revision)
             for record in self._read_jsonl(self.reflections_path)
         )
 
@@ -249,9 +261,12 @@ class InteriorStore:
             return
         try:
             self._mirror.execute(
-                "INSERT OR IGNORE INTO reflections (id, content, said_at, category, source_event_id) VALUES (?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO reflections "
+                "(id, content, said_at, category, source_event_id, content_revision) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 (reflection["id"], reflection["content"], reflection["said_at"],
-                 reflection.get("category", "general"), reflection.get("source_event_id")),
+                 reflection.get("category", "general"), reflection.get("source_event_id"),
+                 reflection.get("content_revision")),
             )
         except Exception:
             _log.warning("mirror: failed to write reflection %s", reflection.get("id"), exc_info=True)

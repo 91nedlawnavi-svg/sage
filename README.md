@@ -19,7 +19,9 @@ failed answers can retry the saved turn without duplicating it.
 direct, native audio-to-audio conversation. Sage supplies identity and recent
 context, can recall relevant local events during the call, and saves completed
 transcripts as voice-tagged episodic history. Later corrections remain linked
-to the untouched original transcript and become the wording used by recall.
+to the untouched original transcript and become the wording used by recall,
+embeddings, entity extraction, and reflection. Derived records stay linked to
+the wording revision that produced them.
 New calls can be inspected and corrected locally at `/calls`, grouped by call
 and turn. `/call/split` follows the active chat session and its model by
 default; its picker can persist an `Auto` or explicit voice override. It is a
@@ -67,7 +69,7 @@ temporary rebuild, not only row counts.
 reflection, identity proposal, and metabolism trigger check. Successful passes
 use completion records to prevent duplicate work.
 
-**155 deterministic tests** covering the current foundation.
+**164 deterministic tests** covering the current foundation.
 
 ## Running
 
@@ -180,8 +182,10 @@ short-lived token, then the browser streams audio directly to Gemini Live.
 Gemini can request relevant events through Sage's local recall endpoint.
 Completed input and output transcripts return to the normal event and embedding
 path with voice provenance. Append-only correction records can replace faulty
-wording for recall without rewriting the provider transcript. Future events
-carry call and turn identifiers so `/calls` can present them together. The text
+wording for recall and background understanding without rewriting the provider
+transcript. Stale vectors cannot represent corrected wording; revised entity
+observations and reflections append beside older source-linked records. Future
+events carry call and turn identifiers so `/calls` can present them together. The text
 router and conversational web search are not used during direct Gemini calls.
 
 The `/call/split` trial uses the opposite tradeoff. The browser sends each held

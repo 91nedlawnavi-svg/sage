@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS entity_observations (
     observation TEXT NOT NULL,
     said_at TEXT NOT NULL,
     source_event_id TEXT,
+    content_revision TEXT,
     UNIQUE(entity_id, source_event_id, said_at)
 );
 
@@ -93,6 +94,7 @@ CREATE TABLE IF NOT EXISTS heartbeat_completions (
     stage TEXT NOT NULL CHECK(stage IN ('entities', 'reflection')),
     source_event_id TEXT NOT NULL,
     said_at TEXT NOT NULL,
+    content_revision TEXT,
     UNIQUE(stage, source_event_id)
 );
 
@@ -120,7 +122,8 @@ CREATE TABLE IF NOT EXISTS chat_boundaries (
 
 CREATE TABLE IF NOT EXISTS embeddings (
     event_id TEXT PRIMARY KEY,
-    vector TEXT NOT NULL
+    vector TEXT NOT NULL,
+    content_revision TEXT
 );
 """
 
@@ -130,7 +133,8 @@ CREATE TABLE IF NOT EXISTS reflections (
     content TEXT NOT NULL,
     said_at TEXT NOT NULL,
     category TEXT NOT NULL DEFAULT 'general',
-    source_event_id TEXT
+    source_event_id TEXT,
+    content_revision TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_reflections_source ON reflections(source_event_id);
@@ -195,6 +199,10 @@ class Database:
                 event_columns = {row[1] for row in self._conn.execute("PRAGMA table_info(events)")}
                 if "model" not in event_columns:
                     self._conn.execute("ALTER TABLE events ADD COLUMN model TEXT")
+                for table in ("entity_observations", "heartbeat_completions", "embeddings"):
+                    columns = {row[1] for row in self._conn.execute(f"PRAGMA table_info({table})")}
+                    if "content_revision" not in columns:
+                        self._conn.execute(f"ALTER TABLE {table} ADD COLUMN content_revision TEXT")
             elif self.schema == INTERIOR_SCHEMA:
                 identity_columns = {row[1] for row in self._conn.execute("PRAGMA table_info(identity_entries)")}
                 if "source_event_ids" not in identity_columns:
@@ -202,6 +210,9 @@ class Database:
                 waiting_columns = {row[1] for row in self._conn.execute("PRAGMA table_info(waiting_message)")}
                 if "source_event_id" not in waiting_columns:
                     self._conn.execute("ALTER TABLE waiting_message ADD COLUMN source_event_id TEXT")
+                reflection_columns = {row[1] for row in self._conn.execute("PRAGMA table_info(reflections)")}
+                if "content_revision" not in reflection_columns:
+                    self._conn.execute("ALTER TABLE reflections ADD COLUMN content_revision TEXT")
         return self._conn
 
     def close(self) -> None:
@@ -239,17 +250,22 @@ class Database:
         row = self.fetchone(f"SELECT COUNT(*) AS n FROM {table}")
         return int(row["n"]) if row else 0
 
-    def store_embedding_vector(self, event_id: str, vector: list[float]) -> None:
+    def store_embedding_vector(
+        self, event_id: str, vector: list[float], content_revision: str | None = None,
+    ) -> None:
         self.execute(
-            "INSERT OR REPLACE INTO embeddings (event_id, vector) VALUES (?, ?)",
-            (event_id, json.dumps(vector)),
+            "INSERT OR REPLACE INTO embeddings (event_id, vector, content_revision) VALUES (?, ?, ?)",
+            (event_id, json.dumps(vector), content_revision),
         )
 
     def load_embedding_vectors(self) -> dict[str, list[float]]:
-        result: dict[str, list[float]] = {}
-        for row in self.fetchall("SELECT event_id, vector FROM embeddings"):
+        return {event_id: record[0] for event_id, record in self.load_embedding_records().items()}
+
+    def load_embedding_records(self) -> dict[str, tuple[list[float], str | None]]:
+        result: dict[str, tuple[list[float], str | None]] = {}
+        for row in self.fetchall("SELECT event_id, vector, content_revision FROM embeddings"):
             try:
-                result[row["event_id"]] = json.loads(row["vector"])
+                result[row["event_id"]] = (json.loads(row["vector"]), row["content_revision"])
             except (json.JSONDecodeError, TypeError):
                 continue
         return result

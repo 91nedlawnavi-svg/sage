@@ -155,8 +155,11 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
         if r.get("kind") != "entity_obs":
             continue
         db.execute(
-            "INSERT OR IGNORE INTO entity_observations (entity_id, name, observation, said_at, source_event_id) VALUES (?, ?, ?, ?, ?)",
-            (r["entity_id"], r["name"], r["observation"], r["said_at"], r.get("source_event_id")),
+            "INSERT OR IGNORE INTO entity_observations "
+            "(entity_id, name, observation, said_at, source_event_id, content_revision) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (r["entity_id"], r["name"], r["observation"], r["said_at"],
+             r.get("source_event_id"), r.get("content_revision")),
         )
     counts["entity_observations"] = db.count("entity_observations")
 
@@ -171,8 +174,9 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
             )
         elif r.get("stage") in {"entities", "reflection"}:
             db.execute(
-                "INSERT OR IGNORE INTO heartbeat_completions (stage, source_event_id, said_at) VALUES (?, ?, ?)",
-                (r["stage"], r["source_event_id"], r["said_at"]),
+                "INSERT OR REPLACE INTO heartbeat_completions "
+                "(stage, source_event_id, said_at, content_revision) VALUES (?, ?, ?, ?)",
+                (r["stage"], r["source_event_id"], r["said_at"], r.get("content_revision")),
             )
     counts["heartbeat_completions"] = db.count("heartbeat_completions") + db.count("metabolism_completions")
 
@@ -198,8 +202,8 @@ def backfill_relational(db: Database, data_root: Path) -> dict[str, int]:
         if "event_id" not in r or "vector" not in r:
             continue
         db.execute(
-            "INSERT OR REPLACE INTO embeddings (event_id, vector) VALUES (?, ?)",
-            (r["event_id"], json.dumps(r["vector"])),
+            "INSERT OR REPLACE INTO embeddings (event_id, vector, content_revision) VALUES (?, ?, ?)",
+            (r["event_id"], json.dumps(r["vector"]), r.get("content_revision")),
         )
     counts["embeddings"] = db.count("embeddings")
 
@@ -218,8 +222,11 @@ def backfill_interior(db: Database, data_root: Path) -> dict[str, int]:
     # --- reflections ---
     for r in _read_jsonl(reflections_path):
         db.execute(
-            "INSERT OR IGNORE INTO reflections (id, content, said_at, category, source_event_id) VALUES (?, ?, ?, ?, ?)",
-            (r["id"], r["content"], r["said_at"], r.get("category", "general"), r.get("source_event_id")),
+            "INSERT OR IGNORE INTO reflections "
+            "(id, content, said_at, category, source_event_id, content_revision) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (r["id"], r["content"], r["said_at"], r.get("category", "general"),
+             r.get("source_event_id"), r.get("content_revision")),
         )
     counts["reflections"] = db.count("reflections")
 
