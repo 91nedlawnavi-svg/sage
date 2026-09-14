@@ -69,7 +69,7 @@ temporary rebuild, not only row counts.
 reflection, identity proposal, and metabolism trigger check. Successful passes
 use completion records to prevent duplicate work.
 
-**164 deterministic tests** covering the current foundation.
+**197 deterministic tests** covering the current foundation.
 
 ## Running
 

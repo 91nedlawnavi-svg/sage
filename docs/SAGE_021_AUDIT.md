@@ -6,6 +6,11 @@ Completed: 2026-09-13 WIB. Baseline: `9587f372d394f78840c7cd7ef9372a6494b741be`.
 These are failures in controlled probes, not claims that all have occurred in
 Elliot's history. No application fixes are included in this audit.
 
+Resolution update, 2026-09-14 WIB: all 16 findings are repaired on the combined
+integration branch. The updated audit suite passes 31 of 31 tests and the full
+permanent suite passes 197 tests. Deployment remains pending at this checkpoint;
+the findings below retain their original baseline evidence.
+
 ## Evidence and scope
 
 - Existing suite: **155 tests passed in 65.601 seconds** at the baseline.

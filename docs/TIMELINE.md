@@ -81,3 +81,7 @@ truncated replies fail honestly; valid completed streams survive usage metadata.
 Broken search responses no longer abort conversation, while a shared result flag
 distinguishes search failure from legitimate silence for the pending background
 repair.
+
+SAGE-022 through SAGE-027 are now combined in one integration branch. All 16
+follow-up backend findings pass their original audit probes; the combined normal
+suite passes 197 tests. Deployment and live derived-mirror verification are next.

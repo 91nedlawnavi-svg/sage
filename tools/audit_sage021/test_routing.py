@@ -40,16 +40,21 @@ class CaptureRouter:
     aliases = ("model-a", "model-b")
     last_alias = "model-a"
 
-    def __init__(self, barrier=None):
+    def __init__(self, blocked=False):
         self.prompts = []
-        self.barrier = barrier
+        self.calls = 0
+        self.started = threading.Event()
+        self.release = threading.Event()
+        if not blocked:
+            self.release.set()
 
     def stream_with_messages(self, messages, **kwargs):
         self.prompts.append(messages)
+        self.calls += 1
+        self.started.set()
 
         def chunks():
-            if self.barrier:
-                self.barrier.wait(timeout=5)
+            self.release.wait(timeout=5)
             yield "Complete answer."
             yield ""
 
@@ -99,13 +104,19 @@ class RoutingAudit(unittest.TestCase):
 
     def test_concurrent_retries_generate_only_one_answer(self):
         accepted = self.store.append("user", "Please finish the answer")
-        router = CaptureRouter(threading.Barrier(2))
+        router = CaptureRouter(blocked=True)
         handlers = [self.handler({"retry_event_id": accepted["id"]}, router) for _ in range(2)]
         with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = [pool.submit(handler._chat) for handler in handlers]
+            first = pool.submit(handlers[0]._chat)
+            self.assertTrue(router.started.wait(timeout=1))
+            second = pool.submit(handlers[1]._chat)
+            second.result(timeout=2)
+            router.release.set()
+            futures = [first, second]
             for future in futures:
                 future.result(timeout=8)
         history = self.store.history()
+        self.assertEqual(router.calls, 1)
         self.assertEqual(len([event for event in history if event["role"] == "user"]), 1)
         self.assertEqual(len([event for event in history if event["role"] == "assistant"]), 1)
 

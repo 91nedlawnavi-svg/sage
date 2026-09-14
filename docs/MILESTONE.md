@@ -140,6 +140,23 @@ verification remained clean after those writes. No old event bytes were
 changed. The existing non-failing unclosed-SQLite-connection ResourceWarning
 remains.
 
+## SAGE-021 six-batch integration — 2026-09-14
+
+All 16 functional findings from the follow-up audit are now combined on the
+integration branch. Shared-file conflicts were resolved by preserving both
+contracts: corrected-content revisions remain attached to entity completion,
+malformed or failed entity work remains retryable, search failure stays distinct
+from a legitimate empty result, and source-less mirror rows retain revision data
+without duplicating on repeated backfill.
+
+The original audit suite now passes **31 of 31 tests** against the combined
+checkout. Its concurrent-retry probe was updated to assert the repaired contract:
+the second request is rejected before a second provider call. The full permanent
+suite passes **197 tests** in 77.915 seconds. Python compilation and
+`git diff --check` pass. Tests use temporary data and fake providers. Deployment
+and live derived-mirror verification remain pending until this integration
+checkpoint is committed and pushed.
+
 ## Transcript correction consistency repair — 2026-09-14
 
 Corrected voice wording now has a deterministic content revision across
