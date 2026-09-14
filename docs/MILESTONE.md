@@ -153,9 +153,14 @@ The original audit suite now passes **31 of 31 tests** against the combined
 checkout. Its concurrent-retry probe was updated to assert the repaired contract:
 the second request is rejected before a second provider call. The full permanent
 suite passes **197 tests** in 77.915 seconds. Python compilation and
-`git diff --check` pass. Tests use temporary data and fake providers. Deployment
-and live derived-mirror verification remain pending until this integration
-checkpoint is committed and pushed.
+`git diff --check` pass. Tests use temporary data and fake providers. Integration
+commit `0b0a539` was pushed, fast-forwarded to production `main`, and deployed.
+`sage.service` is active. Opening the lazy derived mirrors applied four
+`content_revision` columns; complete-content verification against fresh
+temporary rebuilds then passed. All eight authoritative JSONL hashes and their
+648 total lines stayed unchanged. Background providers were already returning
+no reply before deployment and still do; repaired passes leave that work
+retryable instead of falsely completing it.
 
 ## Transcript correction consistency repair — 2026-09-14
 

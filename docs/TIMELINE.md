@@ -84,4 +84,6 @@ repair.
 
 SAGE-022 through SAGE-027 are now combined in one integration branch. All 16
 follow-up backend findings pass their original audit probes; the combined normal
-suite passes 197 tests. Deployment and live derived-mirror verification are next.
+suite passes 197 tests. Integration commit `0b0a539` is deployed on `main`;
+Sage is active, derived mirrors match fresh rebuilds, and authoritative JSONL
+stayed byte-identical.
