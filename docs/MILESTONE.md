@@ -143,6 +143,22 @@ remains.
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
 
+## Waiting-message durability repair — 2026-09-14
+
+The isolated SAGE-023 repair branch fixes audit finding S21-04. Waiting-message
+revision and acknowledgement now write and sync a complete temporary sibling
+before atomically replacing the authoritative JSON file. Failed writes or
+replacements leave the previous complete message intact; failed temporary files
+are removed. Acknowledgement updates the derived mirror only after the
+authoritative replacement succeeds.
+
+Four permanent regressions cover partial-write and replacement failures for
+both operations, restart reads, successful revision and acknowledgement, and
+the existing single waiting-message behavior. Focused and adjacent checks
+passed. The full suite passed **159 tests** in 64.905 seconds. The AST project
+graph was rebuilt. This branch has not been integrated or deployed; no lived
+data was touched.
+
 ## Active outcome — felt continuity
 
 Sage's remembered history influences replies naturally in ordinary, non-crisis
