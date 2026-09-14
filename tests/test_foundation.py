@@ -84,6 +84,21 @@ class DeadRouter:
         return RouterResult(reply=None)
 
 
+class SequenceScribe:
+    aliases = ("sequence",)
+
+    def __init__(self, *replies: str | None | Exception) -> None:
+        self.replies = iter(replies)
+        self.messages: list[list[dict[str, str]]] = []
+
+    def chat_with_messages(self, messages: list[dict[str, str]]) -> RouterResult:
+        self.messages.append(messages)
+        reply = next(self.replies)
+        if isinstance(reply, Exception):
+            raise reply
+        return RouterResult(reply)
+
+
 def read_stream(response: object) -> list[dict[str, str]]:
     return [json.loads(line) for line in response.read().decode().splitlines()]
 
@@ -1501,6 +1516,52 @@ class FoundationTests(unittest.TestCase):
         self.assertGreaterEqual(heartbeat.failure_counts["entity extraction"], 2)
         self.assertEqual(self.interior.list_reflections(), [])
 
+    def test_invalid_entity_response_remains_retryable_without_partial_writes(self) -> None:
+        replies = (
+            '{"entities": []}',
+            '[{"unexpected": "shape"}]',
+            '[{"entity_id":"mara","name":"Mara","observation":"gardener"}, null]',
+            '[{"entity_id":"mara","name":"Mara","observation":7}]',
+        )
+        with TemporaryDirectory(prefix="sage-entity-schema-") as temporary:
+            root = Path(temporary)
+            for index, reply in enumerate(replies):
+                with self.subTest(reply=reply):
+                    stage_root = root / str(index)
+                    store = EventStore(stage_root)
+                    event = store.append("user", "My friend Mara is a gardener.")
+
+                    Heartbeat(store, InteriorStore(stage_root), SequenceScribe(reply))._extract_entities_pass()
+
+                    self.assertNotIn(event["id"], store.heartbeat_completed("entities"))
+                    self.assertEqual(store.entity_observations(), [])
+
+    def test_valid_empty_entity_response_completes_once(self) -> None:
+        event = self.store.append("user", "Hello.")
+        router = SequenceScribe("[]")
+        heartbeat = Heartbeat(self.store, self.interior, router)
+
+        heartbeat._extract_entities_pass()
+        heartbeat._extract_entities_pass()
+
+        self.assertIn(event["id"], self.store.heartbeat_completed("entities"))
+        self.assertEqual(len(router.messages), 1)
+
+    def test_entity_extraction_retries_malformed_response_then_completes(self) -> None:
+        event = self.store.append("user", "My friend Mara is a gardener.")
+        router = SequenceScribe(
+            '[{"entity_id":"mara","name":"Mara"}]',
+            '[{"entity_id":"mara","name":"Mara","observation":"gardener"}]',
+        )
+        heartbeat = Heartbeat(self.store, self.interior, router)
+
+        heartbeat._extract_entities_pass()
+        self.assertNotIn(event["id"], self.store.heartbeat_completed("entities"))
+        heartbeat._extract_entities_pass()
+
+        self.assertIn(event["id"], self.store.heartbeat_completed("entities"))
+        self.assertEqual(len(self.store.entity_observations()), 1)
+
     def test_reflection_marker_sets_self_category(self) -> None:
         self.assertEqual(
             parse_reflection("SELF: I reused the opener I promised to drop."),
@@ -1768,6 +1829,106 @@ class FoundationTests(unittest.TestCase):
 
         self.assertNotIn(event["id"], self.store.heartbeat_completed("metabolism"))
 
+    def test_real_metabolism_stage_failures_remain_retryable(self) -> None:
+        from search import SearchResult
+
+        gaps = '[{"gap":"missing offset","query":"WIB offset"}]'
+        results = [SearchResult(title="WIB", snippet="UTC+7", url="https://example.invalid")]
+        cases = {
+            "gap_provider_failure": ([None], None),
+            "gap_provider_exception": ([OSError("router unavailable")], None),
+            "gap_invalid_json": (["truncated json"], None),
+            "search_failure": ([gaps], OSError("search unavailable")),
+            "digest_provider_failure": ([gaps, None], None),
+            "reach_provider_failure": ([gaps, "Learned UTC+7.", None], None),
+        }
+        with TemporaryDirectory(prefix="sage-metabolism-failure-") as temporary:
+            root = Path(temporary)
+            for name, (replies, search_error) in cases.items():
+                with self.subTest(stage=name):
+                    stage_root = root / name
+                    store = EventStore(stage_root)
+                    event = store.append("user", "What offset is WIB?")
+                    heartbeat = Heartbeat(
+                        store, InteriorStore(stage_root), SequenceScribe(*replies),
+                        metabolism_delay=0,
+                    )
+
+                    with patch("metabolism.search", return_value=results, side_effect=search_error):
+                        heartbeat._metabolism_pass()
+
+                    self.assertNotIn(event["id"], store.heartbeat_completed("metabolism"))
+
+    def test_metabolism_search_contract_distinguishes_failure_from_empty(self) -> None:
+        gaps = '[{"gap":"missing offset","query":"WIB offset"}]'
+
+        class FailedSearch(list):
+            failed = True
+
+        with TemporaryDirectory(prefix="sage-metabolism-search-") as temporary:
+            root = Path(temporary)
+            for name, search_result, completed in (
+                ("failed", FailedSearch(), False),
+                ("empty", [], True),
+            ):
+                with self.subTest(result=name):
+                    stage_root = root / name
+                    store = EventStore(stage_root)
+                    event = store.append("user", "What offset is WIB?")
+                    heartbeat = Heartbeat(
+                        store, InteriorStore(stage_root), SequenceScribe(gaps),
+                        metabolism_delay=0,
+                    )
+
+                    with patch("metabolism.search", return_value=search_result):
+                        heartbeat._metabolism_pass()
+
+                    self.assertEqual(
+                        event["id"] in store.heartbeat_completed("metabolism"), completed,
+                    )
+
+    def test_metabolism_no_gap_completes_once(self) -> None:
+        event = self.store.append("user", "Hello.")
+        router = SequenceScribe("[]")
+        heartbeat = Heartbeat(
+            self.store, self.interior, router, metabolism_delay=0,
+        )
+
+        heartbeat._metabolism_pass()
+        heartbeat._metabolism_pass()
+
+        self.assertIn(event["id"], self.store.heartbeat_completed("metabolism"))
+        self.assertEqual(len(router.messages), 1)
+
+    def test_metabolism_retry_reuses_completed_stage_side_effects(self) -> None:
+        from search import SearchResult
+
+        event = self.store.append("user", "What offset is WIB?")
+        router = SequenceScribe(
+            '[{"gap":"missing offset","query":"WIB offset"}]',
+            "Learned UTC+7.",
+            None,
+            "NO_MESSAGE",
+        )
+        heartbeat = Heartbeat(
+            self.store, self.interior, router, metabolism_delay=0,
+        )
+        results = [SearchResult(title="WIB", snippet="UTC+7", url="https://example.invalid")]
+
+        with patch("metabolism.search", return_value=results) as search_mock:
+            heartbeat._metabolism_pass()
+            self.assertNotIn(event["id"], self.store.heartbeat_completed("metabolism"))
+            heartbeat._metabolism_pass()
+
+        self.assertIn(event["id"], self.store.heartbeat_completed("metabolism"))
+        self.assertEqual(search_mock.call_count, 1)
+        self.assertEqual(len(self.store.search_records()), 1)
+        reflections = self.interior.list_reflections(limit=100)
+        self.assertEqual(len(reflections), 1)
+        records = [json.loads(line) for line in self.interior.metabolism_path.read_text().splitlines()]
+        self.assertEqual([record["kind"] for record in records], ["gap_scan", "exploration", "reach"])
+        self.assertEqual(records[-1]["provenance"], reflections[0]["provenance"])
+
     def test_gap_scan_returns_empty_on_no_gaps(self) -> None:
         from metabolism import gap_scan
         scribe = FakeScribe("[]")
@@ -1797,7 +1958,7 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(records[0]["kind"], "gap_scan")
         self.assertEqual(records[0]["source_event_id"], "evt-2")
 
-    def test_gap_scan_returns_empty_on_router_failure(self) -> None:
+    def test_gap_scan_returns_failure_on_router_failure(self) -> None:
         from metabolism import gap_scan
         result = gap_scan(
             [{"role": "user", "content": "Hi"}],
@@ -1805,7 +1966,7 @@ class FoundationTests(unittest.TestCase):
             self.interior,
             "evt-3",
         )
-        self.assertEqual(result, [])
+        self.assertIsNone(result)
 
     def test_explore_searches_gaps_and_stores_separate_search_records(self) -> None:
         from metabolism import explore
@@ -1827,7 +1988,7 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(searches[0]["origin"], "metabolism")
         self.assertEqual(searches[0]["sources"][0]["url"], "https://example.com")
 
-    def test_explore_returns_empty_when_all_searches_fail(self) -> None:
+    def test_explore_returns_empty_when_search_has_no_results(self) -> None:
         from metabolism import explore
         from unittest.mock import patch
         with patch("metabolism.search", return_value=[]):

@@ -143,6 +143,27 @@ remains.
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
 
+## SAGE-025 background retry repair — 2026-09-14
+
+The S21-07 and S21-08 repair branch now records metabolism completion only
+after a successful pipeline outcome. Provider, parsing, search, digest, and
+reach failures remain retryable; valid no-gap, no-result, and declined-reach
+outcomes still complete. Retries reuse already-written gap, search, digest, and
+reach results, avoiding duplicate derived records while preserving provenance.
+
+Entity extraction now validates the complete JSON container and every required
+string field before writing any observation or completion. Wrong containers and
+malformed list items therefore leave the source event retryable; `[]` remains a
+successful no-entity result.
+
+Twelve focused regression and adjacent checks passed in 6.026 seconds. The full
+normal suite passed **162 tests** in 68.350 seconds. Python compilation and
+`git diff --check` passed. Tests used temporary data and fake providers only.
+Integration with SAGE-026 must preserve one search boundary: successful zero
+results are plain `[]`; a fail-soft parser or transport failure remains equal to
+`[]` for existing callers but carries `failed=True` so metabolism can retry it.
+This is branch evidence only; no sibling repair was merged or deployed.
+
 ## Active outcome — felt continuity
 
 Sage's remembered history influences replies naturally in ordinary, non-crisis

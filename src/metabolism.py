@@ -11,7 +11,7 @@ from events import EventStore
 from interior import InteriorStore
 from router import RouterClient
 from search import search
-from persistence import append_jsonl, guarded
+from persistence import append_jsonl, guarded, read_jsonl
 from provenance import provenance
 
 _log = logging.getLogger("sage.metabolism")
@@ -32,6 +32,15 @@ def _append_metabolism(interior: InteriorStore, record: dict) -> None:
     append_jsonl(interior.metabolism_path, [record])
 
 
+def _metabolism_record(interior: InteriorStore, kind: str, source_event_id: str) -> dict | None:
+    return next((
+        record for record in reversed(read_jsonl(interior.metabolism_path))
+        if isinstance(record, dict)
+        and record.get("kind") == kind
+        and record.get("source_event_id") == source_event_id
+    ), None)
+
+
 @guarded(lambda events, router, interior, source_event_id, **kw: interior.data_root, activity=True)
 def gap_scan(
     events: list[dict],
@@ -39,19 +48,22 @@ def gap_scan(
     interior: InteriorStore,
     source_event_id: str,
     *, proof: dict | None = None,
-) -> list[dict]:
-    """Scan recent conversation for knowledge gaps. Returns list of gaps or []."""
+) -> list[dict] | None:
+    """Scan recent conversation for gaps. None means failure; [] means no gaps."""
     if not events:
         return []
+    existing = _metabolism_record(interior, "gap_scan", source_event_id)
+    if existing is not None and isinstance(existing.get("gaps"), list):
+        return existing["gaps"]
     dialogue = "\n".join(f"{e['role']}: {e['content']}" for e in events[-10:])
     try:
         result = router.chat_with_messages(
             [{"role": "user", "content": GAP_SCAN_PROMPT.format(dialogue=dialogue)}]
         )
     except Exception:
-        return []
+        return None
     if not result.succeeded or not result.reply:
-        return []
+        return None
     try:
         cleaned = result.reply.strip()
         if cleaned.startswith("```json"):
@@ -63,12 +75,19 @@ def gap_scan(
         gaps = json.loads(cleaned.strip())
     except (json.JSONDecodeError, ValueError):
         _log.warning("gap_scan returned unparseable JSON")
+        return None
+    if not isinstance(gaps, list):
+        return None
+    if not gaps:
         return []
-    if not isinstance(gaps, list) or not gaps:
-        return []
-    valid = [g for g in gaps if isinstance(g, dict) and g.get("gap") and g.get("query")]
-    if not valid:
-        return []
+    if any(
+        not isinstance(gap, dict)
+        or any(not isinstance(gap.get(field), str) or not gap[field].strip()
+               for field in ("gap", "query"))
+        for gap in gaps
+    ):
+        return None
+    valid = [{**gap, "gap": gap["gap"].strip(), "query": gap["query"].strip()} for gap in gaps]
     _append_metabolism(interior, {
         "kind": "gap_scan",
         "id": str(uuid4()),
@@ -87,38 +106,53 @@ def explore(
     interior: InteriorStore,
     source_event_id: str,
     *, proof: dict | None = None,
-) -> list[dict]:
-    """Search the web for each gap. Store results as episodic events. Returns gaps with results."""
+) -> list[dict] | None:
+    """Search each gap. None means failure; [] means successful empty results."""
     if not gaps:
         return []
     explored = []
+    existing_searches = {
+        record["query"]: record["sources"]
+        for record in store.search_records()
+        if record.get("origin") == "metabolism"
+        and record.get("source_event_id") == source_event_id
+    }
     for gap in gaps[:3]:
         query = gap["query"]
+        if query in existing_searches:
+            explored.append({**gap, "results": existing_searches[query]})
+            continue
         try:
             results = search(query)
         except Exception:
-            continue
+            return None
+        # Cross-batch contract: SAGE-026 owns response parsing. A failed result
+        # stays equal to [] for fail-soft callers, but carries failed=True;
+        # a plain empty list is a successful search with no usable results.
+        if results is None or getattr(results, "failed", False):
+            return None
         if not results:
             continue
+        try:
+            sources = [{"title": r.title, "snippet": r.snippet, "url": r.url} for r in results]
+        except (AttributeError, TypeError):
+            return None
         store.append_search_record(
-            query,
-            [{"title": r.title, "snippet": r.snippet, "url": r.url} for r in results],
-            "metabolism",
-            source_event_id,
-            provenance=proof,
+            query, sources, "metabolism", source_event_id, provenance=proof,
         )
-        explored.append({**gap, "results": [{"title": r.title, "snippet": r.snippet, "url": r.url} for r in results]})
+        explored.append({**gap, "results": sources})
     if not explored:
         return []
-    _append_metabolism(interior, {
-        "kind": "exploration",
-        "id": str(uuid4()),
-        "source_event_id": source_event_id,
-        "said_at": _timestamp(),
-        "gaps_explored": len(explored),
-        "queries": [g["query"] for g in explored],
-        "provenance": proof,
-    })
+    if _metabolism_record(interior, "exploration", source_event_id) is None:
+        _append_metabolism(interior, {
+            "kind": "exploration",
+            "id": str(uuid4()),
+            "source_event_id": source_event_id,
+            "said_at": _timestamp(),
+            "gaps_explored": len(explored),
+            "queries": [g["query"] for g in explored],
+            "provenance": proof,
+        })
     return explored
 
 
@@ -142,6 +176,15 @@ def digest(
     """Synthesize exploration results into a metabolism reflection. Returns text or None."""
     if not explored:
         return None
+    existing = next((
+        reflection for reflection in reversed(interior.list_reflections(limit=10_000))
+        if reflection.get("source_event_id") == source_event_id
+        and reflection.get("category") == "metabolism"
+    ), None)
+    if existing is not None:
+        if proof is not None:
+            proof.update(provenance(records=[{"provenance": proof}, existing]))
+        return existing["content"]
     findings = []
     for gap in explored:
         lines = [f"Gap: {gap['gap']}"]
@@ -186,38 +229,37 @@ def reach(
     interior: InteriorStore,
     source_event_id: str,
     *, proof: dict | None = None,
-) -> bool:
-    """Decide whether to leave a waiting message. Returns True if message was set."""
+) -> bool | None:
+    """Decide whether to leave a message. None means failure; False means decline."""
     if not digest_text:
         return False
+    existing = _metabolism_record(interior, "reach", source_event_id)
+    if existing is not None and existing.get("reason") != "router_failure":
+        return bool(existing.get("message_sent"))
+    waiting = interior.get_waiting_message()
+    if waiting is not None and waiting.get("source_event_id") == source_event_id:
+        _append_metabolism(interior, {
+            "kind": "reach",
+            "id": str(uuid4()),
+            "source_event_id": source_event_id,
+            "said_at": _timestamp(),
+            "message_sent": True,
+            "content": waiting["content"],
+            "provenance": proof,
+        })
+        return True
     try:
         result = router.chat_with_messages(
             [{"role": "user", "content": REACH_PROMPT.format(digest=digest_text)}]
         )
     except Exception:
-        _append_metabolism(interior, {
-            "kind": "reach",
-            "id": str(uuid4()),
-            "source_event_id": source_event_id,
-            "said_at": _timestamp(),
-            "message_sent": False,
-            "reason": "router_failure",
-            "provenance": proof,
-        })
-        return False
+        return None
     if not result.succeeded or not result.reply:
-        _append_metabolism(interior, {
-            "kind": "reach",
-            "id": str(uuid4()),
-            "source_event_id": source_event_id,
-            "said_at": _timestamp(),
-            "message_sent": False,
-            "reason": "router_failure",
-            "provenance": proof,
-        })
-        return False
+        return None
     text = result.reply.strip()
-    if text == "NO_MESSAGE" or not text:
+    if not text:
+        return None
+    if text == "NO_MESSAGE":
         _append_metabolism(interior, {
             "kind": "reach",
             "id": str(uuid4()),
@@ -247,23 +289,27 @@ def run_metabolism_cycle(
     interior: InteriorStore,
     router: RouterClient,
     source_event_id: str,
-) -> None:
+) -> bool:
     """Run the full metabolism pipeline. Each stage gates the next."""
     events = store.history()
     if not events:
-        return
+        return True
     # Stage 1: gap scan
     proof = provenance(events=events[-10:])
     gaps = gap_scan(events, router, interior, source_event_id, proof=proof)
+    if gaps is None:
+        return False
     if not gaps:
-        return
+        return True
     # Stage 2: explore
     explored = explore(gaps, store, interior, source_event_id, proof=proof)
+    if explored is None:
+        return False
     if not explored:
-        return
+        return True
     # Stage 3: digest
     digest_text = digest(explored, router, interior, source_event_id, proof=proof)
     if not digest_text:
-        return
+        return False
     # Stage 4: reach
-    reach(digest_text, router, interior, source_event_id, proof=proof)
+    return reach(digest_text, router, interior, source_event_id, proof=proof) is not None
