@@ -660,7 +660,10 @@ class SageHandler(BaseHTTPRequestHandler):
                 except OSError:
                     pass
             else:
-                self._write_stream_event("search_error", "Search returned no results")
+                self._write_stream_event(
+                    "search_error",
+                    "Search failed" if getattr(results, "failed", False) else "Search returned no results",
+                )
         elif self._search_decision_failed:
             self._write_stream_event("search_error", "Could not decide whether to search")
 
@@ -905,7 +908,7 @@ class SageHandler(BaseHTTPRequestHandler):
                     break
                 reply.append(chunk)
                 self._write_stream_event("delta", chunk)
-            if not completed or not reply:
+            if not completed or not "".join(reply).strip():
                 self._write_stream_event(
                     "model_error",
                     ROUTER_FAILURE,

@@ -4,6 +4,7 @@ import json
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from http.client import IncompleteRead
 from search import search, format_search_context, SearchResult
 import urllib.error
 
@@ -35,6 +36,7 @@ class TestSearch(unittest.TestCase):
         with patch('search.urlopen', side_effect=urllib.error.URLError("timeout")):
             results = search("test")
             self.assertEqual(results, [])
+            self.assertTrue(results.failed)
 
     def test_search_json_decode_error(self):
         mock_response = MagicMock()
@@ -44,6 +46,7 @@ class TestSearch(unittest.TestCase):
         with patch('search.urlopen', return_value=mock_response):
             results = search("test")
             self.assertEqual(results, [])
+            self.assertTrue(results.failed)
 
     def test_search_no_results(self):
         mock_response = MagicMock()
@@ -53,6 +56,31 @@ class TestSearch(unittest.TestCase):
         with patch('search.urlopen', return_value=mock_response):
             results = search("test")
             self.assertEqual(results, [])
+            self.assertFalse(results.failed)
+
+    def test_truncated_search_fails_soft_and_reports_failure(self):
+        mock_response = MagicMock()
+        mock_response.read.side_effect = IncompleteRead(b'{"results": [')
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch('search.urlopen', return_value=mock_response):
+            results = search("test")
+
+        self.assertEqual(results, [])
+        self.assertTrue(results.failed)
+
+    def test_malformed_search_schema_fails_soft_and_reports_failure(self):
+        for payload in ({"results": [None]}, {"results": {}}, []):
+            with self.subTest(payload=payload):
+                response = MagicMock()
+                response.read.return_value = json.dumps(payload).encode()
+                response.__enter__ = MagicMock(return_value=response)
+                response.__exit__ = MagicMock(return_value=False)
+                with patch('search.urlopen', return_value=response):
+                    results = search("test")
+                self.assertEqual(results, [])
+                self.assertTrue(results.failed)
 
     def test_format_search_context(self):
         results = [

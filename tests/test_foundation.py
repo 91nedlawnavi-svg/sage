@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import io
 import json
 from pathlib import Path
 import sys
@@ -421,6 +422,116 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(list(router.stream("Hello Sage")), ["Hel", "lo.", ""])
         self.assertEqual(FakeRouter.seen_models, ["first-model", "second-model"])
 
+    def test_router_malformed_chat_schema_falls_back(self) -> None:
+        router = RouterClient(["first-model", "second-model"])
+        malformed = io.BytesIO(b'{"choices": [{"message": null}]}')
+        valid = io.BytesIO(b'{"choices": [{"message": {"content": "Recovered"}}]}')
+
+        with patch("router.urlopen", side_effect=[malformed, valid]):
+            result = router.chat("Hello Sage")
+
+        self.assertEqual((result.reply, result.model), ("Recovered", "second-model"))
+
+    def test_router_malformed_stream_schema_falls_back_before_visible_text(self) -> None:
+        router = RouterClient(["first-model", "second-model"])
+        malformed = io.BytesIO(b'data: {"choices": [{"delta": null}]}\n\n')
+        valid = io.BytesIO(
+            b'data: {"choices": [{"delta": {"content": "Recovered"}}]}\n\n'
+            b'data: [DONE]\n\n'
+        )
+
+        with patch("router.urlopen", side_effect=[malformed, valid]):
+            stream = router.stream("Hello Sage")
+            self.assertEqual(list(stream), ["Recovered", ""])
+
+        self.assertEqual(stream.actual_alias, "second-model")
+
+    def test_router_whitespace_stream_falls_back(self) -> None:
+        router = RouterClient(["first-model", "second-model"])
+        blank = io.BytesIO(
+            b'data: {"choices": [{"delta": {"content": " \\n\\t"}}]}\n\n'
+            b'data: [DONE]\n\n'
+        )
+        valid = io.BytesIO(
+            b'data: {"choices": [{"delta": {"content": "Recovered"}}]}\n\n'
+            b'data: [DONE]\n\n'
+        )
+
+        with patch("router.urlopen", side_effect=[blank, valid]):
+            stream = router.stream("Hello Sage")
+            self.assertEqual("".join(stream).strip(), "Recovered")
+
+        self.assertEqual(stream.actual_alias, "second-model")
+
+    def test_router_usage_metadata_keeps_completed_stream(self) -> None:
+        router = RouterClient("first-model")
+        response = io.BytesIO(
+            b'data: {"choices": [{"delta": {"content": "Complete answer."}}]}\n\n'
+            b'data: {"choices": [], "usage": {"total_tokens": 7}}\n\n'
+            b'data: [DONE]\n\n'
+        )
+
+        with patch("router.urlopen", return_value=response):
+            stream = router.stream("Hello Sage")
+            self.assertEqual(list(stream), ["Complete answer.", ""])
+
+        self.assertEqual(stream.actual_alias, "first-model")
+
+    def test_router_invalid_usage_metadata_falls_back(self) -> None:
+        malformed_packets = [
+            b'data: {"choices": [], "usage": []}\n\n',
+            b'data: {"choices": [{"delta": null, "usage": {}}]}\n\n',
+        ]
+        for malformed_packet in malformed_packets:
+            with self.subTest(malformed_packet=malformed_packet):
+                router = RouterClient(["first-model", "second-model"])
+                malformed = io.BytesIO(malformed_packet)
+                valid = io.BytesIO(
+                    b'data: {"choices": [{"delta": {"content": "Recovered"}}]}\n\n'
+                    b'data: [DONE]\n\n'
+                )
+                with patch("router.urlopen", side_effect=[malformed, valid]):
+                    stream = router.stream("Hello Sage")
+                    self.assertEqual(list(stream), ["Recovered", ""])
+                self.assertEqual(stream.actual_alias, "second-model")
+
+    def test_router_does_not_fall_back_after_visible_stream_text(self) -> None:
+        router = RouterClient(["first-model", "second-model"])
+        malformed_after_text = io.BytesIO(
+            b'data: {"choices": [{"delta": {"content": "Visible"}}]}\n\n'
+            b'data: {"choices": [{"delta": null}]}\n\n'
+        )
+        valid = io.BytesIO(
+            b'data: {"choices": [{"delta": {"content": "Wrong fallback"}}]}\n\n'
+            b'data: [DONE]\n\n'
+        )
+
+        with patch("router.urlopen", side_effect=[malformed_after_text, valid]) as request:
+            stream = router.stream("Hello Sage")
+            self.assertEqual(list(stream), ["Visible"])
+
+        self.assertEqual(request.call_count, 1)
+        self.assertIsNone(stream.actual_alias)
+
+    def test_router_unclosed_reasoning_only_chat_falls_back(self) -> None:
+        router = RouterClient(["first-model", "second-model"])
+        reasoning = io.BytesIO(b'{"choices": [{"message": {"content": "<think>private"}}]}')
+        valid = io.BytesIO(b'{"choices": [{"message": {"content": "Recovered"}}]}')
+
+        with patch("router.urlopen", side_effect=[reasoning, valid]):
+            result = router.chat("Hello Sage")
+
+        self.assertEqual((result.reply, result.model), ("Recovered", "second-model"))
+
+    def test_router_keeps_visible_text_before_unclosed_reasoning(self) -> None:
+        router = RouterClient("first-model")
+        response = io.BytesIO(b'{"choices": [{"message": {"content": "Visible<think>private"}}]}')
+
+        with patch("router.urlopen", return_value=response):
+            result = router.chat("Hello Sage")
+
+        self.assertEqual((result.reply, result.model), ("Visible", "first-model"))
+
     def test_router_stream_keeps_answer_around_reasoning_tags(self) -> None:
         cases = [
             (["visible<th", "ink>secret</think>answer"], ["visible", "answer", ""]),
@@ -523,6 +634,103 @@ class FoundationTests(unittest.TestCase):
                 [("user", "what shipped today"), ("assistant", "answer")],
             )
             self.assertEqual(self.store.search_records()[0]["sources"][0]["url"], "https://example.com/sage")
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_search_failure_still_streams_chat_answer(self) -> None:
+        from search import SearchResults
+
+        class SearchingRouter:
+            aliases = ("stub",)
+            last_alias = "stub"
+
+            def chat_with_messages(self, messages, **kwargs):
+                return RouterResult(reply="sage project status")
+
+            def stream_with_messages(self, messages, **kwargs):
+                return iter(("answer", ""))
+
+        web_server = SageServer(("127.0.0.1", 0), self.store, SearchingRouter())
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            payload = json.dumps({"message": "what shipped today"}).encode()
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with patch("web.search", return_value=SearchResults(failed=True)):
+                with urlopen(request) as response:
+                    events = read_stream(response)
+            self.assertEqual(
+                [(event["type"], event.get("content")) for event in events],
+                [
+                    ("search", "sage project status"),
+                    ("search_error", "Search failed"),
+                    ("delta", "answer"),
+                    ("model", "stub"),
+                    ("done", None),
+                ],
+            )
+            self.assertEqual(
+                [(event["role"], event["content"]) for event in self.store.read_all()],
+                [("user", "what shipped today"), ("assistant", "answer")],
+            )
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_whitespace_stream_saves_no_assistant(self) -> None:
+        FakeRouter.stream_chunks = [" \n\t"]
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            payload = json.dumps({"message": "Hello Sage"}).encode()
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                events = read_stream(response)
+            self.assertEqual(events[-1]["type"], "model_error")
+            self.assertEqual(
+                [(event["role"], event["content"]) for event in self.store.read_all()],
+                [("user", "Hello Sage")],
+            )
+        finally:
+            web_server.shutdown()
+            web_thread.join()
+            web_server.server_close()
+
+    def test_truncated_stream_saves_no_partial_assistant(self) -> None:
+        FakeRouter.stream_chunks = ["Partial answer"]
+        FakeRouter.truncate_stream = True
+        web_server = SageServer(("127.0.0.1", 0), self.store, self.router)
+        web_thread = Thread(target=web_server.serve_forever)
+        web_thread.start()
+        try:
+            payload = json.dumps({"message": "Hello Sage"}).encode()
+            request = Request(
+                f"http://127.0.0.1:{web_server.server_port}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request) as response:
+                events = read_stream(response)
+            self.assertEqual(events[-1]["type"], "model_error")
+            self.assertEqual(
+                [(event["role"], event["content"]) for event in self.store.read_all()],
+                [("user", "Hello Sage")],
+            )
         finally:
             web_server.shutdown()
             web_thread.join()

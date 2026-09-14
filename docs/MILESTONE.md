@@ -164,6 +164,27 @@ suite passed **164 tests** in 65.074 seconds. Python compilation and
 ResourceWarning remains. This isolated repair has not been integrated, deployed,
 or tested with the other five SAGE-021 repair branches.
 
+## Provider and search response repair — 2026-09-13
+
+Malformed router containers now use normal model failure and fallback behavior
+instead of raising. Blank streams and unfinished reasoning-only replies cannot
+be saved as answers. Recognized usage-only stream metadata no longer discards a
+completed answer; malformed or truncated streams still remain incomplete, and
+explicit model requests still never fall back.
+
+Truncated and malformed search responses now fail soft, allowing ordinary chat
+to continue. Search returns a list-compatible result carrying `failed=True` for
+provider or schema failure and `failed=False` for a legitimate empty result.
+This gives the separate background-completion repair a shared signal without
+changing metabolism behavior in this batch.
+
+All seven assigned SAGE-021 routing probes pass against this worktree. Permanent
+regressions also cover invalid usage metadata type and placement, whitespace,
+visible output before later failure, completed versus truncated streams, search
+failure versus empty results, browser continuation, and accepted-user
+preservation. Full-suite evidence is **168 tests passed**; the known non-failing
+unclosed-SQLite `ResourceWarning` remains.
+
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
 

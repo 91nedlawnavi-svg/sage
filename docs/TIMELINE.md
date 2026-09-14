@@ -75,3 +75,9 @@ Text chats now keep `Auto` or an explicit configured model per session, record
 which model actually answered, and offer safe retry without writing the user
 turn twice. Split voice follows the active chat's model unless its saved voice
 override selects another configured model.
+
+SAGE-026 repairs provider-response boundaries: malformed, blank, unfinished, or
+truncated replies fail honestly; valid completed streams survive usage metadata.
+Broken search responses no longer abort conversation, while a shared result flag
+distinguishes search failure from legitimate silence for the pending background
+repair.
