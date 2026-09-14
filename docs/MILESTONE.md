@@ -201,6 +201,25 @@ bytes, deterministic worker overlap, both request readers, and invalid UTF-8.
 All tests used temporary data and fake or local-only providers. This repair is
 branch-only; combined integration and deployment remain pending.
 
+## Session, retry, and history repair — 2026-09-14
+
+SAGE-022 repairs the first three functional findings from the later SAGE-021
+audit. A foreground turn now keeps the session context captured when its user
+event is accepted, even if another chat is opened while search is pending.
+Concurrent retries of one saved user event use one short-lived ownership claim,
+so only one provider answer is generated and saved; a failed attempt releases
+the claim for another retry. Modern assistant replies that literally resemble
+the retired search-metadata format remain visible and recallable, while proven
+untagged legacy search rows remain outside dialogue.
+
+All four focused regressions pass, including failed-retry recovery. Six adjacent
+session, model-selection, retry, recall, and legacy-history checks pass. The full
+normal suite passed **159 tests** in 65.040 seconds. Python compilation,
+`git diff --check`, and `graphify update .` passed; Graphify rebuilt 846 nodes
+and 1,935 edges. Tests used temporary data and fake providers. This evidence
+covers S21-01 through S21-03 only; it does not claim the other audit batches are
+repaired or the combined parallel branches are integrated.
+
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
 

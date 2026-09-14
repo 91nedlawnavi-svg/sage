@@ -36,6 +36,7 @@ def build_router_messages(
     *,
     max_context: int = 8,
     session_events: list[Event] | None = None,
+    include_recent_life: bool | None = None,
     exclude_event_id: str | None = None,
     directive: str | None = None,
     search_context: str = "",
@@ -58,9 +59,11 @@ def build_router_messages(
     # A resumed older session receives a tiny bridge from life since that chat.
     recent_life: list[Event] = []
     remaining = max_context - len(session_tail)
+    if include_recent_life is None:
+        include_recent_life = session_events is not None
     if (
         remaining > 0
-        and session_events is not None
+        and include_recent_life
         and full_history
         and full_history[-1]["id"] not in eligible_ids
     ):
