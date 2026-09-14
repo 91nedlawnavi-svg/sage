@@ -58,6 +58,35 @@ class BackfillTests(unittest.TestCase):
         rel.close()
         intr.close()
 
+    def test_backfill_source_less_entities_is_idempotent_and_keeps_duplicates(self) -> None:
+        """Each legacy JSONL line stays distinct without multiplying on repeat runs."""
+        record = {
+            "kind": "entity_obs",
+            "entity_id": "person",
+            "name": "Person",
+            "observation": "Legacy observation",
+            "said_at": "2026-01-01T00:00:00Z",
+        }
+        entities_path = self.root / "relational" / "entities.jsonl"
+        entities_path.write_text(
+            json.dumps(record) + "\n" + json.dumps(record) + "\n",
+            encoding="utf-8",
+        )
+        original = entities_path.read_bytes()
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+        from backfill_sqlite import backfill_relational, verify
+
+        rel = relational_db(self.root)
+        try:
+            first = backfill_relational(rel, self.root)
+            second = backfill_relational(rel, self.root)
+            self.assertEqual(first["entity_observations"], 2)
+            self.assertEqual(second["entity_observations"], 2)
+            self.assertEqual(verify(second, {}, self.root), [])
+            self.assertEqual(entities_path.read_bytes(), original)
+        finally:
+            rel.close()
+
     def test_backfill_counts_match_source(self) -> None:
         """Row counts match JSONL line counts."""
         self._write_events_jsonl([

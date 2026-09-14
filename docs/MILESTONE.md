@@ -140,6 +140,22 @@ verification remained clean after those writes. No old event bytes were
 changed. The existing non-failing unclosed-SQLite-connection ResourceWarning
 remains.
 
+## SAGE-027 repair batch — 2026-09-14
+
+Repeated relational backfill now mirrors each source-less legacy entity
+observation once while preserving distinct original lines, including identical
+records. Overlapping identity workers may call the model concurrently, but a
+short final data lock revalidates evidence before one proposal consumes it.
+Missing `Content-Length` now returns 411 from JSON and raw-body readers, and
+invalid UTF-8 JSON returns 400 instead of closing the connection.
+
+The four assigned SAGE-021 audit probes pass against this checkout. Five
+permanent regressions cover identical source-less records and unchanged JSONL
+bytes, deterministic worker overlap, both request readers, and invalid UTF-8.
+`python3 -m unittest discover -s tests` passed **160 tests** in 68.462 seconds.
+All tests used temporary data and fake or local-only providers. This repair is
+branch-only; combined integration and deployment remain pending.
+
 These are foundations, not proof that Sage already feels like a JARVIS-like
 personal intelligence.
 
