@@ -24,6 +24,8 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 def strip_reasoning(text: str) -> str:
     """Remove reasoning preamble (<think>...</think>) leaked by reasoning models."""
     text = _THINK_RE.sub("", text)
+    if "<think>" in text:
+        text = text.split("<think>", 1)[0]
     if "</think>" in text:
         text = text.rsplit("</think>", 1)[-1]
     return text.strip()
@@ -125,13 +127,16 @@ class RouterClient:
         except (HTTPError, URLError, OSError, IncompleteRead, UnicodeDecodeError, json.JSONDecodeError):
             return RouterResult(reply=None)
 
-        try:
-            choice = body["choices"][0]
-            message_obj = choice.get("message", {})
-            reply = message_obj.get("content")
-            reasoning = message_obj.get("reasoning") or message_obj.get("reasoning_content") or ""
-        except (KeyError, IndexError, TypeError):
+        if not isinstance(body, dict):
             return RouterResult(reply=None)
+        choices = body.get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            return RouterResult(reply=None)
+        message_obj = choices[0].get("message")
+        if not isinstance(message_obj, dict):
+            return RouterResult(reply=None)
+        reply = message_obj.get("content")
+        reasoning = message_obj.get("reasoning") or message_obj.get("reasoning_content") or ""
 
         if not isinstance(reply, str) or not reply.strip():
             return RouterResult(reply=None)
@@ -172,11 +177,12 @@ class RouterClient:
             emitted = False
             with response:
                 for chunk in self._stream_response(response):
-                    if chunk:
+                    if chunk.strip():
                         emitted = True
                     else:
-                        stream.actual_alias = alias
-                        self.last_alias = alias
+                        if chunk == "":
+                            stream.actual_alias = alias
+                            self.last_alias = alias
                     yield chunk
             if emitted:
                 return
@@ -204,9 +210,21 @@ class RouterClient:
                     completed = True
                     break
                 try:
-                    delta = json.loads(data)["choices"][0].get("delta", {})
+                    packet = json.loads(data)
+                    if not isinstance(packet, dict):
+                        return
+                    choices = packet.get("choices")
+                    if choices == [] and isinstance(packet.get("usage"), dict):
+                        continue
+                    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+                        return
+                    delta = choices[0].get("delta", {})
+                    if not isinstance(delta, dict):
+                        return
                     content = delta.get("content")
                 except (KeyError, IndexError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+                    return
+                if content is not None and not isinstance(content, str):
                     return
                 if isinstance(content, str) and content:
                     pending += content
@@ -218,7 +236,7 @@ class RouterClient:
                             visible = pending[:marker_at] if marker == "<think>" else ""
                             pending = pending[marker_at + len(marker):]
                             if visible:
-                                emitted = True
+                                emitted = emitted or bool(visible.strip())
                                 yield visible
                             in_think_block = marker == "<think>"
                             continue
@@ -234,14 +252,14 @@ class RouterClient:
                         if not in_think_block:
                             visible = pending[:-keep] if keep else pending
                             if visible:
-                                emitted = True
+                                emitted = emitted or bool(visible.strip())
                                 yield visible
                         pending = pending[-keep:] if keep else ""
                         break
         except (OSError, IncompleteRead, UnicodeDecodeError):
             return
         if completed and pending and not in_think_block:
-            emitted = True
+            emitted = emitted or bool(pending.strip())
             yield pending
         if completed and emitted:
             yield ""
