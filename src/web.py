@@ -17,7 +17,7 @@ from urllib.parse import urlencode, unquote, urlparse, parse_qs
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
-from events import EventStore
+from events import Event, EventStore
 from deletion import DeletionError, build_deletion_plan, execute_deletion
 from database import Database
 from persistence import activity_gate, data_gate, RecoveryRequired
@@ -613,24 +613,62 @@ class SageHandler(BaseHTTPRequestHandler):
             if accepted is None or not visible or visible[-1]["id"] != retry_event_id:
                 self._json(HTTPStatus.CONFLICT, {"error": "Only the latest unanswered message can be retried."})
                 return
+            retry_claim = self.server.store.claim_retry(retry_event_id)
+            if retry_claim is None:
+                self._json(HTTPStatus.CONFLICT, {"error": "This message is already being retried."})
+                return
             message = accepted["content"]
             resumed_session_events = visible
+            include_recent_life = True
         else:
             message = body.get("message")
             if not isinstance(message, str) or not (message := message.strip()):
                 self._json(HTTPStatus.BAD_REQUEST, {"error": "message must be a nonblank string"})
                 return
-            resumed_session_events = self.server.store.resumed_session_history()
-            accepted = accept_message(
-                message,
-                self.server.store,
-                source="voice" if voice else "text",
-                call_id=call_id,
-                turn_id=turn_id,
-            )
+            retry_claim = None
+            with data_gate(self.server.store.data_root):
+                resumed = self.server.store.resumed_session_history()
+                accepted = accept_message(
+                    message,
+                    self.server.store,
+                    source="voice" if voice else "text",
+                    call_id=call_id,
+                    turn_id=turn_id,
+                )
+                resumed_session_events = self.server.store.visible_history() if accepted is not None else None
             if accepted is None:
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": SAVE_FAILURE})
                 return
+            include_recent_life = resumed is not None
+        try:
+            self._complete_chat(
+                message,
+                accepted,
+                resumed_session_events,
+                include_recent_life=include_recent_life,
+                retry_with_auto=retry_with_auto,
+                voice=voice,
+                call_id=call_id,
+                turn_id=turn_id,
+                retry_claim=retry_claim,
+            )
+        finally:
+            if retry_claim is not None:
+                self.server.store.release_retry(accepted["id"], retry_claim)
+
+    def _complete_chat(
+        self,
+        message: str,
+        accepted: Event,
+        session_events: list[Event] | None,
+        *,
+        include_recent_life: bool,
+        retry_with_auto: bool,
+        voice: bool,
+        call_id: str | None,
+        turn_id: str | None,
+        retry_claim: str | None,
+    ) -> None:
         # Acknowledge/clear waiting message once user speaks
         self.server.interior.clear_waiting_message()
 
@@ -676,7 +714,8 @@ class SageHandler(BaseHTTPRequestHandler):
                 build_router_messages(
                     message,
                     self.server.store,
-                    session_events=resumed_session_events,
+                    session_events=session_events,
+                    include_recent_life=include_recent_life,
                     exclude_event_id=accepted["id"],
                     directive=load_directive(identity_block=compose_identity_block(self.server.interior)),
                     search_context=search_context,
@@ -693,6 +732,7 @@ class SageHandler(BaseHTTPRequestHandler):
             session_id=accepted["session_id"],
             event_id=accepted["id"],
             requested_model=requested_model,
+            retry_claim=retry_claim,
         )
 
     def _session_action(self, action: str) -> None:
@@ -895,6 +935,7 @@ class SageHandler(BaseHTTPRequestHandler):
         session_id: str | None = None,
         event_id: str | None = None,
         requested_model: str | None = None,
+        retry_claim: str | None = None,
     ) -> None:
         reply: list[str] = []
         completed = False
@@ -915,6 +956,12 @@ class SageHandler(BaseHTTPRequestHandler):
                 )
                 return
             if persist_reply:
+                if retry_claim is not None and (
+                    event_id is None
+                    or not self.server.store.retry_claim_is_current(event_id, retry_claim)
+                ):
+                    self._write_stream_event("error", SAVE_REPLY_FAILURE)
+                    return
                 actual_model = getattr(chunks, "actual_alias", None) or getattr(self.server.router, "last_alias", None)
                 try:
                     self.server.store.append(

@@ -171,6 +171,8 @@ class EventStore:
         self.embedder = embedder
         self._mirror = mirror
         self._write_lock = threading.RLock()
+        self._retry_lock = threading.Lock()
+        self._retry_claims: dict[str, str] = {}
         with data_gate(self.data_root):
             records = self._read_records()
             self._current_session_id = self._active_session_id(records) if records else str(uuid4())
@@ -294,6 +296,27 @@ class EventStore:
         if self._resumed_session_id != self._current_session_id:
             return None
         return self.visible_history()
+
+    def claim_retry(self, event_id: str) -> str | None:
+        """Claim one unanswered user event for one in-flight retry."""
+        with self._retry_lock:
+            if event_id in self._retry_claims or not self._retryable_event(self.history(), event_id):
+                return None
+            claim = str(uuid4())
+            self._retry_claims[event_id] = claim
+            return claim
+
+    def retry_claim_is_current(self, event_id: str, claim: str) -> bool:
+        with self._retry_lock:
+            return (
+                self._retry_claims.get(event_id) == claim
+                and self._retryable_event(self.history(), event_id)
+            )
+
+    def release_retry(self, event_id: str, claim: str) -> None:
+        with self._retry_lock:
+            if self._retry_claims.get(event_id) == claim:
+                del self._retry_claims[event_id]
 
     def sessions(self, *, include_archived: bool = False) -> list[SessionSummary]:
         summaries: dict[str, SessionSummary] = {}
@@ -1062,8 +1085,22 @@ class EventStore:
         )
 
     @staticmethod
+    def _retryable_event(events: list[Event], event_id: str) -> bool:
+        target = next((event for event in events if event["id"] == event_id), None)
+        if target is None or target["role"] != "user":
+            return False
+        session_events = [event for event in events if event["session_id"] == target["session_id"]]
+        return bool(session_events and session_events[-1]["id"] == event_id)
+
+    @staticmethod
     def _is_legacy_search_event(record: object) -> bool:
-        if not isinstance(record, dict) or record.get("role") != "assistant":
+        if (
+            not isinstance(record, dict)
+            or record.get("role") != "assistant"
+            or "session_id" in record
+            or "source" in record
+            or "model" in record
+        ):
             return False
         content = record.get("content")
         if not isinstance(content, str) or "\nSources:" not in content:
