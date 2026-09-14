@@ -1561,7 +1561,7 @@ class FoundationTests(unittest.TestCase):
             with self.assertRaises(HTTPError) as error:
                 urlopen(request)
             self.assertEqual(error.exception.code, 403)
-            request = Request(url, headers={"Host": "th.tail674e3a.ts.net.evil.example"})
+            request = Request(url, headers={"Host": "589dc8b3d2.tail674e3a.ts.net.evil.example"})
             with self.assertRaises(HTTPError) as error:
                 urlopen(request)
             self.assertEqual(error.exception.code, 403)
@@ -1570,8 +1570,8 @@ class FoundationTests(unittest.TestCase):
                 data=payload,
                 headers={
                     "Content-Type": "application/json",
-                    "Host": "th.tail674e3a.ts.net",
-                    "Origin": "http://th.tail674e3a.ts.net",
+                    "Host": "589dc8b3d2.tail674e3a.ts.net",
+                    "Origin": "http://589dc8b3d2.tail674e3a.ts.net",
                 },
                 method="POST",
             )
@@ -1608,14 +1608,14 @@ class FoundationTests(unittest.TestCase):
         web_thread = Thread(target=web_server.serve_forever)
         web_thread.start()
         try:
-            for host in ("th.tail674e3a.ts.net", "th.tail674e3a.ts.net:443"):
+            for host in ("589dc8b3d2.tail674e3a.ts.net", "589dc8b3d2.tail674e3a.ts.net:443"):
                 request = Request(
                     f"http://127.0.0.1:{web_server.server_port}/api/chat",
                     data=json.dumps({"message": "Hello Sage"}).encode(),
                     headers={
                         "Content-Type": "application/json",
                         "Host": host,
-                        "Origin": "https://th.tail674e3a.ts.net",
+                        "Origin": "https://589dc8b3d2.tail674e3a.ts.net",
                     },
                     method="POST",
                 )

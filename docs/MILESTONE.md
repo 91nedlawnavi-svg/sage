@@ -14,7 +14,7 @@ Already present and verified:
 - Local browser chat through the configured local router. An older command-line
   chat path remains in code but is not a current product interface.
 - Browser host and Origin checks permit local HTTP access and the exact HTTPS
-  Tailscale Funnel at `th.tail674e3a.ts.net` without trusting other domains.
+  Tailscale Funnel at `589dc8b3d2.tail674e3a.ts.net` without trusting other domains.
 - Durable UTC event history with restart persistence.
 - Lexical and embedding-assisted event recall.
 - One normal conversation path for every accepted message; Sensitive mode and

@@ -121,7 +121,7 @@ Use `--self-check` to run without a router.
 - Python 3 standard library for the application.
 - Plain HTML, CSS, and JavaScript for the browser interface.
 - Host and Origin checks allow local HTTP access plus the exact HTTPS Tailscale
-  Funnel at `th.tail674e3a.ts.net`.
+  Funnel at `589dc8b3d2.tail674e3a.ts.net`.
 - JSONL files as the permanent memory record.
 - SQLite as a rebuildable copy, not the source of truth.
 - Local services for model routing, embeddings, and web search.

@@ -28,7 +28,7 @@ from sage import ROUTER_FAILURE, SAVE_FAILURE, accept_message, build_router_mess
 from search import search, format_search_context
 
 STATIC_ROOT = Path(__file__).with_name("static")
-FUNNEL_HOST = "th.tail674e3a.ts.net"
+FUNNEL_HOST = "589dc8b3d2.tail674e3a.ts.net"
 FUNNEL_HOST_WITH_PORT = f"{FUNNEL_HOST}:443"
 FUNNEL_ORIGIN = f"https://{FUNNEL_HOST}"
 MAX_REQUEST_BYTES = 64 * 1024
