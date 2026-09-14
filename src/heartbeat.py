@@ -98,7 +98,7 @@ class Heartbeat:
         count = self.failure_counts.get(pass_name, 0) + 1
         self.failure_counts[pass_name] = count
         aliases = getattr(router, "aliases", "unknown")
-        logger.error(f"{pass_name} pass got no reply from {aliases} ({count} consecutive failures)")
+        logger.error(f"{pass_name} pass failed via {aliases} ({count} consecutive failures)")
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -150,32 +150,45 @@ class Heartbeat:
                 "If no durable entity is present, return [].\n\n"
                 f"Message: {event['content']}"
             )
-            result = self.extract_router.chat_with_messages([{"role": "user", "content": prompt}])
-            self._record_outcome("entity extraction", self.extract_router, result.succeeded)
-            if result.succeeded and result.reply:
-                try:
-                    cleaned = result.reply.strip()
-                    if cleaned.startswith("```json"):
-                        cleaned = cleaned[7:]
-                    if cleaned.endswith("```"):
-                        cleaned = cleaned[:-3]
-                    items = json.loads(cleaned.strip())
-                    if isinstance(items, list):
-                        for item in items:
-                            if isinstance(item, dict) and "entity_id" in item and "name" in item:
-                                self.event_store.append_entity_observation(
-                                    entity_id=str(item["entity_id"]),
-                                    name=str(item["name"]),
-                                    observation=str(item.get("observation", "")),
-                                    source_event_id=event["id"],
-                                    content_revision=revision,
-                                )
-                except (json.JSONDecodeError, ValueError):
-                    logger.warning(f"entity extraction returned unparseable JSON for event {event['id']}")
-                    continue
-                self.event_store.append_heartbeat_completion(
-                    "entities", event["id"], content_revision=revision,
+            try:
+                result = self.extract_router.chat_with_messages([{"role": "user", "content": prompt}])
+            except Exception as exc:
+                logger.warning(f"entity extraction failed for event {event['id']}: {exc}")
+                self._record_outcome("entity extraction", self.extract_router, False)
+                continue
+            if not (result.succeeded and isinstance(result.reply, str) and result.reply):
+                self._record_outcome("entity extraction", self.extract_router, False)
+                continue
+            try:
+                cleaned = result.reply.strip()
+                if cleaned.startswith("```json"):
+                    cleaned = cleaned[7:]
+                if cleaned.endswith("```"):
+                    cleaned = cleaned[:-3]
+                items = json.loads(cleaned.strip())
+                if not isinstance(items, list) or any(
+                    not isinstance(item, dict)
+                    or any(not isinstance(item.get(field), str) or not item[field].strip()
+                           for field in ("entity_id", "name", "observation"))
+                    for item in items
+                ):
+                    raise ValueError("invalid entity response schema")
+            except (json.JSONDecodeError, ValueError):
+                logger.warning(f"entity extraction returned invalid JSON for event {event['id']}")
+                self._record_outcome("entity extraction", self.extract_router, False)
+                continue
+            for item in items:
+                self.event_store.append_entity_observation(
+                    entity_id=item["entity_id"].strip(),
+                    name=item["name"].strip(),
+                    observation=item["observation"].strip(),
+                    source_event_id=event["id"],
+                    content_revision=revision,
                 )
+            self.event_store.append_heartbeat_completion(
+                "entities", event["id"], content_revision=revision,
+            )
+            self._record_outcome("entity extraction", self.extract_router, True)
 
     @guarded(lambda self: self.event_store.data_root, activity=True)
     def _reflection_pass(self) -> None:
@@ -279,7 +292,7 @@ class Heartbeat:
         if last_user["id"] in self.event_store.heartbeat_completed("metabolism"):
             return
         try:
-            run_metabolism_cycle(
+            succeeded = run_metabolism_cycle(
                 self.event_store,
                 self.interior_store,
                 self.reflection_router,
@@ -288,4 +301,5 @@ class Heartbeat:
         except Exception as exc:
             logger.warning(f"metabolism cycle failed: {exc}")
             return
-        self.event_store.append_heartbeat_completion("metabolism", last_user["id"])
+        if succeeded:
+            self.event_store.append_heartbeat_completion("metabolism", last_user["id"])
